@@ -147,18 +147,41 @@ preloadKokoroVoicesCache();
 
 // --- Request Logging Middleware ---
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
+// Enhanced request logging middleware
 app.use((req: express.Request, res: express.Response, next: NextFunction) => {
-  if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
-    console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
-    if (req.method === 'POST' && req.body && Object.keys(req.body).length > 0) {
-      console.log(`[Server] Request Body: ${JSON.stringify(req.body)}`);
-    }
-    if (req.originalUrl.startsWith('/tools')) {
-      const present = Boolean(process.env.SOLSCAN_API_KEY);
-      console.log(`[Server] SOLSCAN_API_KEY present: ${present ? 'YES' : 'NO'}`);
-    }
+  const start = Date.now();
+  const { method, originalUrl, ip, headers } = req;
+  
+  // Log request start
+  console.log(`[${new Date().toISOString()}] ${method} ${originalUrl} from ${ip}`);
+  console.log(`[Request Headers] ${JSON.stringify(headers, null, 2)}`);
+  
+  // Log request body for POST/PUT/PATCH
+  if (['POST', 'PUT', 'PATCH'].includes(method)) {
+    console.log(`[Request Body] ${JSON.stringify(req.body, null, 2)}`);
   }
+  
+  // Log query parameters
+  if (Object.keys(req.query).length > 0) {
+    console.log(`[Query Params] ${JSON.stringify(req.query, null, 2)}`);
+  }
+  
+  // Log environment info for debugging
+  if (originalUrl === '/health') {
+    console.log('[Health Check] Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: process.env.PORT,
+      MONGODB_URI: process.env.MONGODB_URI ? '***' : 'NOT SET',
+      SOLSCAN_API_KEY: process.env.SOLSCAN_API_KEY ? '***' : 'NOT SET'
+    });
+  }
+  
+  // Log response time
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${method} ${originalUrl} - ${res.statusCode} (${duration}ms)`);
+  });
+  
   next();
 });
 
@@ -551,7 +574,27 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
 });
 
 const PORT = process.env.PORT || 8787;
+// Add error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+// Add error handling for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const server = http.createServer(app);
+
+// Add error handling for server errors
+server.on('error', (error) => {
+  console.error('Server Error:', error);
+  if (error.name === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+    process.exit(1);
+  }
+});
 
 server.listen(PORT, () => {
     const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
