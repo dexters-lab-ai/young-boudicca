@@ -48,7 +48,8 @@ WORKDIR /app
 
 # Install Node.js dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund --unsafe-perm
+RUN npm ci --no-audit --no-fund --unsafe-perm && \
+    npm install -g tsx
 
 # Copy application code
 COPY . .
@@ -96,5 +97,5 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8787/health || exit 1
 
-# Start the application
-CMD ["node", "server/index.js"]
+# Start the application using npm start to ensure proper initialization
+CMD ["npm", "start"]
