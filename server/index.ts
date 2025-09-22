@@ -340,8 +340,8 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
 // FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-// Using [^/]+ to match any character except forward slash one or more times
-app.get('/api/agents/creator/:walletAddress([^/]+)', async (req: express.Request, res: express.Response) => {
+// Route parameter for wallet address with explicit pattern
+app.get('/api/agents/creator/:walletAddress([a-zA-Z0-9]+)', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
