@@ -3,11 +3,8 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Install build dependencies including Python and build tools
-RUN apk add --no-cache python3 py3-pip make g++
-
-# Install Python and required system packages
-RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev libffi-dev openssl-dev
+# Install Python 3.10 and build tools
+RUN apk add --no-cache python3=3.10.13-r0 py3-pip make g++ python3-dev=3.10.13-r0 gcc musl-dev libffi-dev openssl-dev
 
 # Create and activate virtual environment
 RUN python3 -m venv /opt/venv
@@ -31,8 +28,8 @@ RUN npm run build
 ######## Runtime stage: single Node service (API + static) ########
 FROM node:20-alpine AS runtime
 
-# Install runtime dependencies
-RUN apk add --no-cache python3 py3-pip wget build-base
+# Install Python 3.10 and runtime dependencies
+RUN apk add --no-cache python3=3.10.13-r0 py3-pip wget build-base
 WORKDIR /app
 
 # Copy node_modules from build stage (contains tsx)
