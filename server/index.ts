@@ -393,40 +393,64 @@ function addRoute(method: string, path: string, handler: express.RequestHandler)
   }
 }
 
-// Determine the correct static directory based on environment
-const staticDirs = [
+// Determine possible static file locations with explicit type
+const possibleDirs: readonly string[] = [
   // Production paths (Docker)
+  '/app/dist',
+  '/app/public',
+  // Relative paths (development)
   path.join(__dirname, '..', 'dist'),
-  path.join(__dirname, '..', '..', 'dist'),
-  // Development paths
-  path.join(__dirname, '..', '..', 'dist'),
-  path.join(__dirname, '..', '..', 'public')
-];
+  path.join(__dirname, '..', 'public'),
+  path.join(process.cwd(), 'dist'),
+  path.join(process.cwd(), 'public')
+] as const;
 
 // Log available directories for debugging
 console.log('Checking for static directories:');
-for (const dir of staticDirs) {
-  console.log(`- ${dir}: ${fs.existsSync(dir) ? 'Found' : 'Not found'}`);
+const foundDirs: Array<string> = [];
+for (const dir of possibleDirs) {
+  try {
+    const dirPath = dir as string; // Ensure dir is treated as string
+    const exists = fs.existsSync(dirPath);
+    console.log(`- ${dirPath}: ${exists ? 'Found' : 'Not found'}`);
+    if (exists) {
+      foundDirs.push(dirPath);
+      const contents = fs.readdirSync(dirPath);
+      console.log(`  Contents of ${dirPath}:`, contents.join(', '));
+    }
+  } catch (error) {
+    console.error(`Error checking directory ${dir}:`, error);
+  }
 }
 
-// Find the first existing static directory
-const staticDir = staticDirs.find(dir => fs.existsSync(dir));
+// Try to find index.html in any of the found directories
+let staticDir: string | null = null;
+for (const dir of foundDirs) {
+  const indexPath = path.join(dir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    staticDir = dir as string;
+    console.log(`Found index.html in: ${staticDir}`);
+    break;
+  } else {
+    console.log(`No index.html found in: ${dir}`);
+  }
+}
 
 if (!staticDir) {
-  console.warn('No static directory found. SPA serving is disabled.');
+  console.warn('No static directory with index.html found. SPA serving is disabled.');
+  console.warn('Searched in:', foundDirs.join(', '));
 } else {
   console.log(`[Server] Serving static files from: ${staticDir}`);
   
-  // Serve static files
+  // Serve static files with proper caching
   app.use(express.static(staticDir, {
     etag: true,
     maxAge: process.env.NODE_ENV === 'production' ? '1y' : '0',
     immutable: process.env.NODE_ENV === 'production',
-    fallthrough: false
+    fallthrough: false,
+    index: false // Disable automatic index.html serving, we'll handle it manually
   }));
 
-  // API routes should be defined before the SPA fallback
-  
   // SPA Fallback - must be the last route
   app.get('*', (req, res, next) => {
     // Skip API routes
@@ -434,13 +458,30 @@ if (!staticDir) {
       return next();
     }
     
-    console.log(`[SPA] Serving index.html for ${req.path}`);
-    res.sendFile(path.join(staticDir, 'index.html'), (err) => {
+    const filePath = path.join(staticDir, req.path);
+    const indexPath = path.join(staticDir, 'index.html');
+    
+    // If the file exists, serve it, otherwise serve index.html for SPA routing
+    fs.access(filePath, fs.constants.F_OK, (err) => {
       if (err) {
-        console.error('Error serving index.html:', err);
-        if (!res.headersSent) {
-          res.status(500).send('Error loading the application');
-        }
+        console.log(`[SPA] Route ${req.path} not found, serving index.html`);
+        res.sendFile(indexPath, (err) => {
+          if (err) {
+            console.error('Error serving index.html:', err);
+            if (!res.headersSent) {
+              res.status(500).send('Error loading the application');
+            }
+          }
+        });
+      } else {
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            console.error(`Error serving ${filePath}:`, err);
+            if (!res.headersSent) {
+              res.status(500).send('Error loading resource');
+            }
+          }
+        });
       }
     });
   });

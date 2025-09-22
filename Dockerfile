@@ -71,9 +71,13 @@ COPY . .
 RUN npm run build && \
     # Ensure the dist directory exists and has the right permissions
     mkdir -p dist && \
+    # Copy built files to dist directory if they're in a different location
+    if [ -d "build" ]; then cp -r build/* dist/; fi && \
+    if [ -d "dist/client" ]; then cp -r dist/client/* dist/ && rm -rf dist/client; fi && \
     chmod -R 755 dist && \
     # Verify the build output
-    ls -la dist/
+    echo "Build output:" && find dist -type f | sort && \
+    echo "\nDist directory contents:" && ls -la dist/
 
 # ============================================
 # Final stage - Minimal runtime
@@ -108,9 +112,12 @@ COPY --from=node-builder /app/node_modules ./node_modules
 COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
 
-# Verify the copied files
-RUN echo "Contents of /app/dist:" && ls -la /app/dist && \
-    echo "\nContents of /app/public:" && ls -la /app/public
+# Verify the copied files and fix permissions
+RUN echo "Contents of /app:" && ls -la /app && \
+    echo "\nContents of /app/dist:" && ls -la /app/dist && \
+    echo "\nFiles in /app/dist:" && find /app/dist -type f | sort && \
+    echo "\nPublic directory:" && ls -la /app/public && \
+    chmod -R 755 /app/dist /app/public
 
 # Ensure NODE_PATH includes global node_modules
 ENV NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
