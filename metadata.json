@@ -1,0 +1,8 @@
+{
+  "name": "Boudi AI",
+  "description": "Young Boudicca Virtual Simulator and Meme Generator - inspirational trending girl from Scotland turned meme. ",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

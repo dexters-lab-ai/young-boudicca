@@ -1,0 +1,114 @@
+import { FunctionDeclaration, Type } from '@google/genai';
+
+export const availableTools: FunctionDeclaration[] = [
+  {
+    name: 'fetchTrendingTokens',
+    description: 'Fetches the top trending tokens from Solscan.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        limit: {
+          type: Type.NUMBER,
+          description: 'The number of trending tokens to fetch. Defaults to 9.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fetchToken',
+    description: 'Fetches detailed information about a specific token by its mint address.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        mint: {
+          type: Type.STRING,
+          description: 'The mint address of the token to fetch.',
+        },
+      },
+      required: ['mint'],
+    },
+  },
+  {
+    name: 'fetchBondingTokens',
+    description: 'Fetches tokens currently in the bonding stage from various Solana launchpads.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        limit: {
+          type: Type.NUMBER,
+          description: 'The number of tokens to fetch. Defaults to 20.',
+        },
+        platform: {
+            type: Type.STRING,
+            description: 'The launchpad platform to filter by. Supported values: "pumpfun", "jupiter", "meteora", "raydium", "kamino", "orca". Defaults to all platforms if not specified.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fetchLatestTokens',
+    description: 'Fetches the most recently created tokens.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        limit: {
+          type: Type.NUMBER,
+          description: 'The number of tokens to fetch. Defaults to 50.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'getTokenMetadata',
+    description: 'Gets the metadata for a given token address.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        address: {
+          type: Type.STRING,
+          description: 'The address of the token.',
+        },
+      },
+      required: ['address'],
+    },
+  },
+  {
+    name: 'getMarketInfo',
+    description: 'Gets the market information for a given token address.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        address: {
+          type: Type.STRING,
+          description: 'The address of the token.',
+        },
+      },
+      required: ['address'],
+    },
+  },
+  {
+    name: 'fetchCandles',
+    description: 'Fetches daily price data for a given token address within a time range.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        address: {
+          type: Type.STRING,
+          description: 'The address of the token.',
+        },
+        time_from: {
+          type: Type.NUMBER,
+          description: 'The start of the time range as a Unix timestamp.',
+        },
+        time_to: {
+          type: Type.NUMBER,
+          description: 'The end of the time range as a Unix timestamp.',
+        },
+      },
+      required: ['address', 'time_from', 'time_to'],
+    },
+  },
+];
