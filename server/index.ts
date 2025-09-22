@@ -183,6 +183,29 @@ const upload = multer({
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads')));
 
+// Serve static files from the dist directory
+app.use(express.static(path.join(__dirname, '..', 'dist'), {
+  setHeaders: (res) => {
+    // Set CSP headers
+    res.setHeader(
+      'Content-Security-Policy',
+      `default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; ` +
+      `img-src 'self' data: blob: https:; ` +
+      `connect-src 'self' https: wss:; ` +
+      `media-src 'self' data: blob: https:; ` +
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; ` +
+      `style-src 'self' 'unsafe-inline' https:;`
+    );
+    // Allow all origins for API requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+}));
+
+// Handle SPA routing - serve index.html for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
+});
+
 // --- Kokoro TTS API Routes ---
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
