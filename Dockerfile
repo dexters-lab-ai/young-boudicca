@@ -114,7 +114,8 @@ RUN chmod -R 755 /app/dist /app/public
 
 # Set environment variables
 ENV NODE_ENV=production \
-    PORT=8787
+    PORT=8787 \
+    PATH="/app/node_modules/.bin:${PATH}"
 
 # Expose port
 EXPOSE 8787
@@ -123,5 +124,5 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8787/health || exit 1
 
-# Start the application using npm start to ensure proper initialization
-CMD ["npm", "start"]
+# Start the application using the local tsx binary
+CMD ["tsx", "server/index.ts"]
