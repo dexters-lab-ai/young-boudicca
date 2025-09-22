@@ -60,7 +60,9 @@ COPY package.json package-lock.json ./
 RUN echo "Cache buster: $CACHE_BUSTER" && \
     npm ci --no-audit --no-fund --unsafe-perm && \
     npm install -g tsx && \
-    npm list -g tsx
+    npm install --save-dev tsx && \
+    npm list -g tsx && \
+    echo "tsx version: $(tsx --version)"
 
 # Copy application code
 COPY . .
@@ -77,12 +79,13 @@ FROM node:20-alpine
 ARG BUILD_TIMESTAMP
 RUN echo "Runtime build timestamp: $BUILD_TIMESTAMP"
 
-# Install runtime dependencies and tsx
+# Install runtime dependencies and ensure tsx is available
 RUN apk add --no-cache \
     python3 \
     && rm -rf /var/cache/apk/* \
     && npm install -g tsx \
-    && npm list -g tsx
+    && npm list -g tsx \
+    && echo "tsx version: $(tsx --version)"
 
 # Create app directory structure
 WORKDIR /app
@@ -95,9 +98,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy built application and node modules from node-builder
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
-COPY --from=node-builder /app/package.json .
+COPY --from=node-builder /app/package*.json ./
+COPY --from=node-builder /app/node_modules ./node_modules
 COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
+
+# Ensure NODE_PATH includes global node_modules
+ENV NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
 
 # Copy server code
 COPY server ./server
