@@ -340,7 +340,8 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
 // FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
+// Using [^/]+ to match any character except forward slash one or more times
+app.get('/api/agents/creator/:walletAddress([^/]+)', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -535,12 +536,15 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
 
+// All other routes should be defined above this point
+
 // Handle SPA routing - serve index.html for all other routes
-// This must be the last route defined
+// This MUST be the last route defined
 app.get('*', (req: express.Request, res: express.Response) => {
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 
+// Start the server
 server.listen(PORT, () => {
 function redact(v?: string) { return v ? `${v.substring(0, 4)}...${v.substring(v.length-3)}` : 'undefined'; }
 console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
