@@ -92,10 +92,12 @@ RUN mkdir -p /app/dist /app/server /app/public/uploads
 COPY --from=python-base /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy built application from node-builder
+# Copy built application and node modules from node-builder
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
 COPY --from=node-builder /app/package.json .
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
 
 # Copy server code
 COPY server ./server
