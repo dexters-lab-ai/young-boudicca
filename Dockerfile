@@ -1,4 +1,6 @@
-######## ============================================
+# Add cache-busting timestamp to force rebuilds
+ARG BUILD_TIMESTAMP=latest
+
 # ============================================
 # Python base stage - For Python dependencies
 # ============================================
@@ -31,6 +33,10 @@ RUN pip install --upgrade pip && \
 # ============================================
 FROM node:20-alpine as node-builder
 
+# Add cache-busting echo to force layer rebuild
+ARG BUILD_TIMESTAMP
+RUN echo "Build timestamp: $BUILD_TIMESTAMP"
+
 # Install build dependencies
 RUN apk add --no-cache \
     python3 \
@@ -46,7 +52,7 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /app
 
-# Install Node.js dependencies
+# Install Node.js dependencies with cache busting
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --unsafe-perm && \
     npm install -g tsx
@@ -61,6 +67,10 @@ RUN npm run build
 # Final stage - Minimal runtime
 # ============================================
 FROM node:20-alpine
+
+# Add cache-busting echo to force layer rebuild
+ARG BUILD_TIMESTAMP
+RUN echo "Runtime build timestamp: $BUILD_TIMESTAMP"
 
 # Install runtime dependencies
 RUN apk add --no-cache \
