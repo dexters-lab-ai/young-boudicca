@@ -1,3 +1,6 @@
+# Force complete rebuild - change this value to invalidate all caches
+ARG CACHE_BUSTER=2025-09-22-18-35
+
 # Add cache-busting timestamp to force rebuilds
 ARG BUILD_TIMESTAMP=latest
 
@@ -54,8 +57,10 @@ WORKDIR /app
 
 # Install Node.js dependencies with cache busting
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund --unsafe-perm && \
-    npm install -g tsx
+RUN echo "Cache buster: $CACHE_BUSTER" && \
+    npm ci --no-audit --no-fund --unsafe-perm && \
+    npm install -g tsx && \
+    npm list -g tsx
 
 # Copy application code
 COPY . .
@@ -72,10 +77,12 @@ FROM node:20-alpine
 ARG BUILD_TIMESTAMP
 RUN echo "Runtime build timestamp: $BUILD_TIMESTAMP"
 
-# Install runtime dependencies
+# Install runtime dependencies and tsx
 RUN apk add --no-cache \
     python3 \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/cache/apk/* \
+    && npm install -g tsx \
+    && npm list -g tsx
 
 # Create app directory structure
 WORKDIR /app
