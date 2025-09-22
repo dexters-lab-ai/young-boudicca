@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import useStore from '../lib/store';
 
 // FIX: Add interfaces for SpeechRecognition to fix typing issues.
 // These interfaces are minimal definitions for the Web Speech API.

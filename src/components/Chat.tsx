@@ -35,7 +35,7 @@ export default function Chat() {
   const agentIcon = activeCustomAgent ? '✨' : (activeAgent === 'boudicca' ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : '🤖');
 
   const { isListening, toggleListening, isSpeechRecognitionSupported } = useSpeechToText({
-    onTranscript: (text) => {
+    onTranscript: () => {
       // For live feedback if desired in the future
     },
     onFinalTranscript: (text) => {

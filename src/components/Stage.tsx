@@ -6,7 +6,7 @@ import { useRef, useState, useEffect, Suspense } from 'react';
 import useStore from '../lib/store';
 import imageData from '../lib/imageData';
 import c from 'clsx';
-import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveCustomAgent } from '../lib/actions';
+import { setInputSource, setActiveModelUrl, toggleCreateAgentModal } from '../lib/actions';
 import Avatar from './Avatar';
 import Filters from './Filters';
 import { Canvas } from '@react-three/fiber';
