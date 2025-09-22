@@ -20,8 +20,17 @@ RUN pip install --no-cache-dir --upgrade pip && \
 ######## Node build stage ########
 FROM node:20-alpine as node-base
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++
+# Install build dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    linux-headers \
+    eudev-dev \
+    libusb-dev \
+    udev \
+    && npm config set unsafe-perm true
 
 # Install Node.js dependencies
 WORKDIR /app
@@ -35,8 +44,14 @@ RUN npm run build
 ######## Final stage ########
 FROM node:20-alpine
 
-# Install runtime dependencies
-RUN apk add --no-cache python3 wget
+# Install runtime dependencies for Node.js and Python
+RUN apk add --no-cache \
+    python3 \
+    wget \
+    eudev \
+    libusb \
+    udev \
+    && npm config set unsafe-perm true
 
 # Copy Python environment
 COPY --from=python-base /opt/venv /opt/venv
