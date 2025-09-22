@@ -201,11 +201,6 @@ app.use(express.static(path.join(__dirname, '..', 'dist'), {
   }
 }));
 
-// Handle SPA routing - serve index.html for all other routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-});
-
 // --- Kokoro TTS API Routes ---
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
@@ -533,16 +528,20 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
         }
     } catch (err: any) {
         console.error('fetchCandles route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch candles' });
-    }
 });
 
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
 
+// Handle SPA routing - serve index.html for all other routes
+// This must be the last route defined
+app.get('*', (req, res) => {
+res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
+});
+
 server.listen(PORT, () => {
-    const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
-    console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-    console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-    console.log(`[server] Server is listening on http://localhost:${PORT}`);
+function redact(v?: string) { return v ? `${v.substring(0, 4)}...${v.substring(v.length-3)}` : 'undefined'; }
+console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
+console.log(`[server] Server is listening on http://localhost:${PORT}`);
 });
