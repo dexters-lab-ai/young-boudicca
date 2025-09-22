@@ -209,9 +209,13 @@ if (process.env.NODE_ENV === 'production') {
     immutable: true
   }));
 
-  // Handle SPA fallback - return index.html for all other routes
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(staticDir, 'index.html'));
+  // Serve index.html for any other route that hasn't been matched by now
+  app.get('*', (req, res, next) => {
+    // Skip API routes
+    if (req.path.startsWith('/api/') || req.path.startsWith('/tools/')) {
+      return next();
+    }
+    res.sendFile('index.html', { root: staticDir });
   });
 }
 
