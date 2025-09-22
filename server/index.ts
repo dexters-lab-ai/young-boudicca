@@ -528,6 +528,8 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
         }
     } catch (err: any) {
         console.error('fetchCandles route error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 const PORT = process.env.PORT || 8787;
