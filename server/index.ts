@@ -32,6 +32,21 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
+// Set Content Security Policy headers
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "img-src 'self' data: https:; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "connect-src 'self' https://api.gemini.ai https://api.solscan.io; " +
+    "media-src 'self' data: blob:; " +
+    "frame-src 'self' https://www.youtube.com;"
+  );
+  next();
+});
+
 // --- Kokoro TTS API & Cache Preloading ---
 // Cache for Kokoro voices to avoid spawning the CLI on every request
 type KokoroVoice = { value: string; label: string };
@@ -183,23 +198,22 @@ const upload = multer({
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads')));
 
-// Serve static files from the dist directory
-app.use(express.static(path.join(__dirname, '..', 'dist'), {
-  setHeaders: (res) => {
-    // Set CSP headers
-    res.setHeader(
-      'Content-Security-Policy',
-      `default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; ` +
-      `img-src 'self' data: blob: https:; ` +
-      `connect-src 'self' https: wss:; ` +
-      `media-src 'self' data: blob: https:; ` +
-      `script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; ` +
-      `style-src 'self' 'unsafe-inline' https:;`
-    );
-    // Allow all origins for API requests
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-}));
+// In production, serve static files from the dist directory
+if (process.env.NODE_ENV === 'production') {
+  const staticDir = path.join(__dirname, '..', 'dist');
+  
+  // Serve static files
+  app.use(express.static(staticDir, {
+    etag: true,
+    maxAge: '1y',  // Cache for 1 year
+    immutable: true
+  }));
+
+  // Handle SPA fallback - return index.html for all other routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 // --- Kokoro TTS API Routes ---
 
@@ -340,8 +354,7 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
 // FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-// Route parameter for wallet address with explicit pattern
-app.get('/api/agents/creator/:walletAddress([a-zA-Z0-9]+)', async (req: express.Request, res: express.Response) => {
+app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -529,25 +542,16 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
         }
     } catch (err: any) {
         console.error('fetchCandles route error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Failed to fetch candles' });
     }
 });
 
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
 
-// All other routes should be defined above this point
-
-// Handle SPA routing - serve index.html for all other routes
-// This MUST be the last route defined
-app.get('*', (req: express.Request, res: express.Response) => {
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-});
-
-// Start the server
 server.listen(PORT, () => {
-function redact(v?: string) { return v ? `${v.substring(0, 4)}...${v.substring(v.length-3)}` : 'undefined'; }
-console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-console.log(`[server] Server is listening on http://localhost:${PORT}`);
+    const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
+    console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+    console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
+    console.log(`[server] Server is listening on http://localhost:${PORT}`);
 });
