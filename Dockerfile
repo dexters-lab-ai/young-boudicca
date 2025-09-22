@@ -32,7 +32,7 @@ RUN apk add --no-cache \
     udev
 
 # Set npm configuration for global package installation
-RUN npm config set unsafe-perm true -g
+RUN npm config set unsafe-perm true
 
 # Install Node.js dependencies
 WORKDIR /app
@@ -55,7 +55,7 @@ RUN apk add --no-cache \
     udev
 
 # Set npm configuration for global package installation
-RUN npm config set unsafe-perm true -g
+RUN npm config set unsafe-perm true
 
 # Copy Python environment
 COPY --from=python-base /opt/venv /opt/venv
