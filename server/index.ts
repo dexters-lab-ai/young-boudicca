@@ -340,7 +340,7 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
 
 // FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
 // FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.get('/api/agents/creator/:walletAddress([a-zA-Z0-9]+)', async (req: express.Request, res: express.Response) => {
+app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
