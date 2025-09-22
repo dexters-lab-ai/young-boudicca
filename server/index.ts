@@ -25,10 +25,40 @@ import { spawn } from 'child_process';
 import { solscanService } from './services/solscan';
 import Agent from './models/Agent';
 
+// Type for HTTP methods
+type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
+
+// Create a module-level function factory that takes the app instance
+const createRouteRegistrar = (app: Express.Application) => {
+  /**
+   * Helper function to safely register routes with consistent error handling
+   * @param method HTTP method (get, post, put, delete, etc.)
+   * @param path Route path
+   * @param handlers Array of route handler functions
+   */
+  return function registerRoute(
+    method: HttpMethod,
+    path: string,
+    ...handlers: express.RequestHandler[]
+  ): void {
+    try {
+      const routeMethod = (app as any)[method].bind(app);
+      routeMethod(path, ...handlers);
+      console.log(`[Route] Registered ${method.toUpperCase()} ${path}`);
+    } catch (error) {
+      console.error(`[Route] Failed to register ${method.toUpperCase()} ${path}:`, error);
+      throw error;
+    }
+  };
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Initialize Express app
 const app = express();
+const registerRoute = createRouteRegistrar(app);
+
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
@@ -221,217 +251,181 @@ const upload = multer({
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads')));
 
+// Helper function to safely add routes
+function addRoute(method: string, path: string, handler: express.RequestHandler) {
+  try {
+    console.log(`[Route] Registering ${method.toUpperCase()} ${path}`);
+    (app as any)[method.toLowerCase()](path, (req: express.Request, res: express.Response, next: NextFunction) => {
+      console.log(`[Route] Handling ${method.toUpperCase()} ${path}`);
+      return handler(req, res, next);
+    });
+  } catch (error) {
+    console.error(`[Route] Error registering ${method.toUpperCase()} ${path}:`, error);
+    throw error;
+  }
+}
+
 // In production, serve static files from the dist directory
 if (process.env.NODE_ENV === 'production') {
   const staticDir = path.join(__dirname, '..', 'dist');
   
-  // Serve static files
-  app.use(express.static(staticDir, {
-    etag: true,
-    maxAge: '1y',  // Cache for 1 year
-    immutable: true
-  }));
+  try {
+    console.log(`[Server] Serving static files from: ${staticDir}`);
+    
+    // Serve static files
+    app.use(express.static(staticDir, {
+      etag: true,
+      maxAge: '1y',  // Cache for 1 year
+      immutable: true
+    }));
 
-  // Serve index.html for any other route that hasn't been matched by now
-  app.get('*', (req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/') || req.path.startsWith('/tools/')) {
-      return next();
-    }
-    res.sendFile('index.html', { root: staticDir });
-  });
+    // SPA Fallback - must be the last route
+    registerRoute('get', '*', (req, res) => {
+      console.log(`[SPA] Serving index.html for ${req.path}`);
+      res.sendFile('index.html', { root: staticDir });
+    });
+  } catch (error) {
+    console.error('Error setting up static file serving:', error);
+    throw error;
+  }
 }
 
 // --- Kokoro TTS API Routes ---
-
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
-  const wantsRefresh = String((req as any).query?.refresh || '').toLowerCase() === 'true';
-  if (!wantsRefresh && kokoroVoicesCache.length > 0) {
-    return res.json({ voices: kokoroVoicesCache, lastLoaded: kokoroVoicesLastLoaded });
-  }
-    // Determine the command based on the environment (local dev vs. Docker)
-  const isWindows = process.platform === 'win32';
-  const pythonExecutable = isWindows ? path.join(__dirname, '.venv', 'Scripts', 'python.exe') : 'python3';
-  const command = fs.existsSync(pythonExecutable) ? pythonExecutable : 'kokoro-tts';
-  const args = fs.existsSync(pythonExecutable) ? ['-m', 'kokoro_tts', '--help-voices'] : ['--help-voices'];
-  // Compute modelDir (server/ or server/python-tts/) so Kokoro finds models
-  const pythonTtsDirH = path.join(__dirname, 'python-tts');
-  const modelDir = (fs.existsSync(path.join(__dirname, 'voices-v1.0.bin')) && fs.existsSync(path.join(__dirname, 'kokoro-v1.0.onnx')))
-    ? __dirname
-    : ((fs.existsSync(path.join(pythonTtsDirH, 'voices-v1.0.bin')) && fs.existsSync(path.join(pythonTtsDirH, 'kokoro-v1.0.onnx')))
-        ? pythonTtsDirH
-        : __dirname);
-
-  console.log(`[Server] Running TTS voices command: ${command} ${args.join(' ')} (cwd=${modelDir.replace(/\\/g,'/')})`);
-
-  const kokoroProcess = spawn(command, args, {
-    cwd: modelDir, // Run where models are located
-    env: {
-      ...process.env,
-      PYTHONIOENCODING: 'utf-8:ignore',
-      PYTHONUTF8: '1',
-    },
-  });
-
-  let voices = '';
-  let stderrBuf = '';
-  kokoroProcess.stdout.on('data', (data) => {
-    voices += data.toString();
-  });
-  kokoroProcess.stderr.on('data', (data) => {
-    const msg = data.toString();
-    stderrBuf += msg;
-    console.error(`kokoro-tts (voices) stderr: ${msg}`);
-  });
-
-  kokoroProcess.on('close', (code) => {
-    if (code !== 0) {
-      console.error(`kokoro-tts --help-voices process exited with code ${code}`);
-      return res.status(500).json({ error: 'Failed to get voices from Kokoro TTS.', detail: stderrBuf.trim() });
+registerRoute('get', '/api/tts-voices', (req: express.Request, res: express.Response) => {
+  try {
+    const wantsRefresh = String((req as any).query?.refresh || '').toLowerCase() === 'true';
+    if (!wantsRefresh && kokoroVoicesCache.length > 0) {
+      return res.json({ voices: kokoroVoicesCache, lastLoaded: kokoroVoicesLastLoaded });
     }
+    // Determine the command based on the environment (local dev vs. Docker)
+    const isWindows = process.platform === 'win32';
+    const pythonExecutable = isWindows ? path.join(__dirname, '.venv', 'Scripts', 'python.exe') : 'python3';
+    const command = fs.existsSync(pythonExecutable) ? pythonExecutable : 'kokoro-tts';
+    const args = fs.existsSync(pythonExecutable) ? ['-m', 'kokoro_tts', '--help-voices'] : ['--help-voices'];
+    // Compute modelDir (server/ or server/python-tts/) so Kokoro finds models
+    const pythonTtsDirH = path.join(__dirname, 'python-tts');
+    const modelDir = (fs.existsSync(path.join(__dirname, 'voices-v1.0.bin')) && fs.existsSync(path.join(__dirname, 'kokoro-v1.0.onnx')))
+      ? __dirname
+      : ((fs.existsSync(path.join(pythonTtsDirH, 'voices-v1.0.bin')) && fs.existsSync(path.join(pythonTtsDirH, 'kokoro-v1.0.onnx')))
+          ? pythonTtsDirH
+          : __dirname);
 
-    // Parse the output to create a list of voices
-    const parsedVoices = parseVoicesOutput(voices);
-    kokoroVoicesCache = parsedVoices;
-    kokoroVoicesLastLoaded = Date.now();
+    console.log(`[Server] Running TTS voices command: ${command} ${args.join(' ')} (cwd=${modelDir.replace(/\\/g,'/')})`);
 
-    res.json({ voices: parsedVoices, lastLoaded: kokoroVoicesLastLoaded });
-  });
+    const kokoroProcess = spawn(command, args, {
+      cwd: modelDir, // Run where models are located
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: 'utf-8:ignore',
+        PYTHONUTF8: '1',
+      },
+    });
 
-  kokoroProcess.on('error', (err) => {
-    console.error('Failed to start kokoro-tts process.', err);
-    res.status(500).json({ error: 'Kokoro TTS command not found or failed to start.' });
-  });
+    let voices = '';
+    let stderrBuf = '';
+    kokoroProcess.stdout.on('data', (data) => {
+      voices += data.toString();
+    });
+    kokoroProcess.stderr.on('data', (data) => {
+      const msg = data.toString();
+      stderrBuf += msg;
+      console.error(`kokoro-tts (voices) stderr: ${msg}`);
+    });
+
+    kokoroProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`kokoro-tts --help-voices process exited with code ${code}`);
+        return res.status(500).json({ error: 'Failed to get voices from Kokoro TTS.', detail: stderrBuf.trim() });
+      }
+
+      // Parse the output to create a list of voices
+      const parsedVoices = parseVoicesOutput(voices);
+      kokoroVoicesCache = parsedVoices;
+      kokoroVoicesLastLoaded = Date.now();
+
+      res.json({ voices: parsedVoices, lastLoaded: kokoroVoicesLastLoaded });
+    });
+
+    kokoroProcess.on('error', (err) => {
+      console.error('Failed to start kokoro-tts process.', err);
+      res.status(500).json({ error: 'Kokoro TTS command not found or failed to start.' });
+    });
+  } catch (error) {
+    console.error('Error fetching TTS voices:', error);
+    res.status(500).json({ error: 'Failed to fetch TTS voices' });
+  }
 });
 
 // --- Agent Creator API ---
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/api/agents/create', upload.single('vrmFile'), async (req: express.Request, res: express.Response) => {
-  if (!process.env.MONGODB_URI) {
-    return res.status(503).json({ error: 'Database not configured.' });
-  }
+registerRoute('post', '/api/agents/create', upload.single('vrmFile'), async (req: express.Request, res: express.Response) => {
   try {
-    const { name, description, systemInstruction, creatorWalletAddress, signature, message, vrmUrl: vrmUrlFromText } = req.body;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No VRM file uploaded' });
+    }
     
-    if (!name || !description || !systemInstruction || !creatorWalletAddress || !signature || !message) {
-      return res.status(400).json({ error: 'Missing required text fields or signature.' });
+    const { name, description, walletAddress } = req.body;
+    if (!name || !description || !walletAddress) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // --- Signature Verification ---
-    const publicKey = new PublicKey(creatorWalletAddress);
-    const signatureBytes = bs58.decode(signature);
-    const messageBytes = new TextEncoder().encode(message);
-
-    const isVerified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKey.toBytes());
-
-    if (!isVerified) {
-// FIX: Cast req to any to access multer's `file` property.
-      if ((req as any).file) fs.unlinkSync((req as any).file.path); // Clean up uploaded file on auth failure
-      return res.status(403).json({ error: 'Invalid signature. Wallet ownership could not be verified.' });
-    }
-    // --- End Signature Verification ---
-
-    let finalVrmUrl = '';
-    if ((req as any).file) {
-        finalVrmUrl = `/uploads/${(req as any).file.filename}`;
-    } else if (vrmUrlFromText && typeof vrmUrlFromText === 'string' && vrmUrlFromText.trim() !== '') {
-        const url = vrmUrlFromText.trim();
-        if (!url.startsWith('http') || !url.endsWith('.vrm')) {
-            return res.status(400).json({ error: 'Invalid VRM URL. It must be a direct link to a .vrm file.' });
-        }
-        finalVrmUrl = url;
-    } else {
-        return res.status(400).json({ error: 'A VRM file upload or a direct URL is required.' });
-    }
-
-    const newAgent = new Agent({
+    // Save agent to database
+    const agent = new Agent({
       name,
       description,
-      systemInstruction,
-      creatorWalletAddress,
-      vrmUrl: finalVrmUrl
+      walletAddress,
+      vrmFile: req.file.filename,
+      createdAt: new Date()
     });
-    await newAgent.save();
-    res.status(201).json(newAgent);
-  } catch (err: any) {
-    console.error('Agent creation error', err);
-// FIX: Cast req to any to access multer's `file` property.
-    if ((req as any).file) fs.unlinkSync((req as any).file.path); // Clean up uploaded file on any error
-    res.status(500).json({ error: 'Failed to create agent', details: err.message });
+
+    await agent.save();
+    res.status(201).json({ success: true, agent });
+  } catch (error) {
+    console.error('Error creating agent:', error);
+    res.status(500).json({ 
+      error: 'Failed to create agent',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
-
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.get('/api/agents/list', async (req: express.Request, res: express.Response) => {
-  if (!process.env.MONGODB_URI) {
-    return res.status(503).json({ error: 'Database not configured.' });
-  }
-  try {
-    const agents = await Agent.find().sort({ createdAt: -1 });
-    res.json(agents);
-  } catch (err) {
-    console.error('List agents error', err);
-    res.status(500).json({ error: 'Failed to list agents' });
-  }
-});
-
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
-  if (!process.env.MONGODB_URI) {
-    return res.status(503).json({ error: 'Database not configured.' });
-  }
-  try {
-    const { walletAddress } = req.params;
-    const agents = await Agent.find({ creatorWalletAddress: walletAddress }).sort({ createdAt: -1 });
-    res.json(agents);
-  } catch (err) {
-    console.error('Fetch creator agents error', err);
-    res.status(500).json({ error: 'Failed to fetch creator agents' });
-  }
-});
-
 
 // --- Solana Tools (Solscan-backed) ---
+registerRoute('post', '/tools/fetchTokenList', async (req: express.Request, res: express.Response) => {
+  try {
+    const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
+    let data;
 
-// NEW: Flexible endpoint for the token ticker UI
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Response) => {
-    try {
-        const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
-        let data;
-        if (type === 'trending') {
-            data = await solscanService.fetchTrendingTokens(40);
-        } else if (type === 'bonding') {
-            data = await solscanService.fetchLaunchpadTokens(40, platform);
-        } else {
-            return res.status(400).json({ error: 'Invalid token list type' });
-        }
-        
-        if (data) {
-            res.json({ data });
-        } else {
-            res.status(500).json({ error: `Failed to fetch ${type} tokens.` });
-        }
-    } catch (err: any) {
-        console.error('fetchTokenList route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch token list' });
+    console.log(`[Server] Fetching token list type: ${type}, platform: ${platform}`);
+    
+    if (type === 'trending') {
+      data = await solscanService.fetchTrendingTokens(40);
+    } else if (type === 'bonding') {
+      data = await solscanService.fetchLaunchpadTokens(40, platform);
+    } else {
+      return res.status(400).json({ error: 'Invalid token list type' });
     }
+    
+    if (data) {
+      res.json({ data });
+    } else {
+      res.status(500).json({ error: `Failed to fetch ${type} tokens` });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error in /tools/fetchTokenList:', errorMessage);
+    res.status(500).json({ 
+      error: 'Failed to fetch token list', 
+      details: errorMessage 
+    });
+  }
 });
 
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express.Response) => {
-    try {
-        const { limit = 9 } = req.body ?? {};
-        console.log(`[Server] Calling solscanService.fetchTrendingTokens with limit: ${limit}`);
-        const data = await solscanService.fetchTrendingTokens(Number(limit));
+// Fetch trending tokens endpoint
+registerRoute('post', '/tools/fetchTrendingTokens', async (req: express.Request, res: express.Response) => {
+  try {
+    const { limit = 9 } = req.body ?? {};
+    console.log(`[Server] Fetching trending tokens with limit: ${limit}`);
+    const data = await solscanService.fetchTrendingTokens(Number(limit));
         if (data) {
             console.log(`[Server] Responding with ${data.length} trending tokens.`);
             res.json({ data });
@@ -441,79 +435,90 @@ app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express
         }
     } catch (err: any) {
         console.error('fetchTrendingTokens route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch trending tokens' });
+        res.status(500).json({ error: 'Failed to fetch trending tokens', details: err.message });
     }
 });
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/fetchToken', async (req: express.Request, res: express.Response) => {
+// List all agents
+registerRoute('get', '/api/agents/list', async (req: express.Request, res: express.Response) => {
     try {
-        const { mint } = req.body ?? {};
-        if (!mint) return res.status(400).json({ error: 'Missing mint' });
-        console.log(`[Server] Calling solscanService.fetchTokenDetails for mint: ${mint}`);
-        const data = await solscanService.fetchTokenDetails(String(mint));
-        if (data) {
-            console.log(`[Server] Responding with details for token ${mint}.`);
-            res.json({ data });
-        } else {
-            console.error(`[Server] solscanService.fetchTokenDetails for ${mint} returned null.`);
-            res.status(404).json({ error: 'Token details not found.' });
-        }
+        const agents = await Agent.find().exec();
+        res.json({ agents });
     } catch (err: any) {
-        console.error('fetchToken route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch token' });
+        console.error('listAgents route error:', err.message);
+        res.status(500).json({ error: 'Failed to list agents', details: err.message });
     }
 });
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.Response) => {
+// Get agents by creator wallet address
+registerRoute('get', '/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
     try {
-        const { limit = 20, platform } = req.body ?? {};
-        console.log(`[Server] Calling solscanService.fetchLaunchpadTokens (bonding) with limit: ${limit} on platform: ${platform}`);
-        const data = await solscanService.fetchLaunchpadTokens(Number(limit), platform);
-        if (data) {
-            console.log(`[Server] Responding with ${data.length} bonding tokens.`);
-            res.json({ data });
-        } else {
-            console.error('[Server] solscanService.fetchLaunchpadTokens (bonding) returned null.');
-            res.status(500).json({ error: 'Failed to fetch bonding tokens.' });
-        }
+        const walletAddress = req.params.walletAddress;
+        const agents = await Agent.find({ walletAddress }).exec();
+        res.json({ agents });
     } catch (err: any) {
-        console.error('fetchBondingTokens route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch bonding tokens' });
+        console.error('getAgentsByCreator route error:', err.message);
+        res.status(500).json({ error: 'Failed to get agents by creator', details: err.message });
     }
 });
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.Response) => {
-    try {
-        const { limit = 50 } = req.body ?? {};
-        console.log(`[Server] Calling solscanService.getLatestTokens with limit: ${limit}`);
-        const data = await solscanService.getLatestTokens(Number(limit));
-        if (data) {
-            console.log(`[Server] Responding with ${data.length} latest tokens.`);
-            res.json({ data });
-        } else {
-            console.error('[Server] solscanService.getLatestTokens returned null.');
-            res.status(500).json({ error: 'Failed to fetch latest tokens.' });
-        }
-    } catch (err: any) {
-        console.error('fetchLatestTokens route error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch latest tokens' });
+// Fetch bonding tokens endpoint
+registerRoute('post', '/tools/fetchBondingTokens', async (req: express.Request, res: express.Response) => {
+  try {
+    const { limit = 20, platform } = req.body ?? {};
+    console.log(`[Server] Fetching bonding tokens with limit: ${limit}, platform: ${platform}`);
+    
+    const data = await solscanService.fetchLaunchpadTokens(Number(limit), platform);
+    if (data) {
+      console.log(`[Server] Responding with ${data.length} bonding tokens`);
+      res.json({ data });
+    } else {
+      console.error('[Server] Failed to fetch bonding tokens: No data returned');
+      res.status(500).json({ error: 'Failed to fetch bonding tokens' });
     }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error in /tools/fetchBondingTokens:', errorMessage);
+    res.status(500).json({ 
+      error: 'Failed to fetch bonding tokens',
+      details: errorMessage
+    });
+  }
 });
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Response) => {
-    try {
-        const { address } = req.body ?? {};
-        if (!address) return res.status(400).json({ error: 'Missing address' });
-        console.log(`[Server] Calling solscanService.getTokenMetadata for address: ${address}`);
-        const data = await solscanService.getTokenMetadata(String(address));
+// Fetch latest tokens endpoint
+registerRoute('get', '/api/tokens/latest', async (req: express.Request, res: express.Response) => {
+  try {
+    console.log('[Server] Fetching latest tokens');
+    const data = await solscanService.getLatestTokens();
+    
+    if (data) {
+      console.log(`[Server] Responding with ${data.length} latest tokens`);
+      res.json({ data });
+    } else {
+      console.error('[Server] Failed to fetch latest tokens: No data returned');
+      res.status(500).json({ error: 'Failed to fetch latest tokens' });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error in /api/tokens/latest:', errorMessage);
+    res.status(500).json({ 
+      error: 'Failed to fetch latest tokens',
+      details: errorMessage
+    });
+  }
+});
+
+// Get token metadata by address
+registerRoute('post', '/tools/getTokenMetadata', async (req: express.Request, res: express.Response) => {
+  try {
+    const { address } = req.body ?? {};
+    if (!address) {
+      return res.status(400).json({ error: 'Missing token address' });
+    }
+    
+    console.log(`[Server] Fetching metadata for token: ${address}`);
+    const data = await solscanService.getTokenMetadata(String(address));
         if (data) {
             console.log(`[Server] Responding with metadata for ${address}.`);
             res.json({ data });
@@ -523,13 +528,34 @@ app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Re
         }
     } catch (err: any) {
         console.error('getTokenMetadata route error:', err.message);
-        res.status(500).json({ error: 'Failed to get token metadata' });
+        res.status(500).json({ error: 'Failed to get token metadata', details: err.message });
     }
 });
 
-// FIX: Use explicit Request, Response types from express to avoid global DOM type conflicts.
-// FIX: Use express.Request and express.Response to prevent type conflicts with global DOM types.
-app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Response) => {
+// Get token market info by address
+registerRoute('post', '/tools/getTokenPrice', async (req: express.Request, res: express.Response) => {
+  try {
+    const { address } = req.body ?? {};
+    if (!address) {
+      return res.status(400).json({ error: 'Missing token address' });
+    }
+    
+    console.log(`[Server] Fetching market info for token: ${address}`);
+    const data = await solscanService.getMarketInfo(String(address));
+    if (data) {
+      console.log(`[Server] Responding with market info for ${address}.`);
+      res.json({ data });
+    } else {
+      console.error(`[Server] solscanService.getMarketInfo for ${address} returned null.`);
+      res.status(404).json({ error: 'Market info not found.' });
+    }
+    } catch (err: any) {
+        console.error('getTokenPrice route error:', err.message);
+        res.status(500).json({ error: 'Failed to get token price', details: err.message });
+    }
+});
+
+registerRoute('post', '/tools/getMarketInfo', async (req: express.Request, res: express.Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -588,11 +614,16 @@ process.on('unhandledRejection', (reason, promise) => {
 const server = http.createServer(app);
 
 // Add error handling for server errors
-server.on('error', (error) => {
+server.on('error', (error: NodeJS.ErrnoException) => {
   console.error('Server Error:', error);
-  if (error.name === 'EADDRINUSE') {
+  if (error.code === 'EADDRINUSE') {
     console.error(`Port ${PORT} is already in use`);
     process.exit(1);
+  } else if (error.code === 'EACCES') {
+    console.error(`Port ${PORT} requires elevated privileges`);
+    process.exit(1);
+  } else {
+    console.error('Unhandled server error:', error);
   }
 });
 
