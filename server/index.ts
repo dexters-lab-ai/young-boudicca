@@ -62,6 +62,134 @@ const registerRoute = createRouteRegistrar(app);
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
+// Health check endpoint - must be before other routes
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    env: process.env.NODE_ENV || 'development',
+    node_env: process.env.NODE_ENV,
+    cwd: process.cwd(),
+    __dirname: __dirname,
+    files: fs.readdirSync(process.cwd())
+  });
+});
+
+// Debug endpoint to check static files
+app.get('/debug/static', (req, res) => {
+  try {
+    const staticPath = path.join(process.cwd(), 'dist');
+    const files = fs.existsSync(staticPath) 
+      ? fs.readdirSync(staticPath)
+      : [];
+      
+    res.json({
+      staticPath,
+      exists: fs.existsSync(staticPath),
+      files,
+      env: process.env.NODE_ENV,
+      cwd: process.cwd(),
+      __dirname: __dirname
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: 'Debug error', details: String(error) });
+  }
+});
+
+// --- Agent Management Endpoints ---
+
+// Create a new agent
+registerRoute('post', '/api/agents', async (req: Request, res: Response) => {
+  try {
+    const { name, description, walletAddress } = req.body;
+    
+    if (!name || !description || !walletAddress) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const agent = new Agent({
+      name,
+      description,
+      walletAddress,
+      createdAt: new Date()
+    });
+
+    await agent.save();
+    res.status(201).json(agent);
+  } catch (error) {
+    console.error('Error creating agent:', error);
+    res.status(500).json({ error: 'Failed to create agent' });
+  }
+});
+
+// List all agents
+registerRoute('get', '/api/agents', async (req: Request, res: Response) => {
+  try {
+    const agents = await Agent.find().sort({ createdAt: -1 });
+    res.json(agents);
+  } catch (error) {
+    console.error('Error fetching agents:', error);
+    res.status(500).json({ error: 'Failed to fetch agents' });
+  }
+});
+
+// Get agent by ID
+registerRoute('get', '/api/agents/:id', async (req: Request, res: Response) => {
+  try {
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    res.json(agent);
+  } catch (error) {
+    console.error('Error fetching agent:', error);
+    res.status(500).json({ error: 'Failed to fetch agent' });
+  }
+});
+
+// --- Token Management Endpoints ---
+
+// Get token metadata
+registerRoute('get', '/api/tokens/:address/metadata', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    const metadata = await solscanService.getTokenMetadata(address);
+    
+    if (!metadata) {
+      return res.status(404).json({ error: 'Token metadata not found' });
+    }
+    
+    res.json(metadata);
+  } catch (error) {
+    console.error('Error fetching token metadata:', error);
+    res.status(500).json({ error: 'Failed to fetch token metadata' });
+  }
+});
+
+// Get token price
+registerRoute('get', '/api/tokens/:address/price', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    const marketInfo = await solscanService.getMarketInfo(address);
+    
+    if (!marketInfo) {
+      return res.status(404).json({ error: 'Price information not available' });
+    }
+    
+    res.json({
+      price: marketInfo.price,
+      priceChange24h: marketInfo.priceChange24h,
+      volume24h: marketInfo.volume24h,
+      marketCap: marketInfo.marketCap
+    });
+  } catch (error) {
+    console.error('Error fetching token price:', error);
+    res.status(500).json({ error: 'Failed to fetch token price' });
+  }
+});
+
 // Set Content Security Policy headers
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', 
@@ -265,29 +393,57 @@ function addRoute(method: string, path: string, handler: express.RequestHandler)
   }
 }
 
-// In production, serve static files from the dist directory
-if (process.env.NODE_ENV === 'production') {
-  const staticDir = path.join(__dirname, '..', 'dist');
-  
-  try {
-    console.log(`[Server] Serving static files from: ${staticDir}`);
-    
-    // Serve static files
-    app.use(express.static(staticDir, {
-      etag: true,
-      maxAge: '1y',  // Cache for 1 year
-      immutable: true
-    }));
+// Determine the correct static directory based on environment
+const staticDirs = [
+  // Production paths (Docker)
+  path.join(__dirname, '..', 'dist'),
+  path.join(__dirname, '..', '..', 'dist'),
+  // Development paths
+  path.join(__dirname, '..', '..', 'dist'),
+  path.join(__dirname, '..', '..', 'public')
+];
 
-    // SPA Fallback - must be the last route
-    registerRoute('get', '*', (req, res) => {
-      console.log(`[SPA] Serving index.html for ${req.path}`);
-      res.sendFile('index.html', { root: staticDir });
+// Log available directories for debugging
+console.log('Checking for static directories:');
+for (const dir of staticDirs) {
+  console.log(`- ${dir}: ${fs.existsSync(dir) ? 'Found' : 'Not found'}`);
+}
+
+// Find the first existing static directory
+const staticDir = staticDirs.find(dir => fs.existsSync(dir));
+
+if (!staticDir) {
+  console.warn('No static directory found. SPA serving is disabled.');
+} else {
+  console.log(`[Server] Serving static files from: ${staticDir}`);
+  
+  // Serve static files
+  app.use(express.static(staticDir, {
+    etag: true,
+    maxAge: process.env.NODE_ENV === 'production' ? '1y' : '0',
+    immutable: process.env.NODE_ENV === 'production',
+    fallthrough: false
+  }));
+
+  // API routes should be defined before the SPA fallback
+  
+  // SPA Fallback - must be the last route
+  app.get('*', (req, res, next) => {
+    // Skip API routes
+    if (req.path.startsWith('/api/') || req.path.startsWith('/tools/')) {
+      return next();
+    }
+    
+    console.log(`[SPA] Serving index.html for ${req.path}`);
+    res.sendFile(path.join(staticDir, 'index.html'), (err) => {
+      if (err) {
+        console.error('Error serving index.html:', err);
+        if (!res.headersSent) {
+          res.status(500).send('Error loading the application');
+        }
+      }
     });
-  } catch (error) {
-    console.error('Error setting up static file serving:', error);
-    throw error;
-  }
+  });
 }
 
 // --- Kokoro TTS API Routes ---

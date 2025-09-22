@@ -68,7 +68,12 @@ RUN echo "Cache buster: $CACHE_BUSTER" && \
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build && \
+    # Ensure the dist directory exists and has the right permissions
+    mkdir -p dist && \
+    chmod -R 755 dist && \
+    # Verify the build output
+    ls -la dist/
 
 # ============================================
 # Final stage - Minimal runtime
@@ -102,6 +107,10 @@ COPY --from=node-builder /app/package*.json ./
 COPY --from=node-builder /app/node_modules ./node_modules
 COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
+
+# Verify the copied files
+RUN echo "Contents of /app/dist:" && ls -la /app/dist && \
+    echo "\nContents of /app/public:" && ls -la /app/public
 
 # Ensure NODE_PATH includes global node_modules
 ENV NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}

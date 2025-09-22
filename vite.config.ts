@@ -4,11 +4,43 @@ import react from '@vitejs/plugin-react';
 // https://vite.config.js/config/
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const isProduction = mode === 'production';
+    
     return {
       plugins: [react()],
+      base: isProduction ? '/' : '/',
+      build: {
+        outDir: 'dist',
+        assetsDir: 'assets',
+        emptyOutDir: true,
+        sourcemap: !isProduction,
+        minify: isProduction ? 'esbuild' : false,
+        rollupOptions: {
+          external: ['react', 'react-dom', 'react-router-dom'],
+          output: {
+            globals: {
+              'react': 'React',
+              'react-dom': 'ReactDOM',
+              'react-router-dom': 'ReactRouterDOM',
+            },
+            manualChunks: (id) => {
+              if (id.includes('node_modules/three') || id.includes('@react-three')) {
+                return 'three';
+              }
+              if (id.includes('@solana/')) {
+                return 'solana';
+              }
+              if (id.includes('node_modules')) {
+                return 'vendor';
+              }
+            },
+          },
+        },
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.NODE_ENV': JSON.stringify(mode)
       },
       server: {
         proxy: {
