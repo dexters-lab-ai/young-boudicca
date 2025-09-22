@@ -6,9 +6,17 @@ WORKDIR /app
 # Install build dependencies including Python and build tools
 RUN apk add --no-cache python3 py3-pip make g++
 
-# Install Python dependencies first (better layer caching)
+# Install Python and required system packages
+RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev libffi-dev openssl-dev
+
+# Create and activate virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
 COPY server/requirements.txt ./server/requirements.txt
-RUN pip3 install --no-cache-dir -r ./server/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r ./server/requirements.txt
 
 # Install Node.js dependencies
 COPY package.json package-lock.json ./
@@ -35,9 +43,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/package.json ./
 
-# Copy Python environment from build stage
-COPY --from=build /usr/local/lib/python3.*/site-packages /usr/local/lib/python3.*/site-packages
-COPY --from=build /usr/local/bin /usr/local/bin
+# Copy Python virtual environment from build stage
+COPY --from=build /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Download Kokoro TTS models into the server directory
 WORKDIR /app/server
