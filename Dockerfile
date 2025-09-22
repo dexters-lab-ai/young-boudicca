@@ -29,8 +29,10 @@ RUN apk add --no-cache \
     linux-headers \
     eudev-dev \
     libusb-dev \
-    udev \
-    && npm config set unsafe-perm true
+    udev
+
+# Set npm configuration for global package installation
+RUN npm config set unsafe-perm true -g
 
 # Install Node.js dependencies
 WORKDIR /app
@@ -50,8 +52,10 @@ RUN apk add --no-cache \
     wget \
     eudev \
     libusb \
-    udev \
-    && npm config set unsafe-perm true
+    udev
+
+# Set npm configuration for global package installation
+RUN npm config set unsafe-perm true -g
 
 # Copy Python environment
 COPY --from=python-base /opt/venv /opt/venv
