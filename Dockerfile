@@ -56,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-pip \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -70,12 +71,6 @@ RUN pip install --upgrade pip && \
 
 # Create model directory
 RUN mkdir -p /app/server/python-tts
-
-# Download the TTS model
-# Replace this URL with your actual model file URL
-ARG TTS_MODEL_URL=https://your-file-hosting.com/kokoro-v1.0.onnx
-RUN wget -q $TTS_MODEL_URL -O /app/server/python-tts/kokoro-v1.0.onnx || \
-    (echo "Failed to download TTS model" && exit 1)
 
 
 # ============================================
