@@ -22,8 +22,9 @@ import nacl from 'tweetnacl';
 import * as fs from 'fs';
 
 import { spawn } from 'child_process';
-import { solscanService } from './services/solscan';
-import Agent from './models/Agent';
+import { solscanService } from './services/solscan.js';
+import Agent from './models/Agent.js';
+import './env.js';
 
 // Type for HTTP methods
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
