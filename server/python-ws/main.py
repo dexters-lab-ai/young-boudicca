@@ -96,7 +96,7 @@ def download_file(url: str, destination: str, expected_hash: str = None, max_ret
 
 # Setup logging with more detailed format
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
@@ -104,6 +104,12 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Add file rotation
+from logging.handlers import RotatingFileHandler
+file_handler = RotatingFileHandler('/var/log/python-tts.log', maxBytes=10*1024*1024, backupCount=5)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
 
 # Log Python and package versions
 logger.info("=== Starting TTS Service ===")
@@ -270,11 +276,22 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8899"))
     host = os.getenv("HOST", "0.0.0.0")
     
-    logger.info(f"Starting TTS service on {host}:{port}")
-    uvicorn.run(
-        "main:app",
-        host=host,
-        port=port,
-        reload=False,
-        log_level="info"
-    )
+    logger.info(f"Starting server on {host}:{port}")
+    logger.info(f"Python path: {sys.path}")
+    logger.info(f"Current working directory: {os.getcwd()}")
+    logger.info(f"Environment variables: {os.environ}")
+    
+    try:
+        import uvicorn
+        uvicorn.run(
+            "main:app",
+            host=host,
+            port=port,
+            log_level="debug",
+            reload=False,
+            workers=1
+        )
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)

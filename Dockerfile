@@ -153,5 +153,11 @@ WORKDIR /app
 # Create log directory
 RUN mkdir -p /var/log
 
-# Start the Python TTS service
-CMD ["/opt/venv/bin/uvicorn", "server.python-ws.main:app", "--host", "0.0.0.0", "--port", "8899"]
+# Set environment variables for the Python service
+ENV PORT=8899 \
+    HOST=0.0.0.0 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Start the Python TTS service with debug logging
+CMD ["sh", "-c", "echo 'Starting TTS service with PORT=$PORT HOST=$HOST' && /opt/venv/bin/uvicorn server.python-ws.main:app --host $HOST --port $PORT --log-level debug"]
