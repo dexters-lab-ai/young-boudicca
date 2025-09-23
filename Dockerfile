@@ -15,8 +15,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install Python and pip
+RUN apt-get update && apt-get install -y python3 python3-pip
+
+# Install dependencies
+RUN npm install -g concurrently tsx
+RUN apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -142,9 +146,14 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
       wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
       wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
 
+# Install Python dependencies
+WORKDIR /app/server/python-ws
+RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
+
 # Start all services in production
 CMD ["concurrently", \
      "tsx server/index.ts", \
      "vite preview --host 0.0.0.0 --port 3000", \
-     "uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899" \
+     "cd /app/server/python-ws && python3 -m uvicorn main:app --host 0.0.0.0 --port 8899" \
     ]

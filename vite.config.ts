@@ -37,6 +37,20 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
+      server: {
+        host: true,
+        port: 3000,
+      },
+      preview: {
+        host: true,
+        port: 3000,
+        strictPort: true,
+        allowedHosts: [
+          'young-boudicca.sliplane.app',
+          'localhost',
+          '127.0.0.1'
+        ]
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
