@@ -66,6 +66,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     libasound2-dev \
     libsndfile1-dev \
+    ffmpeg \
+    libportaudio2 \
+    portaudio19-dev \
+    python3-pyaudio \
+    python3-dev \
+    espeak \
+    libespeak1 \
+    libespeak-ng1 \
+    espeak-ng \
+    libespeak-ng-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
@@ -83,20 +93,18 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
+# Install uv (recommended installer)
+RUN pip install --no-cache-dir uv
+
 # Install Python dependencies
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
     # Install basic requirements first
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    # Install kokoro-tts with specific version and no deps first
-    pip install --no-cache-dir --no-deps kokoro-tts && \
-    # Then install its dependencies separately
-    pip install --no-cache-dir sounddevice numpy && \
-    # Create symlink
-    KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))') && \
-    if [ -n "$KOKORO_PATH" ]; then \
-        ln -sf "$KOKORO_PATH" /usr/local/bin/kokoro-tts; \
-    fi && \
+    # Install kokoro-tts using uv (recommended method)
+    uv tool install kokoro-tts && \
+    # Install additional audio dependencies
+    pip install --no-cache-dir sounddevice numpy pyaudio && \
     # Verify installation
     which kokoro-tts && \
     kokoro-tts --version || echo "Warning: kokoro-tts version check failed but continuing" && \

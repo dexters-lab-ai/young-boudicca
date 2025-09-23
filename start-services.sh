@@ -55,30 +55,41 @@ start_services() {
     
     # Check if kokoro-tts is installed and in PATH
     if ! command -v kokoro-tts &> /dev/null; then
-        log "Warning: kokoro-tts not found in PATH. Attempting to locate..."
-        KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))' 2>/dev/null || echo '')
-        if [ -n "$KOKORO_PATH" ]; then
-            log "Found kokoro-tts at $KOKORO_PATH. Creating symlink..."
-            ln -sf "$KOKORO_PATH" "/usr/local/bin/kokoro-tts"
+        log "kokoro-tts not found. Installing using uv..."
+        # Try installing with uv (recommended method)
+        if command -v uv &> /dev/null; then
+            uv tool install kokoro-tts || {
+                log "Failed to install kokoro-tts with uv. Trying pip..."
+                pip install --no-cache-dir kokoro-tts || {
+                    log "Failed to install kokoro-tts with pip. TTS will be disabled."
+                    export DISABLE_TTS=true
+                }
+            }
         else
-            log "Warning: kokoro-tts not found. TTS functionality will be disabled."
-            log "To enable TTS, ensure kokoro-tts is installed and in PATH."
-            export DISABLE_TTS=true
+            log "uv not found. Installing kokoro-tts with pip..."
+            pip install --no-cache-dir kokoro-tts || {
+                log "Failed to install kokoro-tts. TTS will be disabled."
+                export DISABLE_TTS=true
+            }
         fi
     fi
-    
-    # Verify kokoro-tts if found
+
+    # Verify kokoro-tts installation
     if command -v kokoro-tts &> /dev/null; then
         log "Verifying kokoro-tts installation..."
         if kokoro-tts --version &> /dev/null; then
             log "kokoro-tts is working correctly (version: $(kokoro-tts --version 2>&1 | head -n 1 || echo 'unknown'))"
             export ENABLE_TTS=true
+            export DISABLE_TTS=false
         else
             log "Warning: kokoro-tts is installed but not working properly. TTS may not function."
             export DISABLE_TTS=true
+            export ENABLE_TTS=false
         fi
     else
+        log "Warning: kokoro-tts is not available. TTS will be disabled."
         export DISABLE_TTS=true
+        export ENABLE_TTS=false
     fi
     
     # Start the service
