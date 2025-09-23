@@ -10,9 +10,9 @@ which pip || echo "pip not found"
 python3 --version || echo "Could not get Python version"
 pip --version || echo "Could not get pip version"
 
-# Start the Python service in the background
+# Start the Python service in the background using the venv wrapper
 echo "=== Starting Python TTS service ==="
-python3 -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+venv python3 -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
 
 # Wait for Python service to be ready
 echo "=== Waiting for Python service to be ready ==="
