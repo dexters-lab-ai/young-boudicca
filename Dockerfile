@@ -1,8 +1,37 @@
 # Force complete rebuild - change this value to invalidate all caches
-ARG CACHE_BUSTER=2025-09-22-18-35
+ARG CACHE_BUSTER=2025-09-23-02-42
 
-# Add cache-busting timestamp to force rebuilds
-ARG BUILD_TIMESTAMP=latest
+# ============================================
+# Node.js build stage - For frontend build
+# ============================================
+FROM node:20-alpine as node-builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    linux-headers \
+    && rm -rf /var/cache/apk/*
+
+# Install Node.js dependencies with cache busting
+COPY package.json package-lock.json ./
+RUN echo "Cache buster: $CACHE_BUSTER" && \
+    npm ci --no-audit --no-fund --unsafe-perm
+
+# Copy application code
+COPY . .
+
+# Build the application
+RUN npm run build && \
+    mkdir -p dist && \
+    if [ -d "build" ]; then cp -r build/* dist/; fi && \
+    if [ -d "dist/client" ]; then cp -r dist/client/* dist/ && rm -rf dist/client; fi && \
+    chmod -R 755 dist
 
 # ============================================
 # Python base stage - For Python dependencies
@@ -15,14 +44,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install Python and pip
-RUN apt-get update && apt-get install -y python3 python3-pip
-
-# Install dependencies
-RUN npm install -g concurrently tsx
-RUN apt-get install -y --no-install-recommends \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -31,111 +55,43 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
 WORKDIR /app
-COPY server/requirements.txt .
+COPY server/python-ws/requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# ============================================
-# Node.js build stage - For frontend build
-# ============================================
-FROM node:20-alpine as node-builder
-
-# Add cache-busting echo to force layer rebuild
-ARG BUILD_TIMESTAMP
-RUN echo "Build timestamp: $BUILD_TIMESTAMP"
-
-# Install build dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    gcc \
-    linux-headers \
-    eudev-dev \
-    libusb-dev \
-    udev \
-    && rm -rf /var/cache/apk/*
-
-# Set working directory
-WORKDIR /app
-
-# Install Node.js dependencies with cache busting
-COPY package.json package-lock.json ./
-RUN echo "Cache buster: $CACHE_BUSTER" && \
-    npm ci --no-audit --no-fund --unsafe-perm && \
-    npm install -g tsx && \
-    npm install --save-dev tsx && \
-    npm list -g tsx && \
-    echo "tsx version: $(tsx --version)"
-
-# Copy application code
-COPY . .
-
-# Build the application
-RUN npm run build && \
-    # Ensure the dist directory exists and has the right permissions
-    mkdir -p dist && \
-    # Copy built files to dist directory if they're in a different location
-    if [ -d "build" ]; then cp -r build/* dist/; fi && \
-    if [ -d "dist/client" ]; then cp -r dist/client/* dist/ && rm -rf dist/client; fi && \
-    chmod -R 755 dist && \
-    # Verify the build output
-    echo "Build output:" && find dist -type f | sort && \
-    echo "\nDist directory contents:" && ls -la dist/
 
 # ============================================
-# Final stage - Minimal runtime
+# Final stage - Production runtime
 # ============================================
 FROM node:20-alpine
 
-# Add cache-busting echo to force layer rebuild
-ARG BUILD_TIMESTAMP
-RUN echo "Runtime build timestamp: $BUILD_TIMESTAMP"
-
-# Install runtime dependencies and ensure tsx is available
-RUN apk add --no-cache \
-    python3 \
+# Install runtime dependencies
+RUN apk add --no-cache python3 \
     && rm -rf /var/cache/apk/* \
-    && npm install -g tsx concurrently \
-    && npm list -g tsx concurrently \
-    && echo "tsx version: $(tsx --version)"
+    && npm install -g tsx concurrently
 
 # Create app directory structure
 WORKDIR /app
 RUN mkdir -p /app/dist /app/server /app/public/uploads
 
-# Copy Python virtual environment
+# Copy Python virtual environment and server code
 COPY --from=python-base /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY server ./server
 
 # Copy built application and node modules from node-builder
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
-COPY --from=node-builder /app/package*.json ./
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
-
-# Verify the copied files and fix permissions
-RUN echo "Contents of /app:" && ls -la /app && \
-    echo "\nContents of /app/dist:" && ls -la /app/dist && \
-    echo "\nFiles in /app/dist:" && find /app/dist -type f | sort && \
-    echo "\nPublic directory:" && ls -la /app/public && \
-    chmod -R 755 /app/dist /app/public
-
-# Ensure NODE_PATH includes global node_modules
-ENV NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
-
-# Copy server code
-COPY server ./server
-
-# Ensure the server has the correct permissions to serve static files
-RUN chmod -R 755 /app/dist /app/public
+COPY package*.json ./
 
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
-    PATH="/app/node_modules/.bin:${PATH}"
+    PATH="/app/node_modules/.bin:/opt/venv/bin:$PATH" \
+    NODE_PATH=/app/node_modules
+
+# Fix permissions
+RUN chmod -R 755 /app/dist /app/public /app/server
 
 # Expose ports
 EXPOSE 3000 8787 8899
@@ -145,11 +101,6 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ && \
       wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
       wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
-
-# Install Python dependencies
-WORKDIR /app/server/python-ws
-RUN pip install --no-cache-dir -r requirements.txt
-WORKDIR /app
 
 # Start all services in production
 CMD ["concurrently", \
