@@ -40,6 +40,20 @@ export default defineConfig(({ mode }) => {
       server: {
         host: true,
         port: 3000,
+        proxy: {
+          '/tools': {
+            target: 'http://127.0.0.1:8787',
+            changeOrigin: true,
+          },
+          '/api': {
+            target: 'http://127.0.0.1:8787',
+            changeOrigin: true,
+          },
+          '/uploads': {
+            target: 'http://127.0.0.1:8787',
+            changeOrigin: true,
+          }
+        }
       },
       preview: {
         host: true,
@@ -55,22 +69,6 @@ export default defineConfig(({ mode }) => {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.NODE_ENV': JSON.stringify(mode)
-      },
-      server: {
-        proxy: {
-          '/tools': {
-            target: 'http://127.0.0.1:8787',
-            changeOrigin: true,
-          },
-          '/api': {
-            target: 'http://127.0.0.1:8787',
-            changeOrigin: true,
-          },
-          '/uploads': {
-            target: 'http://127.0.0.1:8787',
-            changeOrigin: true,
-          }
-        }
       }
     };
 });
