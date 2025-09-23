@@ -94,9 +94,30 @@ def download_file(url: str, destination: str, expected_hash: str = None, max_ret
         logger.error(traceback.format_exc())
         return False
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging with more detailed format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('/var/log/python-tts.log')
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# Log Python and package versions
+logger.info("=== Starting TTS Service ===")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Environment variables: {os.environ.get('PATH', 'Not set')}")
+
+# Verify required environment variables
+REQUIRED_ENV_VARS = ["PORT", "HOST"]
+for var in REQUIRED_ENV_VARS:
+    if var not in os.environ:
+        logger.error(f"Required environment variable {var} is not set")
+    else:
+        logger.info(f"{var}: {os.environ[var]}")
 
 # Add project root to path to allow imports from other directories
 try:
@@ -108,7 +129,7 @@ except ImportError as e:
     sys.exit(1)
 
 
-app = FastAPI(title="Boudi AI WebSocket Server")
+app = FastAPI(title="Boudi AI WebSocket Server", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
