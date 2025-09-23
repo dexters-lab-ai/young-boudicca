@@ -10,42 +10,56 @@ log() {
 check_service() {
     local port=$1
     local name=$2
-    local max_retries=15
+    local path=${3:-/}
+    local max_retries=30  # Increased retries for slower systems
     local count=0
     
     log "Checking if $name is available on port $port"
-    while ! nc -z localhost $port; do
+    while true; do
+        # First check if port is open
+        if nc -z localhost $port; then
+            # Then check if the service responds to HTTP requests
+            if [ -n "$path" ] && [ "$path" != "/" ]; then
+                if curl -s -f "http://localhost:${port}${path}" >/dev/null; then
+                    log "$name is ready on port $port"
+                    return 0
+                fi
+            else
+                log "$name is ready on port $port"
+                return 0
+            fi
+        fi
+        
         if [ $count -ge $max_retries ]; then
             log "Error: $name failed to start on port $port"
             return 1
         fi
+        
         log "Waiting for $name to be ready... (attempt $((count+1))/$max_retries)"
         count=$((count+1))
         sleep 2
     done
-    log "$name is ready on port $port"
-    return 0
 }
 
 # Start services in sequence
 start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
-    python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+    cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
-    check_service 8899 "Python TTS" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
+    check_service 8899 "Python TTS" "/docs" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
 
     # Then start Node.js API server
     log "Starting Node.js API server..."
-    node server/index.js &
+    cd /app && node dist/server/index.js &
     NODE_PID=$!
-    check_service 8787 "Node.js API" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
+    check_service 8787 "Node.js API" "/health" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
 
     # Finally start Vite preview
     log "Starting Vite preview server..."
-    npx vite preview --host 0.0.0.0 --port 3000 &
+    cd /app && npx vite preview --host 0.0.0.0 --port 3000 &
     VITE_PID=$!
-    check_service 3000 "Vite Preview" || { kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; exit 1; }
+    check_service 3000 "Vite Preview" "/" || { kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; exit 1; }
 
     log "All services started successfully"
     

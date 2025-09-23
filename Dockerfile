@@ -25,6 +25,8 @@ COPY . .
 
 # Build the application
 RUN npm run build
+# Build TypeScript files
+RUN npx tsc --project tsconfig.node.json
 
 # ============================================
 # Production stage
@@ -57,7 +59,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install Python dependencies
 COPY server/python-ws/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] kokoro-tts && \
     rm requirements.txt
 
 # Set up application directory
@@ -68,7 +70,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/package*.json ./
 COPY --chown=node:node --from=builder /app/public ./public
-COPY --chown=node:node --from=builder /app/server ./server
+# Copy server files with proper structure
+RUN mkdir -p /app/server
+COPY --chown=node:node --from=builder /app/server/ /app/server/
 
 # Install production dependencies
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
