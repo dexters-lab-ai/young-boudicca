@@ -1,5 +1,5 @@
 # Force complete rebuild - change this value to invalidate all caches
-ARG CACHE_BUSTER=2025-09-23-05-35
+ARG CACHE_BUSTER=2025-09-23-02-42
 
 # ============================================
 # Node.js build stage - For frontend build
@@ -51,81 +51,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build and system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    python3-pip \
-    python3-dev \
-    curl \
-    gcc \
-    g++ \
-    make \
-    cmake \
-    wget \
-    git \
-    # Audio processing
-    libsndfile1 \
-    libportaudio2 \
-    libasound2 \
-    libsndfile1-dev \
-    portaudio19-dev \
-    libasound2-dev \
-    libpulse-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libx264-dev \
-    # Text-to-speech dependencies
-    espeak \
-    ffmpeg \
-    flac \
-    # Other dependencies
-    libffi-dev \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
-    llvm \
-    libncurses5-dev \
-    libncursesw5-dev \
-    xz-utils \
-    tk-dev \
-    liblzma-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
-RUN python3 -m venv /opt/venv
+RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
 WORKDIR /app
 COPY server/python-ws/requirements.txt .
-
-# Install PyTorch first with retry logic
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    { \
-        for i in {1..5}; do \
-            if pip install --no-cache-dir torch==2.0.1+cpu torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu; then \
-                echo "PyTorch installed successfully"; \
-                break; \
-            else \
-                echo "PyTorch installation attempt $i failed, retrying..."; \
-                sleep 10; \
-            fi; \
-            if [ $i -eq 5 ]; then \
-                echo "Failed to install PyTorch after 5 attempts"; \
-                exit 1; \
-            fi; \
-        done \
-    } && \
     pip install --no-cache-dir uvicorn[standard]
 
-# Create model directory
-RUN mkdir -p /app/server/python-tts && \
-    chmod -R 777 /app/server/python-tts
 
 # ============================================
 # Final stage - Production runtime
@@ -133,49 +74,18 @@ RUN mkdir -p /app/server/python-tts && \
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache \
-    # Python runtime
-    python3 \
-    py3-pip \
-    # Audio processing
-    libsndfile \
-    portaudio \
-    alsa-lib \
-    alsa-utils \
-    pulseaudio \
-    sox \
-    ffmpeg \
-    # Text-to-speech
-    espeak \
-    # System utilities
-    netcat-openbsd \
-    curl \
-    bash \
-    # Clean up
+RUN apk add --no-cache python3 netcat-openbsd \
     && rm -rf /var/cache/apk/* \
-    # Install Node.js tools
     && npm install -g tsx concurrently \
+    && npm list -g tsx concurrently \
     && echo "tsx version: $(tsx --version)"
 
 # Create app directory structure
 WORKDIR /app
-RUN mkdir -p /app/dist /app/server /app/public/uploads && \
-    chmod -R 777 /app/server
+RUN mkdir -p /app/dist /app/server /app/public/uploads
 
-# Copy Python virtual environment from build stage
+# Copy Python virtual environment and server code
 COPY --from=python-base /opt/venv /opt/venv
-
-# Set up the virtual environment
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install Python dependencies directly (no virtual env activation needed)
-COPY server/python-ws/requirements.txt /tmp/requirements.txt
-RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
-    /opt/venv/bin/pip install --no-cache-dir uvicorn[standard] && \
-    rm /tmp/requirements.txt
-
-# Copy server code
 COPY server ./server
 
 # Copy built application and node modules from node-builder
@@ -183,35 +93,38 @@ COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
 COPY --from=node-builder /app/package*.json ./
 COPY --from=node-builder /app/node_modules ./node_modules
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
 
-# Copy application code
-COPY . .
+# Verify the copied files and fix permissions
+RUN echo "Contents of /app:" && ls -la /app && \
+    echo "\nContents of /app/dist:" && ls -la /app/dist && \
+    echo "\nFiles in /app/dist:" && find /app/dist -type f | sort && \
+    echo "\nPublic directory:" && ls -la /app/public
 
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
-    PATH="/app/node_modules/.bin:$PATH" \
-    NODE_PATH=/app/node_modules \
-    PYTHONUNBUFFERED=1
+    PATH="/app/node_modules/.bin:/opt/venv/bin:$PATH" \
+    NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
 
-# Install Node.js tools
-RUN npm install -g tsx concurrently && \
-    echo "tsx version: $(tsx --version)"
+# Fix permissions
+RUN chmod -R 755 /app/dist /app/public /app/server
 
-# Expose necessary ports
+# Expose ports
 EXPOSE 3000 8787 8899
 
-# Set health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD (nc -z localhost 3000 || exit 1) && \
-        (nc -z localhost 8787 || exit 1) && \
-        (nc -z localhost 8899 || exit 1) || exit 1
+# Health check - check all services
+HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ && \
+      wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
+      wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
 
-# Make startup script executable and set it as entrypoint
+# Copy and set up the startup script
+COPY start-services.sh /app/start-services.sh
 RUN chmod +x /app/start-services.sh
 
-# Debug: Show installed Python packages
-RUN pip freeze
+# Set working directory
 WORKDIR /app
 
 # Start all services
