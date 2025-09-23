@@ -34,6 +34,9 @@ FROM python:3.11-slim as runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     netcat-openbsd \
+    libudev-dev \
+    pkg-config \
+    libusb-1.0-0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20
