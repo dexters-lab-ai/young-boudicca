@@ -599,23 +599,29 @@ except Exception as e:
         res.json({ voices: parsedVoices, lastLoaded: kokoroVoicesLastLoaded });
       } catch (e) {
         console.error('Error parsing Python script output:', e);
+        const errorMessage = e instanceof Error ? e.message : String(e);
         res.status(500).json({ 
           error: 'Failed to parse voices data',
-          detail: e.message
+          detail: errorMessage
         });
       }
     });
 
-    pythonProcess.on('error', (err) => {
+    pythonProcess.on('error', (err: Error) => {
       console.error('Failed to start Python process:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
       res.status(500).json({ 
         error: 'Failed to start Python process',
-        detail: err.message
+        detail: errorMessage
       });
     });
   } catch (error) {
     console.error('Error fetching TTS voices:', error);
-    res.status(500).json({ error: 'Failed to fetch TTS voices' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({ 
+      error: 'Failed to fetch TTS voices',
+      detail: errorMessage 
+    });
   }
 });
 
