@@ -16,12 +16,19 @@ RUN apk add --no-cache \
     g++ \
     gcc \
     linux-headers \
+    eudev-dev \
+    libusb-dev \
+    udev \
     && rm -rf /var/cache/apk/*
 
 # Install Node.js dependencies with cache busting
 COPY package.json package-lock.json ./
 RUN echo "Cache buster: $CACHE_BUSTER" && \
-    npm ci --no-audit --no-fund --unsafe-perm
+    npm ci --no-audit --no-fund --unsafe-perm && \
+    npm install -g tsx && \
+    npm install --save-dev tsx && \
+    npm list -g tsx && \
+    echo "tsx version: $(tsx --version)"
 
 # Copy application code
 COPY . .
@@ -68,7 +75,9 @@ FROM node:20-alpine
 # Install runtime dependencies
 RUN apk add --no-cache python3 \
     && rm -rf /var/cache/apk/* \
-    && npm install -g tsx concurrently
+    && npm install -g tsx concurrently \
+    && npm list -g tsx concurrently \
+    && echo "tsx version: $(tsx --version)"
 
 # Create app directory structure
 WORKDIR /app
@@ -81,14 +90,22 @@ COPY server ./server
 # Copy built application and node modules from node-builder
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
+COPY --from=node-builder /app/package*.json ./
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY package*.json ./
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
+
+# Verify the copied files and fix permissions
+RUN echo "Contents of /app:" && ls -la /app && \
+    echo "\nContents of /app/dist:" && ls -la /app/dist && \
+    echo "\nFiles in /app/dist:" && find /app/dist -type f | sort && \
+    echo "\nPublic directory:" && ls -la /app/public
 
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
     PATH="/app/node_modules/.bin:/opt/venv/bin:$PATH" \
-    NODE_PATH=/app/node_modules
+    NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
 
 # Fix permissions
 RUN chmod -R 755 /app/dist /app/public /app/server
