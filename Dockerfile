@@ -26,6 +26,9 @@ COPY . .
 # Install TypeScript and build dependencies
 RUN npm install -g typescript
 
+# Install dependencies first
+RUN npm ci
+
 # Build the application
 RUN npm run build
 
@@ -33,11 +36,14 @@ RUN npm run build
 RUN mkdir -p dist/server
 
 # Build TypeScript files for server
-COPY tsconfig.node.json ./
-RUN npx tsc --project tsconfig.node.json --outDir dist/server --rootDir server
+COPY tsconfig.server.json ./
+RUN npx tsc --project tsconfig.server.json
 
-# Ensure server files are copied correctly
+# Copy server files
 RUN cp -r server/* dist/server/ 2>/dev/null || :
+
+# Verify the build
+RUN ls -la dist/server/
 
 # ============================================
 # Production stage
@@ -71,8 +77,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install Python dependencies
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    pip install --no-cache-dir kokoro-tts && \
+    pip install --no-cache-dir -r requirements.txt uvicorn[standard] kokoro-tts && \
     rm requirements.txt
 
 # Set up application directory

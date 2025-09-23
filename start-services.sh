@@ -45,10 +45,13 @@ check_service() {
 start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
-    # Activate virtual environment
+    # Activate virtual environment and set Python path
+    export PYTHONPATH="/app:$PYTHONPATH"
     source /opt/venv/bin/activate
-    # Install kokoro-tts explicitly
-    pip install --no-cache-dir kokoro-tts
+    # Verify Python path and modules
+    log "Python path: $PYTHONPATH"
+    python -c "import sys; print('Python sys.path:', sys.path)" || true
+    python -c "import kokoro; print('Kokoro path:', kokoro.__file__)" || log "Failed to import kokoro"
     # Start the service
     cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
@@ -56,15 +59,20 @@ start_services() {
 
     # Then start Node.js API server
     log "Starting Node.js API server..."
-    # Ensure we're in the right directory and start the server
     cd /app
-    # Check if the file exists
-    if [ ! -f "dist/server/index.js" ]; then
-        log "Error: dist/server/index.js not found. Available files in dist/server/:"
-        ls -la dist/server/ || true
+    # Check for the compiled file first
+    if [ -f "dist/server/index.js" ]; then
+        log "Starting compiled server from dist/server/index.js"
+        node dist/server/index.js &
+    # Fallback to TypeScript if compiled version not found
+    elif [ -f "server/index.ts" ]; then
+        log "Starting TypeScript server directly (development mode)"
+        npx tsx server/index.ts &
+    else
+        log "Error: Could not find server entry point"
+        ls -la dist/ server/ 2>/dev/null || true
         exit 1
     fi
-    node dist/server/index.js &
     NODE_PID=$!
     check_service 8787 "Node.js API" "/health" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
 
