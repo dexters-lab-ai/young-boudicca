@@ -6,6 +6,7 @@ import logging
 import os
 import struct
 import sys
+import time
 import traceback
 import numpy as np
 import hashlib
@@ -28,44 +29,70 @@ def verify_file_hash(file_path: str, expected_hash: str) -> bool:
 
 def download_file(url: str, destination: str, expected_hash: str = None, max_retries: int = 3) -> bool:
     """Download a file with retry and optional hash verification."""
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    temp_path = f"{destination}.download"
-    
-    for attempt in range(max_retries):
-        try:
-            # Skip if file exists and hash matches
-            if os.path.exists(destination) and (expected_hash is None or verify_file_hash(destination, expected_hash)):
+    try:
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        temp_path = f"{destination}.download"
+        
+        # Check if file exists and hash matches
+        if os.path.exists(destination):
+            if expected_hash is None or verify_file_hash(destination, expected_hash):
+                logger.info(f"File {destination} already exists and hash matches")
+                return True
+            logger.warning(f"File {destination} exists but hash doesn't match, re-downloading")
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Downloading {url} (attempt {attempt + 1}/{max_retries})")
+                with requests.get(url, stream=True, timeout=30) as r:
+                    r.raise_for_status()
+                    total_size = int(r.headers.get('content-length', 0))
+                    downloaded = 0
+                    
+                    with open(temp_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:  # filter out keep-alive chunks
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if total_size > 0:
+                                    percent = (downloaded / total_size) * 100
+                                    logger.debug(f"Download progress: {percent:.1f}%")
+                
+                # Verify hash if provided
+                if expected_hash:
+                    logger.info("Verifying file hash...")
+                    if not verify_file_hash(temp_path, expected_hash):
+                        raise ValueError(f"Hash verification failed for {url}")
+                
+                # Move the temporary file to the destination
+                if os.path.exists(destination):
+                    os.remove(destination)
+                os.rename(temp_path, destination)
+                logger.info(f"Successfully downloaded and verified {url}")
                 return True
                 
-            logger.info(f"Downloading {url} (attempt {attempt + 1}/{max_retries})")
-            with requests.get(url, stream=True, timeout=30) as r:
-                r.raise_for_status()
-                with open(temp_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-            
-            # Verify hash if provided
-            if expected_hash and not verify_file_hash(temp_path, expected_hash):
-                raise ValueError("Hash verification failed")
+            except Exception as e:
+                logger.warning(f"Download attempt {attempt + 1} failed: {str(e)}")
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove temp file: {e}")
                 
-            # Move the temporary file to the destination
-            if os.path.exists(destination):
-                os.remove(destination)
-            os.rename(temp_path, destination)
-            return True
-            
-        except Exception as e:
-            logger.warning(f"Download attempt {attempt + 1} failed: {e}")
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            if attempt == max_retries - 1:  # Last attempt
-                logger.error(f"Failed to download {url} after {max_retries} attempts")
-                return False
-            
-            # Exponential backoff before retry
-            time.sleep(2 ** attempt)
-    
-    return False
+                if attempt == max_retries - 1:  # Last attempt
+                    logger.error(f"Failed to download {url} after {max_retries} attempts")
+                    return False
+                
+                # Exponential backoff before retry
+                delay = 2 ** attempt
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error in download_file: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
