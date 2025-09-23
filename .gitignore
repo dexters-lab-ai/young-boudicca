@@ -15,6 +15,10 @@ dist-ssr
 # Ignore nginx config (no longer used)
 nginx.conf
 
+# TTS model files
+server/python-tts/*.onnx
+!server/python-tts/__init__.py  # Keep this file if it exists
+
 # Python TTS module (will be installed during Docker build)
 server/python-tts/de/*
 

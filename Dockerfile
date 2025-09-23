@@ -51,21 +51,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    python3-pip \
+    python3-dev \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment
-RUN python -m venv /opt/venv
+# Set up Python environment
+RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
 WORKDIR /app
 COPY server/python-ws/requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Create model directory
+RUN mkdir -p /app/server/python-tts
 
 # ============================================
 # Final stage - Production runtime
@@ -73,11 +77,18 @@ RUN pip install --upgrade pip && \
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache python3 \
+RUN apk add --no-cache python3 py3-pip netcat-openbsd \
     && rm -rf /var/cache/apk/* \
     && npm install -g tsx concurrently \
     && npm list -g tsx concurrently \
     && echo "tsx version: $(tsx --version)"
+
+# Copy Python virtual environment from build stage
+COPY --from=python-base /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create model directory
+RUN mkdir -p /app/server/python-tts
 
 # Create app directory structure
 WORKDIR /app
@@ -119,9 +130,11 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
       wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
       wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
 
-# Start all services in production
-CMD ["concurrently", \
-     "tsx server/index.ts", \
-     "vite preview --host 0.0.0.0 --port 3000", \
-     "cd /app/server/python-ws && python3 -m uvicorn main:app --host 0.0.0.0 --port 8899" \
-    ]
+# Create a startup script
+RUN echo '#!/bin/sh\nset -e\n\n# Function to check if a service is running\nwait_for_service() {\n  host=$1\n  port=$2\n  timeout=30\n  \n  echo "Waiting for $host:$port..."\n  for i in $(seq 1 $timeout); do\n    if nc -z $host $port >/dev/null 2>&1; then\n      echo "$host:$port is available"\n      return 0\n    fi\n    sleep 1\n  done\n  echo "Timeout waiting for $host:$port"\n  exit 1\n}\n\n# Start the Python TTS service\necho "Starting Python TTS service..."\ncd /app/server/python-ws\n/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8899 &\n\n# Wait for Python service to be ready\nwait_for_service localhost 8899\n\n# Start the Node.js backend\necho "Starting Node.js backend..."\ncd /app\ntsx server/index.ts &\n\n# Start the Vite preview server\necho "Starting Vite preview server..."\nvite preview --host 0.0.0.0 --port 3000\n' > /app/startup.sh && chmod +x /app/startup.sh
+
+# Set working directory
+WORKDIR /app
+
+# Start all services
+CMD ["/bin/sh", "/app/startup.sh"]
