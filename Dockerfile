@@ -10,6 +10,9 @@ RUN apk add --no-cache \
     g++ \
     gcc \
     linux-headers \
+    udev \
+    eudev-dev \
+    libusb-dev \
     && rm -rf /var/cache/apk/*
 
 # Set working directory
