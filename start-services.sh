@@ -62,10 +62,10 @@ start_services() {
     cd /app
     if [ -f "dist/server/index.js" ]; then
         log "Starting compiled server from dist/server/index.js"
-        node --loader tsx dist/server/index.js &
+        node --import tsx dist/server/index.js &
     elif [ -f "server/index.ts" ]; then
         log "Starting TypeScript server directly (development mode)"
-        node --loader tsx server/index.ts &
+        node --import tsx server/index.ts &
     else
         log "Error: Could not find server entry point"
         ls -la dist/ server/ 2>/dev/null || true

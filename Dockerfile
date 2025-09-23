@@ -127,4 +127,4 @@ RUN chmod +x /app/start-services.sh
 USER node
 
 # Start the application
-CMD ["sh", "-c", "node --loader tsx dist/server/index.js"]
+CMD ["sh", "-c", "node --import tsx dist/server/index.js"]
