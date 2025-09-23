@@ -41,9 +41,9 @@ COPY server/ ./server/
 # Create server package.json for ES modules
 RUN echo '{"type": "module"}' > ./dist/server/package.json
 
-# Build TypeScript files for server
+# Copy and build TypeScript files for server
 COPY tsconfig.server.json ./
-RUN cd server && npx tsc --project ../tsconfig.server.json --outDir ../dist/server
+RUN npx tsc --project tsconfig.server.json
 
 # Verify the build
 RUN ls -la dist/server/
@@ -126,5 +126,5 @@ RUN chmod +x /app/start-services.sh
 # Run as non-root user
 USER node
 
-# Start services
-CMD ["/bin/sh", "/app/start-services.sh"]
+# Start the application
+CMD ["sh", "-c", "node --loader tsx dist/server/index.js"]

@@ -60,14 +60,12 @@ start_services() {
     # Then start Node.js API server
     log "Starting Node.js API server..."
     cd /app
-    # Check for the compiled file first
     if [ -f "dist/server/index.js" ]; then
         log "Starting compiled server from dist/server/index.js"
-        node dist/server/index.js &
-    # Fallback to TypeScript if compiled version not found
+        node --loader tsx dist/server/index.js &
     elif [ -f "server/index.ts" ]; then
         log "Starting TypeScript server directly (development mode)"
-        npx tsx server/index.ts &
+        node --loader tsx server/index.ts &
     else
         log "Error: Could not find server entry point"
         ls -la dist/ server/ 2>/dev/null || true

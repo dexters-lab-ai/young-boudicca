@@ -5,9 +5,18 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import process from 'process';
 
-// FIX: Define __dirname for ES modules.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get current file's directory in a way that works with both ES modules and CommonJS
+const getCurrentDir = () => {
+  try {
+    // @ts-ignore - __dirname is defined in CommonJS
+    if (typeof __dirname !== 'undefined') return __dirname;
+  } catch (e) {
+    // Ignore error if __dirname is not defined
+  }
+  return path.dirname(fileURLToPath(import.meta.url));
+};
+
+const __dirname = getCurrentDir();
 
 // Build-time helper: fetch Kokoro voices and write to server/voices-list.txt
 // This reduces runtime latency and lets the server preload voices from disk.

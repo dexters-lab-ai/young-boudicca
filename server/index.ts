@@ -53,8 +53,18 @@ const createRouteRegistrar = (app: Express.Application) => {
   };
 };
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get current file's directory in a way that works with both ES modules and CommonJS
+const getCurrentDir = () => {
+  try {
+    // @ts-ignore - __filename is defined in CommonJS
+    if (typeof __filename !== 'undefined') return path.dirname(__filename);
+  } catch (e) {
+    // Ignore error if __filename is not defined
+  }
+  return path.dirname(fileURLToPath(import.meta.url));
+};
+
+const __dirname = getCurrentDir();
 
 // Initialize Express app
 const app = express();

@@ -5,8 +5,8 @@
     "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "strict": true,
-    "outDir": "./dist/server",
-    "rootDir": "./server",
+    "outDir": "./dist",
+    "rootDir": ".",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -16,8 +16,11 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node"]
+    "types": ["node"],
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true,
+    "checkJs": false
   },
   "include": ["server/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "**/*.test.ts", "**/old-*.ts", "**/*.bak"]
 }
