@@ -162,9 +162,27 @@ WORKDIR /app
 RUN mkdir -p /app/dist /app/server /app/public/uploads && \
     chmod -R 777 /app/server
 
-# Copy Python virtual environment and server code
+# Copy Python virtual environment from build stage
 COPY --from=python-base /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+
+# Ensure Python uses the virtual environment
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Verify Python and pip versions
+RUN python3 --version && \
+    pip --version && \
+    which python3 && \
+    which pip && \
+    pip list
+
+# Reinstall Python dependencies to ensure they're available in the final image
+COPY server/python-ws/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+    pip install --no-cache-dir uvicorn[standard] && \
+    rm /tmp/requirements.txt
+
+# Copy server code
 COPY server ./server
 
 # Copy built application and node modules from node-builder
@@ -172,38 +190,35 @@ COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/public ./public
 COPY --from=node-builder /app/package*.json ./
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node-builder /usr/local/bin/tsx /usr/local/bin/tsx
 
-# Verify the copied files and fix permissions
-RUN echo "Contents of /app:" && ls -la /app && \
-    echo "\nContents of /app/dist:" && ls -la /app/dist && \
-    echo "\nFiles in /app/dist:" && find /app/dist -type f | sort && \
-    echo "\nPublic directory:" && ls -la /app/public
+# Copy application code
+COPY . .
 
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
-    PATH="/app/node_modules/.bin:/opt/venv/bin:$PATH" \
-    NODE_PATH=/usr/local/lib/node_modules:${NODE_PATH:-}
+    PATH="/app/node_modules/.bin:$PATH" \
+    NODE_PATH=/app/node_modules \
+    PYTHONUNBUFFERED=1
 
-# Fix permissions
-RUN chmod -R 755 /app/dist /app/public /app/server
+# Install Node.js tools
+RUN npm install -g tsx concurrently && \
+    echo "tsx version: $(tsx --version)"
 
-# Expose ports
+# Expose necessary ports
 EXPOSE 3000 8787 8899
 
-# Health check - check all services
-HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ && \
-      wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
-      wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
+# Set health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD (nc -z localhost 3000 || exit 1) && \
+        (nc -z localhost 8787 || exit 1) && \
+        (nc -z localhost 8899 || exit 1) || exit 1
 
-# Copy and set up the startup script
-COPY start-services.sh /app/start-services.sh
+# Make startup script executable and set it as entrypoint
 RUN chmod +x /app/start-services.sh
 
-# Set working directory
+# Debug: Show installed Python packages
+RUN pip freeze
 WORKDIR /app
 
 # Start all services
