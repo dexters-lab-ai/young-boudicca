@@ -57,7 +57,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     wget \
-    && rm -rf /var/lib/apt/lists/*
+    supervisor \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/log/supervisor \
+    && mkdir -p /etc/supervisor/conf.d
 
 # Set up Python environment
 RUN python3 -m venv /opt/venv
@@ -141,13 +144,63 @@ RUN mkdir -p /var/log && \
     chmod 777 /var/run/services
 
 # Create a test script to verify Python environment
-RUN echo '#!/bin/sh\n\
-# Test Python environment\necho "=== Testing Python Environment ==="\npython --version\npip --version\n\n# Test Python imports\necho "\n=== Testing Python Imports ==="\npython -c "\
-import sys\nimport os\nimport logging\n\nprint(f'Python path: {sys.path}')\nprint(f'Current working directory: {os.getcwd()}')\nprint(f'Environment variables: {os.environ.get(\"PATH\", \"Not set\")}')\n\ntry:\n    from kokoro_onnx import Kokoro\n    from kokoro_onnx.tokenizer import Tokenizer\n    print('Successfully imported Kokoro TTS components')\nexcept ImportError as e:\n    print(f'Failed to import Kokoro TTS components: {e}')\n    sys.exit(1)\n"\n\necho "\n=== Testing File Permissions ==="\ntouch /var/log/test.log && echo "Successfully created test log file" || echo "Failed to create test log file"\n\necho "\n=== Environment Test Complete ==="\n' > /app/test_environment.sh && \
+RUN echo '#!/bin/sh\n\n# Test Python environment\necho "=== Testing Python Environment ==="\npython --version\npip --version\n\n# Create a separate Python script for testing\necho "\n=== Creating test script ==="\ncat > /tmp/test_imports.py << \''EOF2'\''\nimport sys\nimport os\nimport logging\n\nprint("Python path:", sys.path)\nprint("Current working directory:", os.getcwd())\nprint("Environment variables:", os.environ.get("PATH", "Not set"))\n\ntry:\n    from kokoro_onnx import Kokoro\n    from kokoro_onnx.tokenizer import Tokenizer\n    print("Successfully imported Kokoro TTS components")\nexcept ImportError as e:\n    print("Failed to import Kokoro TTS components:", e)\n    sys.exit(1)\nEOF2\n\n# Run the Python test\necho "\n=== Running Python Test ==="\npython /tmp/test_imports.py\n\necho "\n=== Testing File Permissions ==="\ntouch /var/log/test.log && echo "Successfully created test log file" || echo "Failed to create test log file"\n\necho "\n=== Environment Test Complete ==="\n' > /app/test_environment.sh && \
     chmod +x /app/test_environment.sh
+
+# Create supervisor configuration with proper formatting
+RUN echo '[supervisord]\n\
+nodaemon=true\
+logfile=/var/log/supervisord.log\
+logfile_maxbytes=10MB\
+logfile_backups=1\
+loglevel=info\
+pidfile=/var/run/supervisord.pid\
+\n[program:tts]\
+command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8899\
+directory=/app/server/python-ws\
+stdout_logfile=/var/log/tts.log\
+stderr_logfile=/var/log/tts.error.log\
+stdout_logfile_maxbytes=10MB\
+stderr_logfile_maxbytes=10MB\
+stdout_logfile_backups=5\
+stderr_logfile_backups=5\
+autostart=true\
+autorestart=true\
+startretries=3\
+startsecs=10\
+stopwaitsecs=10\
+\n[program:nodejs]\
+command=tsx server/index.ts\
+directory=/app\
+stdout_logfile=/var/log/nodejs.log\
+stderr_logfile=/var/log/nodejs.error.log\
+stdout_logfile_maxbytes=10MB\
+stderr_logfile_maxbytes=10MB\
+stdout_logfile_backups=5\
+stderr_logfile_backups=5\
+autostart=true\
+autorestart=true\
+startretries=3\
+startsecs=10\
+stopwaitsecs=10\
+\n[program:vite]\
+command=vite preview --host 0.0.0.0 --port 3000\
+directory=/app\
+stdout_logfile=/var/log/vite.log\
+stderr_logfile=/var/log/vite.error.log\
+stdout_logfile_maxbytes=10MB\
+stderr_logfile_maxbytes=10MB\
+stdout_logfile_backups=5\
+stderr_logfile_backups=5\
+autostart=true\
+autorestart=true\
+startretries=3\
+startsecs=10\
+stopwaitsecs=10\
+' > /etc/supervisor/conf.d/services.conf
 
 # Set working directory
 WORKDIR /app
 
-# Start all services
-CMD ["/bin/sh", "/app/startup.sh"]
+# Start all services using supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/services.conf"]
