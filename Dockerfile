@@ -101,13 +101,10 @@ COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
     # Install basic requirements first
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    # Install kokoro-tts using uv (recommended method)
-    uv tool install kokoro-tts && \
-    # Install additional audio dependencies
-    pip install --no-cache-dir sounddevice numpy pyaudio && \
-    # Verify installation
-    which kokoro-tts && \
-    kokoro-tts --version || echo "Warning: kokoro-tts version check failed but continuing" && \
+    # Install kokoro-tts and its dependencies
+RUN pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
+    # Verify the package is importable
+    python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__}' if hasattr(kokoro_tts, '__version__') else 'kokoro-tts imported successfully')" && \
     rm -f requirements.txt
 
 # Set up application directory

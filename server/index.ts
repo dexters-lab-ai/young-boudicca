@@ -499,64 +499,119 @@ if (!staticDir) {
 }
 
 // --- Kokoro TTS API Routes ---
-registerRoute('get', '/api/tts-voices', (req: express.Request, res: express.Response) => {
+registerRoute('get', '/api/tts-voices', async (req: express.Request, res: express.Response) => {
   try {
     const wantsRefresh = String((req as any).query?.refresh || '').toLowerCase() === 'true';
     if (!wantsRefresh && kokoroVoicesCache.length > 0) {
       return res.json({ voices: kokoroVoicesCache, lastLoaded: kokoroVoicesLastLoaded });
     }
-    // Determine the command based on the environment (local dev vs. Docker)
-    const isWindows = process.platform === 'win32';
-    const pythonExecutable = isWindows ? path.join(__dirname, '.venv', 'Scripts', 'python.exe') : 'python3';
-    const command = fs.existsSync(pythonExecutable) ? pythonExecutable : 'kokoro-tts';
-    const args = fs.existsSync(pythonExecutable) ? ['-m', 'kokoro_tts', '--help-voices'] : ['--help-voices'];
-    // Compute modelDir (server/ or server/python-tts/) so Kokoro finds models
-    const pythonTtsDirH = path.join(__dirname, 'python-tts');
-    const modelDir = (fs.existsSync(path.join(__dirname, 'voices-v1.0.bin')) && fs.existsSync(path.join(__dirname, 'kokoro-v1.0.onnx')))
-      ? __dirname
-      : ((fs.existsSync(path.join(pythonTtsDirH, 'voices-v1.0.bin')) && fs.existsSync(path.join(pythonTtsDirH, 'kokoro-v1.0.onnx')))
-          ? pythonTtsDirH
-          : __dirname);
 
-    console.log(`[Server] Running TTS voices command: ${command} ${args.join(' ')} (cwd=${modelDir.replace(/\\/g,'/')})`);
+    // Use a Python script to get voices
+    const pythonScript = `
+import json
+import sys
+import os
 
-    const kokoroProcess = spawn(command, args, {
-      cwd: modelDir, // Run where models are located
+# Add the Python path to find kokoro_tts
+sys.path.append('${__dirname.replace(/\\/g, '\\\\')}')
+
+try:
+    from kokoro_tts import list_voices
+    
+    # Get voices using the Python API
+    voices = list_voices()
+    
+    # Format the output as expected by the frontend
+    result = {
+        voices: [
+            {
+                'value': voice['id'],
+                'label': voice.get('name', voice['id']),
+                'language': voice.get('language', 'en'),
+                'gender': voice.get('gender', 'unknown')
+            }
+            for voice in voices
+        ]
+    }
+    print(json.dumps(result))
+    
+except Exception as e:
+    print(f"Error: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+`;
+
+    console.log('[Server] Fetching TTS voices using Python API...');
+    
+    // Create a temporary Python script
+    const tempScriptPath = path.join(__dirname, 'get_voices.py');
+    fs.writeFileSync(tempScriptPath, pythonScript);
+    
+    // Execute the Python script
+    const pythonProcess = spawn('python3', [tempScriptPath], {
       env: {
         ...process.env,
+        PYTHONPATH: process.env.PYTHONPATH ? 
+          `${process.env.PYTHONPATH}:${__dirname}` : 
+          __dirname,
         PYTHONIOENCODING: 'utf-8:ignore',
         PYTHONUTF8: '1',
       },
     });
 
-    let voices = '';
-    let stderrBuf = '';
-    kokoroProcess.stdout.on('data', (data) => {
-      voices += data.toString();
+    let stdout = '';
+    let stderr = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
     });
-    kokoroProcess.stderr.on('data', (data) => {
+    
+    pythonProcess.stderr.on('data', (data) => {
       const msg = data.toString();
-      stderrBuf += msg;
-      console.error(`kokoro-tts (voices) stderr: ${msg}`);
+      stderr += msg;
+      console.error(`Python script error: ${msg}`);
     });
 
-    kokoroProcess.on('close', (code) => {
-      if (code !== 0) {
-        console.error(`kokoro-tts --help-voices process exited with code ${code}`);
-        return res.status(500).json({ error: 'Failed to get voices from Kokoro TTS.', detail: stderrBuf.trim() });
+    pythonProcess.on('close', (code) => {
+      // Clean up the temporary script
+      try {
+        fs.unlinkSync(tempScriptPath);
+      } catch (e) {
+        console.error('Failed to clean up temporary script:', e);
       }
 
-      // Parse the output to create a list of voices
-      const parsedVoices = parseVoicesOutput(voices);
-      kokoroVoicesCache = parsedVoices;
-      kokoroVoicesLastLoaded = Date.now();
+      if (code !== 0) {
+        console.error(`Python script exited with code ${code}: ${stderr}`);
+        return res.status(500).json({ 
+          error: 'Failed to get voices from Kokoro TTS', 
+          detail: stderr.trim() || 'Unknown error occurred'
+        });
+      }
 
-      res.json({ voices: parsedVoices, lastLoaded: kokoroVoicesLastLoaded });
+      try {
+        const result = JSON.parse(stdout);
+        const parsedVoices = result.voices || [];
+        kokoroVoicesCache = parsedVoices;
+        kokoroVoicesLastLoaded = Date.now();
+        
+        // Save the cache to disk for future use
+        saveVoicesCacheToDisk();
+        
+        res.json({ voices: parsedVoices, lastLoaded: kokoroVoicesLastLoaded });
+      } catch (e) {
+        console.error('Error parsing Python script output:', e);
+        res.status(500).json({ 
+          error: 'Failed to parse voices data',
+          detail: e.message
+        });
+      }
     });
 
-    kokoroProcess.on('error', (err) => {
-      console.error('Failed to start kokoro-tts process.', err);
-      res.status(500).json({ error: 'Kokoro TTS command not found or failed to start.' });
+    pythonProcess.on('error', (err) => {
+      console.error('Failed to start Python process:', err);
+      res.status(500).json({ 
+        error: 'Failed to start Python process',
+        detail: err.message
+      });
     });
   } catch (error) {
     console.error('Error fetching TTS voices:', error);
