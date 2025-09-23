@@ -147,60 +147,11 @@ RUN mkdir -p /var/log && \
 RUN echo '#!/bin/sh\n\n# Test Python environment\necho "=== Testing Python Environment ==="\npython --version\npip --version\n\n# Create a separate Python script for testing\necho "\n=== Creating test script ==="\ncat > /tmp/test_imports.py << \''EOF2'\''\nimport sys\nimport os\nimport logging\n\nprint("Python path:", sys.path)\nprint("Current working directory:", os.getcwd())\nprint("Environment variables:", os.environ.get("PATH", "Not set"))\n\ntry:\n    from kokoro_onnx import Kokoro\n    from kokoro_onnx.tokenizer import Tokenizer\n    print("Successfully imported Kokoro TTS components")\nexcept ImportError as e:\n    print("Failed to import Kokoro TTS components:", e)\n    sys.exit(1)\nEOF2\n\n# Run the Python test\necho "\n=== Running Python Test ==="\npython /tmp/test_imports.py\n\necho "\n=== Testing File Permissions ==="\ntouch /var/log/test.log && echo "Successfully created test log file" || echo "Failed to create test log file"\n\necho "\n=== Environment Test Complete ==="\n' > /app/test_environment.sh && \
     chmod +x /app/test_environment.sh
 
-# Create supervisor configuration with proper formatting
-RUN echo '[supervisord]\n\
-nodaemon=true\
-logfile=/var/log/supervisord.log\
-logfile_maxbytes=10MB\
-logfile_backups=1\
-loglevel=info\
-pidfile=/var/run/supervisord.pid\
-\n[program:tts]\
-command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8899\
-directory=/app/server/python-ws\
-stdout_logfile=/var/log/tts.log\
-stderr_logfile=/var/log/tts.error.log\
-stdout_logfile_maxbytes=10MB\
-stderr_logfile_maxbytes=10MB\
-stdout_logfile_backups=5\
-stderr_logfile_backups=5\
-autostart=true\
-autorestart=true\
-startretries=3\
-startsecs=10\
-stopwaitsecs=10\
-\n[program:nodejs]\
-command=tsx server/index.ts\
-directory=/app\
-stdout_logfile=/var/log/nodejs.log\
-stderr_logfile=/var/log/nodejs.error.log\
-stdout_logfile_maxbytes=10MB\
-stderr_logfile_maxbytes=10MB\
-stdout_logfile_backups=5\
-stderr_logfile_backups=5\
-autostart=true\
-autorestart=true\
-startretries=3\
-startsecs=10\
-stopwaitsecs=10\
-\n[program:vite]\
-command=vite preview --host 0.0.0.0 --port 3000\
-directory=/app\
-stdout_logfile=/var/log/vite.log\
-stderr_logfile=/var/log/vite.error.log\
-stdout_logfile_maxbytes=10MB\
-stderr_logfile_maxbytes=10MB\
-stdout_logfile_backups=5\
-stderr_logfile_backups=5\
-autostart=true\
-autorestart=true\
-startretries=3\
-startsecs=10\
-stopwaitsecs=10\
-' > /etc/supervisor/conf.d/services.conf
-
 # Set working directory
 WORKDIR /app
 
-# Start all services using supervisord
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/services.conf"]
+# Create log directory
+RUN mkdir -p /var/log
+
+# Start the Python TTS service
+CMD ["/opt/venv/bin/uvicorn", "server.python-ws.main:app", "--host", "0.0.0.0", "--port", "8899"]
