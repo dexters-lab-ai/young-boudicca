@@ -166,22 +166,13 @@ RUN mkdir -p /app/dist /app/server /app/public/uploads && \
 COPY --from=python-base /opt/venv /opt/venv
 
 # Set up the virtual environment
-ENV VIRTUAL_ENV="/opt/venv"
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Verify Python and pip versions
-RUN python3 --version && \
-    pip --version && \
-    which python3 && \
-    which pip && \
-    pip list
-
-# Install Python dependencies using the virtual environment
+# Install Python dependencies directly (no virtual env activation needed)
 COPY server/python-ws/requirements.txt /tmp/requirements.txt
-RUN . $VIRTUAL_ENV/bin/activate && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /tmp/requirements.txt && \
-    pip install --no-cache-dir uvicorn[standard] && \
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir uvicorn[standard] && \
     rm /tmp/requirements.txt
 
 # Copy server code
