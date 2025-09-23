@@ -169,10 +169,6 @@ COPY --from=python-base /opt/venv /opt/venv
 ENV VIRTUAL_ENV="/opt/venv"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Create a wrapper script to activate the virtual environment
-RUN echo '#!/bin/sh\n. "$VIRTUAL_ENV/bin/activate"\nexec "$@"' > /usr/local/bin/venv && \
-    chmod +x /usr/local/bin/venv
-
 # Verify Python and pip versions
 RUN python3 --version && \
     pip --version && \
@@ -182,9 +178,10 @@ RUN python3 --version && \
 
 # Install Python dependencies using the virtual environment
 COPY server/python-ws/requirements.txt /tmp/requirements.txt
-RUN venv pip install --no-cache-dir --upgrade pip && \
-    venv pip install --no-cache-dir -r /tmp/requirements.txt && \
-    venv pip install --no-cache-dir uvicorn[standard] && \
+RUN . $VIRTUAL_ENV/bin/activate && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    pip install --no-cache-dir uvicorn[standard] && \
     rm /tmp/requirements.txt
 
 # Copy server code
