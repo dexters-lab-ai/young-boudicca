@@ -15,10 +15,8 @@ RUN apk add --no-cache \
     libusb-dev \
     && rm -rf /var/cache/apk/*
 
-# Set working directory
+# Set working directory and permissions
 WORKDIR /app
-
-# Install Node.js dependencies
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --unsafe-perm
 
@@ -42,11 +40,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20
+# Install Node.js 20 and create node user
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
+    && groupadd -r node && useradd -r -g node node \
+    && mkdir -p /home/node \
+    && chown -R node:node /home/node \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -63,16 +64,16 @@ RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
 WORKDIR /app
 
 # Copy built files from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/public ./public
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/package*.json ./
+COPY --chown=node:node --from=builder /app/public ./public
+COPY --chown=node:node --from=builder /app/server ./server
 
 # Install production dependencies
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
 
-# Create necessary directories
+# Create necessary directories with correct ownership
 RUN mkdir -p /app/public/uploads && \
     chown -R node:node /app
 

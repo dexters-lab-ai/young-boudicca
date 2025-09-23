@@ -1,3 +1,25 @@
+# Core web framework
 fastapi>=0.115.0
-uvicorn>=0.30.0
+uvicorn[standard]>=0.30.0
+
+# Data processing
+numpy>=1.19.5
+
+# HTTP requests
+requests>=2.26.0
+
+# WebSocket and async
+websockets>=10.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Audio processing
+soundfile>=0.13.0
+sounddevice>=0.5.1
+
+# Text-to-speech
 kokoro-tts>=2.3.0
+
+# File handling
+python-multipart>=0.0.6
