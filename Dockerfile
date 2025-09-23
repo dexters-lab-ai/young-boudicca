@@ -35,12 +35,12 @@ RUN npm run build
 # Create necessary directories
 RUN mkdir -p dist/server
 
+# Copy server files first to ensure they're available for TypeScript
+RUN cp -r server/* dist/server/ 2>/dev/null || :
+
 # Build TypeScript files for server
 COPY tsconfig.server.json ./
-RUN npx tsc --project tsconfig.server.json
-
-# Copy server files
-RUN cp -r server/* dist/server/ 2>/dev/null || :
+RUN cd dist/server && npx tsc --project ../../tsconfig.server.json
 
 # Verify the build
 RUN ls -la dist/server/
