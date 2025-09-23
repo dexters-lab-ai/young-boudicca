@@ -1,5 +1,5 @@
 # Force complete rebuild - change this value to invalidate all caches
-ARG CACHE_BUSTER=2025-09-23-02-42
+ARG CACHE_BUSTER=2025-09-23-03-19
 
 # ============================================
 # Node.js build stage - For frontend build
@@ -57,6 +57,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     curl \
+    gcc \
+    g++ \
+    libsndfile1 \
+    libportaudio2 \
+    libasound2 \
+    libsndfile1-dev \
+    portaudio19-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -67,11 +74,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 COPY server/python-ws/requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Create model directory
-RUN mkdir -p /app/server/python-tts
-
+RUN mkdir -p /app/server/python-tts && \
+    chmod -R 777 /app/server/python-tts
 
 # ============================================
 # Final stage - Production runtime
@@ -79,18 +87,25 @@ RUN mkdir -p /app/server/python-tts
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache python3 netcat-openbsd \
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    netcat-openbsd \
+    libsndfile \
+    portaudio \
+    alsa-lib \
     && rm -rf /var/cache/apk/* \
     && npm install -g tsx concurrently \
-    && npm list -g tsx concurrently \
     && echo "tsx version: $(tsx --version)"
 
 # Create app directory structure
 WORKDIR /app
-RUN mkdir -p /app/dist /app/server /app/public/uploads
+RUN mkdir -p /app/dist /app/server /app/public/uploads && \
+    chmod -R 777 /app/server
 
 # Copy Python virtual environment and server code
 COPY --from=python-base /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 COPY server ./server
 
 # Copy built application and node modules from node-builder
