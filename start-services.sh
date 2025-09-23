@@ -61,13 +61,24 @@ start_services() {
             log "Found kokoro-tts at $KOKORO_PATH. Creating symlink..."
             ln -sf "$KOKORO_PATH" "/usr/local/bin/kokoro-tts"
         else
-            log "Error: kokoro-tts not found. TTS functionality may not work."
+            log "Warning: kokoro-tts not found. TTS functionality will be disabled."
+            log "To enable TTS, ensure kokoro-tts is installed and in PATH."
+            export DISABLE_TTS=true
         fi
     fi
     
-    # Verify kokoro-tts
+    # Verify kokoro-tts if found
     if command -v kokoro-tts &> /dev/null; then
-        log "kokoro-tts version: $(kokoro-tts --version || echo 'version check failed')"
+        log "Verifying kokoro-tts installation..."
+        if kokoro-tts --version &> /dev/null; then
+            log "kokoro-tts is working correctly (version: $(kokoro-tts --version 2>&1 | head -n 1 || echo 'unknown'))"
+            export ENABLE_TTS=true
+        else
+            log "Warning: kokoro-tts is installed but not working properly. TTS may not function."
+            export DISABLE_TTS=true
+        fi
+    else
+        export DISABLE_TTS=true
     fi
     
     # Start the service
