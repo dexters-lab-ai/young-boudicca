@@ -6,124 +6,15 @@ import logging
 import os
 import struct
 import sys
-import time
 import traceback
 import numpy as np
-import hashlib
-import requests
-from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-def verify_file_hash(file_path: str, expected_hash: str) -> bool:
-    """Verify the SHA-256 hash of a file."""
-    if not os.path.exists(file_path):
-        return False
-        
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest() == expected_hash.lower()
-
-def download_file(url: str, destination: str, expected_hash: str = None, max_retries: int = 3) -> bool:
-    """Download a file with retry and optional hash verification."""
-    try:
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        temp_path = f"{destination}.download"
-        
-        # Check if file exists and hash matches
-        if os.path.exists(destination):
-            if expected_hash is None or verify_file_hash(destination, expected_hash):
-                logger.info(f"File {destination} already exists and hash matches")
-                return True
-            logger.warning(f"File {destination} exists but hash doesn't match, re-downloading")
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Downloading {url} (attempt {attempt + 1}/{max_retries})")
-                with requests.get(url, stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded = 0
-                    
-                    with open(temp_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:  # filter out keep-alive chunks
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total_size > 0:
-                                    percent = (downloaded / total_size) * 100
-                                    logger.debug(f"Download progress: {percent:.1f}%")
-                
-                # Verify hash if provided
-                if expected_hash:
-                    logger.info("Verifying file hash...")
-                    if not verify_file_hash(temp_path, expected_hash):
-                        raise ValueError(f"Hash verification failed for {url}")
-                
-                # Move the temporary file to the destination
-                if os.path.exists(destination):
-                    os.remove(destination)
-                os.rename(temp_path, destination)
-                logger.info(f"Successfully downloaded and verified {url}")
-                return True
-                
-            except Exception as e:
-                logger.warning(f"Download attempt {attempt + 1} failed: {str(e)}")
-                if os.path.exists(temp_path):
-                    try:
-                        os.remove(temp_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to remove temp file: {e}")
-                
-                if attempt == max_retries - 1:  # Last attempt
-                    logger.error(f"Failed to download {url} after {max_retries} attempts")
-                    return False
-                
-                # Exponential backoff before retry
-                delay = 2 ** attempt
-                logger.info(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-        
-        return False
-        
-    except Exception as e:
-        logger.error(f"Error in download_file: {str(e)}")
-        logger.error(traceback.format_exc())
-        return False
-
-# Setup logging with more detailed format
-logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('/var/log/python-tts.log')
-    ]
-)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Add file rotation
-from logging.handlers import RotatingFileHandler
-file_handler = RotatingFileHandler('/var/log/python-tts.log', maxBytes=10*1024*1024, backupCount=5)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
-
-# Log Python and package versions
-logger.info("=== Starting TTS Service ===")
-logger.info(f"Python version: {sys.version}")
-logger.info(f"Current working directory: {os.getcwd()}")
-logger.info(f"Environment variables: {os.environ.get('PATH', 'Not set')}")
-
-# Verify required environment variables
-REQUIRED_ENV_VARS = ["PORT", "HOST"]
-for var in REQUIRED_ENV_VARS:
-    if var not in os.environ:
-        logger.error(f"Required environment variable {var} is not set")
-    else:
-        logger.info(f"{var}: {os.environ[var]}")
 
 # Add project root to path to allow imports from other directories
 try:
@@ -135,7 +26,7 @@ except ImportError as e:
     sys.exit(1)
 
 
-app = FastAPI(title="Boudi AI WebSocket Server", version="1.0.0")
+app = FastAPI(title="Boudi AI WebSocket Server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -144,6 +35,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def download_with_retry(url: str, local_path: str, expected_hash: str = None, max_retries: int = 3):
+    """Download a file with retry and optional hash verification."""
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    
+    for attempt in range(max_retries):
+        try:
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                temp_path = f"{local_path}.download"
+                
+                with open(temp_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                # Verify hash if provided
+                if expected_hash:
+                    file_hash = hashlib.sha256()
+                    with open(temp_path, 'rb') as f:
+                        for chunk in iter(lambda: f.read(8192), b''):
+                            file_hash.update(chunk)
+                    if file_hash.hexdigest() != expected_hash:
+                        raise ValueError(f"Hash mismatch for {url}")
+                
+                # If we got here, the download was successful
+                os.replace(temp_path, local_path)
+                return True
+                
+        except Exception as e:
+            logging.warning(f"Attempt {attempt + 1} failed: {e}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    
+    return False
 
 class TTSEngine:
     def __init__(self, model_dir: str):
@@ -158,44 +83,39 @@ class TTSEngine:
         }
 
     def load(self):
-        logger.info(f"Loading models to: {self.model_dir}")
         try:
             # Define file paths
             voices_path = os.path.join(self.model_dir, "voices-v1.0.bin")
             model_path = os.path.join(self.model_dir, "kokoro-v1.0.onnx")
             
-            # Download model files with hash verification
+            # Download files from GitHub Releases with retry
             logger.info("Downloading TTS model files...")
             
-            # Download voices file
-            voices_url = f"{self.release_url}/voices-v1.0.bin"
-            if not download_file(
-                voices_url,
-                voices_path,
-                self.file_hashes["voices-v1.0.bin"]
-            ):
-                raise RuntimeError(f"Failed to download voices file from {voices_url}")
-            
-            # Download model file
-            model_url = f"{self.release_url}/kokoro-v1.0.onnx"
-            if not download_file(
-                model_url,
+            if not download_with_retry(
+                f"{self.release_url}/kokoro-v1.0.onnx",
                 model_path,
-                self.file_hashes["kokoro-v1.0.onnx"]
+                self.file_hashes.get("kokoro-v1.0.onnx")
             ):
-                raise RuntimeError(f"Failed to download model file from {model_url}")
+                raise RuntimeError("Failed to download kokoro-v1.0.onnx")
                 
-            logger.info("Model files downloaded and verified successfully")
+            if not download_with_retry(
+                f"{self.release_url}/voices-v1.0.bin",
+                voices_path,
+                self.file_hashes.get("voices-v1.0.bin")
+            ):
+                raise RuntimeError("Failed to download voices-v1.0.bin")
 
-            logger.info("Initializing tokenizer...")
+            # Initialize the model
+            logger.info("Initializing TTS model...")
             tokenizer = Tokenizer()
-            logger.info("Tokenizer initialized. Loading Kokoro model...")
             self.kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
-            logger.info("Model loaded successfully.")
+            logger.info("TTS model loaded successfully")
+            
         except Exception as e:
-            logger.error(f"FATAL: Failed to load model: {e}")
+            logger.error(f"Failed to load TTS model: {e}")
             logger.error(traceback.format_exc())
             self.kokoro = None
+            raise
 
     async def stream_tts(self, text: str, voice: str, lang: str, speed: float):
         if not self.kokoro:
@@ -276,22 +196,11 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8899"))
     host = os.getenv("HOST", "0.0.0.0")
     
-    logger.info(f"Starting server on {host}:{port}")
-    logger.info(f"Python path: {sys.path}")
-    logger.info(f"Current working directory: {os.getcwd()}")
-    logger.info(f"Environment variables: {os.environ}")
-    
-    try:
-        import uvicorn
-        uvicorn.run(
-            "main:app",
-            host=host,
-            port=port,
-            log_level="debug",
-            reload=False,
-            workers=1
-        )
-    except Exception as e:
-        logger.error(f"Failed to start server: {e}")
-        logger.error(traceback.format_exc())
-        sys.exit(1)
+    logger.info(f"Starting TTS service on {host}:{port}")
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=False,
+        log_level="info"
+    )

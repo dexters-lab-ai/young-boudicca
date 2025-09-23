@@ -1,40 +1,19 @@
 #!/bin/sh
-set -e
 
-# Function to check if a service is running
-wait_for_service() {
-  host=$1
-  port=$2
-  timeout=30
-  
-  echo "Waiting for $host:$port..."
-  for i in $(seq 1 $timeout); do
-    if nc -z $host $port >/dev/null 2>&1; then
-      echo "$host:$port is available"
-      return 0
-    fi
-    sleep 1
-  done
-  echo "Timeout waiting for $host:$port"
-  return 1
-}
-
-# Start the Python TTS service
+# Start the Python service in the background
 echo "Starting Python TTS service..."
-cd /app/server/python-ws
-/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8899 &
+/opt/venv/bin/uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
 
 # Wait for Python service to be ready
-wait_for_service localhost 8899 || exit 1
+echo "Waiting for Python service to be ready..."
+while ! nc -z localhost 8899; do
+  sleep 0.5
+done
 
 # Start the Node.js backend
 echo "Starting Node.js backend..."
-cd /app
-tsx server/index.ts &
-
-# Wait for backend to be ready
-wait_for_service localhost 8787 || exit 1
+cd /app && tsx server/index.ts &
 
 # Start the Vite preview server
 echo "Starting Vite preview server..."
-vite preview --host 0.0.0.0 --port 3000
+cd /app && vite preview --host 0.0.0.0 --port 3000
