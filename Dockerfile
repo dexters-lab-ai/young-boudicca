@@ -23,10 +23,21 @@ RUN npm ci --no-audit --no-fund --unsafe-perm
 # Copy application code
 COPY . .
 
+# Install TypeScript and build dependencies
+RUN npm install -g typescript
+
 # Build the application
 RUN npm run build
-# Build TypeScript files
-RUN npx tsc --project tsconfig.node.json
+
+# Create necessary directories
+RUN mkdir -p dist/server
+
+# Build TypeScript files for server
+COPY tsconfig.node.json ./
+RUN npx tsc --project tsconfig.node.json --outDir dist/server --rootDir server
+
+# Ensure server files are copied correctly
+RUN cp -r server/* dist/server/ 2>/dev/null || :
 
 # ============================================
 # Production stage
@@ -59,7 +70,9 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install Python dependencies
 COPY server/python-ws/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] kokoro-tts && \
+RUN python -m pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+    pip install --no-cache-dir kokoro-tts && \
     rm requirements.txt
 
 # Set up application directory
@@ -70,9 +83,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/package*.json ./
 COPY --chown=node:node --from=builder /app/public ./public
-# Copy server files with proper structure
-RUN mkdir -p /app/server
-COPY --chown=node:node --from=builder /app/server/ /app/server/
+
+# Ensure the server directory exists in the final image
+RUN mkdir -p /app/dist/server
 
 # Install production dependencies
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm

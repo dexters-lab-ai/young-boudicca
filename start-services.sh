@@ -45,13 +45,26 @@ check_service() {
 start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
+    # Activate virtual environment
+    source /opt/venv/bin/activate
+    # Install kokoro-tts explicitly
+    pip install --no-cache-dir kokoro-tts
+    # Start the service
     cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
     check_service 8899 "Python TTS" "/docs" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
 
     # Then start Node.js API server
     log "Starting Node.js API server..."
-    cd /app && node dist/server/index.js &
+    # Ensure we're in the right directory and start the server
+    cd /app
+    # Check if the file exists
+    if [ ! -f "dist/server/index.js" ]; then
+        log "Error: dist/server/index.js not found. Available files in dist/server/:"
+        ls -la dist/server/ || true
+        exit 1
+    fi
+    node dist/server/index.js &
     NODE_PID=$!
     check_service 8787 "Node.js API" "/health" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
 
