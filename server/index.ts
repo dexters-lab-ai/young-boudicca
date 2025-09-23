@@ -796,7 +796,7 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
     }
 });
 
-const PORT = process.env.PORT || 8787;
+const PORT = process.env.SERVER_PORT || 8787;
 // Add error handling for uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);

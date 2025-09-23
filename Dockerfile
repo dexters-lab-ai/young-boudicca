@@ -92,8 +92,8 @@ RUN echo "Runtime build timestamp: $BUILD_TIMESTAMP"
 RUN apk add --no-cache \
     python3 \
     && rm -rf /var/cache/apk/* \
-    && npm install -g tsx \
-    && npm list -g tsx \
+    && npm install -g tsx concurrently \
+    && npm list -g tsx concurrently \
     && echo "tsx version: $(tsx --version)"
 
 # Create app directory structure
@@ -133,12 +133,18 @@ ENV NODE_ENV=production \
     PORT=8787 \
     PATH="/app/node_modules/.bin:${PATH}"
 
-# Expose port
-EXPOSE 8787
+# Expose ports
+EXPOSE 3000 8787 8899
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8787/health || exit 1
+# Health check - check all services
+HEALTHCHECK --interval=30s --timeout=30s --start-period=20s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ && \
+      wget --no-verbose --tries=1 --spider http://localhost:8787/health && \
+      wget --no-verbose --tries=1 --spider http://localhost:8899/ || exit 1
 
-# Start the application using the local tsx binary
-CMD ["tsx", "server/index.ts"]
+# Start all services in production
+CMD ["concurrently", \
+     "tsx server/index.ts", \
+     "vite preview --host 0.0.0.0 --port 3000", \
+     "uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899" \
+    ]
