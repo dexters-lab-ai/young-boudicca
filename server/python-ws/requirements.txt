@@ -5,4 +5,4 @@ numpy>=1.19.5
 requests>=2.26.0
 python-multipart>=0.0.6
 python-dotenv>=1.0.0
-kokoro-tts>=2.3.0
+kokoro-tts==2.2.0  # Using a version that doesn't require espeakng-loader

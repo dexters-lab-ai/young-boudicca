@@ -1,5 +1,5 @@
 # ============================================
-# Build stage - Node.js and Python setup
+# Build stage - Node.js setup
 # ============================================
 FROM node:20-alpine as builder
 
@@ -28,26 +28,30 @@ RUN npm run build
 # ============================================
 # Production stage
 # ============================================
-FROM node:20-alpine
+FROM python:3.11-slim as runtime
 
-# Install runtime dependencies
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    python3-dev \
-    gcc \
-    musl-dev \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     netcat-openbsd \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
-# Set up Python virtual environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install Node.js 20
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install Python dependencies
-COPY server/python-ws/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt uvicorn[standard] && \
-    rm /tmp/requirements.txt
+COPY server/python-ws/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+    rm requirements.txt
 
 # Set up application directory
 WORKDIR /app
@@ -70,7 +74,8 @@ RUN mkdir -p /app/public/uploads && \
 ENV NODE_ENV=production \
     PORT=8787 \
     PYTHONPATH=/app/server/python-ws \
-    PATH="/app/node_modules/.bin:$PATH"
+    PATH="/app/node_modules/.bin:$PATH" \
+    PYTHONUNBUFFERED=1
 
 # Expose ports
 EXPOSE 3000 8787 8899

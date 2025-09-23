@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Log function with timestamp
+# Set up logging
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
@@ -10,7 +10,7 @@ log() {
 check_service() {
     local port=$1
     local name=$2
-    local max_retries=30
+    local max_retries=15
     local count=0
     
     log "Checking if $name is available on port $port"
@@ -27,44 +27,42 @@ check_service() {
     return 0
 }
 
-# Start services in background
+# Start services in sequence
 start_services() {
-    # Start Python TTS service
+    # Start Python TTS service first
     log "Starting Python TTS service..."
-    python3 -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+    python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
-    
-    # Start Node.js API server
+    check_service 8899 "Python TTS" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
+
+    # Then start Node.js API server
     log "Starting Node.js API server..."
-    tsx server/index.ts &
+    node server/index.js &
     NODE_PID=$!
-    
-    # Start Vite preview server
+    check_service 8787 "Node.js API" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
+
+    # Finally start Vite preview
     log "Starting Vite preview server..."
-    vite preview --host 0.0.0.0 --port 3000 &
+    npx vite preview --host 0.0.0.0 --port 3000 &
     VITE_PID=$!
-    
-    # Check if services started successfully
-    check_service 8899 "Python TTS" || exit 1
-    check_service 8787 "Node.js API" || exit 1
-    check_service 3000 "Vite Preview" || exit 1
-    
+    check_service 3000 "Vite Preview" || { kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; exit 1; }
+
     log "All services started successfully"
     
-    # Keep script running and handle termination
-    trap 'kill $PYTHON_PID $NODE_PID $VITE_PID; wait' SIGTERM SIGINT
-    wait
+    # Cleanup on exit
+    trap 'log "Shutting down services..."; kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; wait' EXIT TERM INT
+    
+    # Keep the script running
+    while true; do sleep 1; done
 }
 
 # Main execution
 log "=== Starting Boudi AI Services ==="
 log "Environment: $NODE_ENV"
-log "Python: $(python3 --version 2>&1 || echo 'Not available')"
+log "Python: $(python --version 2>&1 || echo 'Not available')"
 log "Node: $(node --version)"
 log "NPM: $(npm --version)"
 log "Current directory: $(pwd)"
-log "Directory contents:"
-ls -la
 
 # Start all services
 start_services
