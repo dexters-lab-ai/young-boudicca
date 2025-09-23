@@ -83,7 +83,16 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install Python dependencies
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt uvicorn[standard] kokoro-tts && \
+    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+    pip install --no-cache-dir kokoro-tts && \
+    # Find where kokoro-tts is installed and create a symlink in /usr/local/bin
+    KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))') && \
+    if [ -n "$KOKORO_PATH" ]; then \
+        ln -sf $KOKORO_PATH /usr/local/bin/kokoro-tts; \
+    fi && \
+    # Verify kokoro-tts is in PATH
+    which kokoro-tts && \
+    kokoro-tts --version && \
     rm requirements.txt
 
 # Set up application directory

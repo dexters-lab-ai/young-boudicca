@@ -48,10 +48,28 @@ start_services() {
     # Activate virtual environment and set Python path
     export PYTHONPATH="/app:$PYTHONPATH"
     source /opt/venv/bin/activate
+    
     # Verify Python path and modules
     log "Python path: $PYTHONPATH"
     python -c "import sys; print('Python sys.path:', sys.path)" || true
-    python -c "import kokoro; print('Kokoro path:', kokoro.__file__)" || log "Failed to import kokoro"
+    
+    # Check if kokoro-tts is installed and in PATH
+    if ! command -v kokoro-tts &> /dev/null; then
+        log "Warning: kokoro-tts not found in PATH. Attempting to locate..."
+        KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))' 2>/dev/null || echo '')
+        if [ -n "$KOKORO_PATH" ]; then
+            log "Found kokoro-tts at $KOKORO_PATH. Creating symlink..."
+            ln -sf "$KOKORO_PATH" "/usr/local/bin/kokoro-tts"
+        else
+            log "Error: kokoro-tts not found. TTS functionality may not work."
+        fi
+    fi
+    
+    # Verify kokoro-tts
+    if command -v kokoro-tts &> /dev/null; then
+        log "kokoro-tts version: $(kokoro-tts --version || echo 'version check failed')"
+    fi
+    
     # Start the service
     cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
