@@ -59,13 +59,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
     g++ \
+    make \
+    cmake \
+    wget \
+    git \
+    # Audio processing
     libsndfile1 \
     libportaudio2 \
     libasound2 \
     libsndfile1-dev \
     portaudio19-dev \
+    libasound2-dev \
+    libpulse-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libx264-dev \
+    # Text-to-speech dependencies
+    espeak \
+    ffmpeg \
+    flac \
+    # Other dependencies
     libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    llvm \
+    libncurses5-dev \
+    libncursesw5-dev \
+    xz-utils \
+    tk-dev \
+    liblzma-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create and activate virtual environment
 RUN python3 -m venv /opt/venv
@@ -74,9 +102,25 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install Python dependencies
 WORKDIR /app
 COPY server/python-ws/requirements.txt .
+
+# Install PyTorch first with retry logic
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    { \
+        for i in {1..5}; do \
+            if pip install --no-cache-dir torch==2.0.1+cpu torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu; then \
+                echo "PyTorch installed successfully"; \
+                break; \
+            else \
+                echo "PyTorch installation attempt $i failed, retrying..."; \
+                sleep 10; \
+            fi; \
+            if [ $i -eq 5 ]; then \
+                echo "Failed to install PyTorch after 5 attempts"; \
+                exit 1; \
+            fi; \
+        done \
+    } && \
     pip install --no-cache-dir uvicorn[standard]
 
 # Create model directory
@@ -90,13 +134,26 @@ FROM node:20-alpine
 
 # Install runtime dependencies
 RUN apk add --no-cache \
+    # Python runtime
     python3 \
     py3-pip \
-    netcat-openbsd \
+    # Audio processing
     libsndfile \
     portaudio \
     alsa-lib \
+    alsa-utils \
+    pulseaudio \
+    sox \
+    ffmpeg \
+    # Text-to-speech
+    espeak \
+    # System utilities
+    netcat-openbsd \
+    curl \
+    bash \
+    # Clean up
     && rm -rf /var/cache/apk/* \
+    # Install Node.js tools
     && npm install -g tsx concurrently \
     && echo "tsx version: $(tsx --version)"
 
