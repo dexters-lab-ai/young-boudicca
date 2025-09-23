@@ -63,6 +63,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libudev-dev \
     pkg-config \
     libusb-1.0-0-dev \
+    portaudio19-dev \
+    libasound2-dev \
+    libsndfile1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
