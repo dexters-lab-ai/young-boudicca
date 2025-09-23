@@ -1,5 +1,5 @@
 # Force complete rebuild - change this value to invalidate all caches
-ARG CACHE_BUSTER=2025-09-23-03-19
+ARG CACHE_BUSTER=2025-09-23-05-35
 
 # ============================================
 # Node.js build stage - For frontend build
@@ -64,6 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libsndfile1-dev \
     portaudio19-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -75,7 +76,8 @@ WORKDIR /app
 COPY server/python-ws/requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir uvicorn[standard]
 
 # Create model directory
 RUN mkdir -p /app/server/python-tts && \
