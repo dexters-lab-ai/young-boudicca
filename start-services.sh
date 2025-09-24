@@ -54,19 +54,38 @@ start_services() {
     python -c "import sys; print('Python sys.path:', sys.path)" || true
     
     # Verify kokoro-tts is available
-    if command -v kokoro-tts &> /dev/null; then
+    log "Checking kokoro-tts installation..."
+    log "PATH: $PATH"
+    log "VIRTUAL_ENV: $VIRTUAL_ENV"
+    log "Python path: $(which python)"
+    log "Python version: $(python --version 2>&1 || echo 'Python not found')"
+    
+    # Check if kokoro-tts is in PATH
+    if command -v kokoro-tts >/dev/null 2>&1; then
         log "kokoro-tts is available at: $(which kokoro-tts)"
+        kokoro-tts --help || true
         export ENABLE_TTS=true
         export DISABLE_TTS=false
         
-        # Verify we can list voices
-        if python -c "from kokoro_tts import list_voices; list_voices()" &> /dev/null; then
-            log "kokoro-tts can list voices successfully"
+        # Verify Python module is importable
+        if python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__ if hasattr(kokoro_tts, "__version__") else "unknown"}')" 2>/dev/null; then
+            log "kokoro-tts Python module is importable"
+            # Verify we can list voices
+            if python -c "from kokoro_tts import list_voices; print('Available voices:', list_voices())" 2>/dev/null; then
+                log "kokoro-tts can list voices successfully"
+            else
+                log "Warning: kokoro-tts is installed but cannot list voices. TTS may not function correctly."
+                python -c "from kokoro_tts import list_voices; list_voices()" || true
+            fi
         else
-            log "Warning: kokoro-tts is installed but cannot list voices. TTS may not function correctly."
+            log "Warning: kokoro-tts Python module cannot be imported"
+            python -c "import kokoro_tts" || true
         fi
     else
-        log "Error: kokoro-tts is not available. TTS will be disabled."
+        log "Error: kokoro-tts is not available in PATH. TTS will be disabled."
+        log "Current PATH: $PATH"
+        log "Trying to locate kokoro-tts..."
+        find / -name "kokoro-tts" 2>/dev/null || true
         export DISABLE_TTS=true
         export ENABLE_TTS=false
     fi

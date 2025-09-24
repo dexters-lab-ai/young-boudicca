@@ -88,9 +88,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown -R node:node /home/node \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment
+# Create and activate virtual environment with proper permissions
 ENV VIRTUAL_ENV=/opt/venv
-RUN python -m venv $VIRTUAL_ENV
+RUN python -m venv $VIRTUAL_ENV \
+    && chown -R node:node $VIRTUAL_ENV \
+    && chmod -R 755 $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install uv (recommended installer)
@@ -136,15 +138,20 @@ RUN mkdir -p /app/dist/server
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
 
 # Create necessary directories with correct ownership
-RUN mkdir -p /app/public/uploads && \
-    chown -R node:node /app
+RUN mkdir -p /app/public/uploads \
+    && mkdir -p /app/models \
+    && chown -R node:node /app \
+    && chmod -R 755 /app/models
 
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
     PYTHONPATH=/app/server/python-ws \
-    PATH="/app/node_modules/.bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PATH="/opt/venv/bin:/app/node_modules/.bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
+    KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
 
 # Expose ports
 EXPOSE 3000 8787 8899
