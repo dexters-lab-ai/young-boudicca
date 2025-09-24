@@ -90,37 +90,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create and activate virtual environment with proper permissions
 ENV VIRTUAL_ENV=/opt/venv
+
+# Install Python dependencies and create virtual environment
 RUN python -m venv $VIRTUAL_ENV \
+    && . $VIRTUAL_ENV/bin/activate \
+    && pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r /tmp/requirements.txt uvicorn[standard] \
+    && pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio \
     && chown -R node:node $VIRTUAL_ENV \
-    && chmod -R 755 $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+    && chmod -R 755 $VIRTUAL_ENV \
+    && ln -sf $VIRTUAL_ENV/bin/kokoro-tts /usr/local/bin/kokoro-tts
 
-# Install uv (recommended installer)
-RUN pip install --no-cache-dir uv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app"
 
-# Install Python dependencies in a single layer to minimize image size
-COPY server/python-ws/requirements.txt .
-RUN python -m pip install --upgrade pip && \
-    # Install system dependencies and Python packages
-    apt-get update && apt-get install -y --no-install-recommends wget && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Install Python requirements
-    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
-    # Create a directory for model files
-    mkdir -p /app/models && \
-    # Download the model files
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
-    # Create symlink for the executable
-    ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
-    # Verify installation
-    python -c "import kokoro_tts; print('kokoro-tts imported successfully')" && \
-    # Verify the executable is in PATH and show help
-    which kokoro-tts && \
-    kokoro-tts --help && \
-    # Clean up
-    rm -f requirements.txt
+# Create models directory and download model files
+RUN mkdir -p /app/models \
+    && wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin \
+    && wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx \
+    && chown -R node:node /app/models \
+    && chmod 644 /app/models/*
 
 # Set up application directory
 WORKDIR /app
@@ -146,13 +136,15 @@ RUN mkdir -p /app/public/uploads \
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
-    PYTHONPATH=/app/server/python-ws \
-    PATH="/opt/venv/bin:/app/node_modules/.bin:$PATH" \
+    PYTHONPATH="/app/server/python-ws:/app" \
+    PATH="/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/node_modules/.bin" \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin \
-    KOKORO_TTS_BIN="/opt/venv/bin/kokoro-tts"
+    KOKORO_TTS_BIN="/opt/venv/bin/kokoro-tts" \
+    ENABLE_TTS="true" \
+    DISABLE_TTS="false"
 
 # Verify kokoro-tts installation
 RUN echo "=== Verifying kokoro-tts installation ===" && \
@@ -192,5 +184,8 @@ RUN chmod +x /app/start-services.sh && \
 # Run as non-root user
 USER node
 
-# Start the application using the startup script
-CMD ["/app/start-services.sh"]
+# Install bash if not present
+RUN apt-get update && apt-get install -y --no-install-recommends bash && rm -rf /var/lib/apt/lists/*
+
+# Start the application using the startup script with bash
+CMD ["bash", "/app/start-services.sh"]
