@@ -151,7 +151,29 @@ ENV NODE_ENV=production \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
-    KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
+    KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin \
+    KOKORO_TTS_BIN="/opt/venv/bin/kokoro-tts"
+
+# Verify kokoro-tts installation
+RUN echo "=== Verifying kokoro-tts installation ===" && \
+    # Check if executable exists and is in PATH
+    which kokoro-tts && \
+    # Show executable details
+    ls -la $(which kokoro-tts) && \
+    # Verify basic functionality with --help
+    kokoro-tts --help && \
+    # Check Python module import and version
+    python -c "\
+import kokoro_tts; \
+print('kokoro-tts module path:', kokoro_tts.__file__); \
+print('kokoro-tts version:', getattr(kokoro_tts, '__version__', 'unknown')); \
+print('Model path:', getattr(kokoro_tts, 'DEFAULT_MODEL_PATH', 'Not set')); \
+print('Voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not set'))" && \
+    # Verify model files exist
+    echo "=== Checking model files ===" && \
+    ls -la /app/models/ && \
+    [ -f "$KOKORO_MODEL_PATH" ] && echo "Model file found: $KOKORO_MODEL_PATH" || echo "Error: Model file not found" && \
+    [ -f "$KOKORO_VOICES_PATH" ] && echo "Voices file found: $KOKORO_VOICES_PATH" || echo "Error: Voices file not found"
 
 # Expose ports
 EXPOSE 3000 8787 8899
@@ -160,12 +182,15 @@ EXPOSE 3000 8787 8899
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD nc -z localhost 3000 && nc -z localhost 8787 && nc -z localhost 8899 || exit 1
 
-# Copy startup script
-COPY start-services.sh /app/start-services.sh
-RUN chmod +x /app/start-services.sh
+# Copy and set up startup script
+COPY --chown=node:node start-services.sh /app/start-services.sh
+RUN chmod +x /app/start-services.sh && \
+    # Ensure node user has access to the virtual environment
+    chown -R node:node /opt/venv && \
+    chmod -R 755 /opt/venv
 
 # Run as non-root user
 USER node
 
-# Start the application
-CMD ["sh", "-c", "node --import tsx dist/server/index.js"]
+# Start the application using the startup script
+CMD ["/app/start-services.sh"]

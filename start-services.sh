@@ -54,40 +54,67 @@ start_services() {
     python -c "import sys; print('Python sys.path:', sys.path)" || true
     
     # Verify kokoro-tts is available
-    log "Checking kokoro-tts installation..."
-    log "PATH: $PATH"
-    log "VIRTUAL_ENV: $VIRTUAL_ENV"
-    log "Python path: $(which python)"
-    log "Python version: $(python --version 2>&1 || echo 'Python not found')"
+    log "=== Verifying kokoro-tts installation ==="
+    log "Environment:"
+    log "  PATH: $PATH"
+    log "  VIRTUAL_ENV: $VIRTUAL_ENV"
+    log "  Python: $(which python)"
+    log "  Python version: $(python --version 2>&1 || echo 'Not found')"
     
-    # Check if kokoro-tts is in PATH
-    if command -v kokoro-tts >/dev/null 2>&1; then
-        log "kokoro-tts is available at: $(which kokoro-tts)"
-        kokoro-tts --help || true
+    # Check if kokoro-tts is available via KOKORO_TTS_BIN or in PATH
+    KOKORO_BIN="${KOKORO_TTS_BIN:-$(command -v kokoro-tts 2>/dev/null || echo '')}"
+    
+    if [ -n "$KOKORO_BIN" ] && [ -x "$KOKORO_BIN" ]; then
+        log "kokoro-tts found at: $KOKORO_BIN"
+        export KOKORO_TTS_BIN="$KOKORO_BIN"
         export ENABLE_TTS=true
         export DISABLE_TTS=false
         
-        # Verify Python module is importable
-        if python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__ if hasattr(kokoro_tts, "__version__") else "unknown"}')" 2>/dev/null; then
-            log "kokoro-tts Python module is importable"
-            # Verify we can list voices
-            if python -c "from kokoro_tts import list_voices; print('Available voices:', list_voices())" 2>/dev/null; then
-                log "kokoro-tts can list voices successfully"
-            else
-                log "Warning: kokoro-tts is installed but cannot list voices. TTS may not function correctly."
-                python -c "from kokoro_tts import list_voices; list_voices()" || true
-            fi
-        else
-            log "Warning: kokoro-tts Python module cannot be imported"
-            python -c "import kokoro_tts" || true
+        # Test kokoro-tts execution
+        if ! $KOKORO_BIN --help >/dev/null 2>&1; then
+            log "Warning: kokoro-tts failed to execute. Check shared libraries with 'ldd $KOKORO_BIN'"
+            ldd "$KOKORO_BIN" 2>/dev/null || true
+            export ENABLE_TTS=false
+            export DISABLE_TTS=true
         fi
     else
-        log "Error: kokoro-tts is not available in PATH. TTS will be disabled."
-        log "Current PATH: $PATH"
-        log "Trying to locate kokoro-tts..."
-        find / -name "kokoro-tts" 2>/dev/null || true
-        export DISABLE_TTS=true
+        log "Error: kokoro-tts not found. TTS will be disabled."
+        log "Searched in:"
+        which -a kokoro-tts 2>/dev/null || true
+        find /opt/venv -name kokoro-tts 2>/dev/null || true
         export ENABLE_TTS=false
+        export DISABLE_TTS=true
+    fi
+    
+    # Verify Python module and version
+    if [ "$ENABLE_TTS" = "true" ]; then
+        log "=== Verifying Python Module ==="
+        if ! python -c "\
+import kokoro_tts; \
+print('kokoro-tts module path:', kokoro_tts.__file__); \
+print('kokoro-tts version:', getattr(kokoro_tts, '__version__', 'unknown')); \
+print('Default model path:', getattr(kokoro_tts, 'DEFAULT_MODEL_PATH', 'Not set')); \
+print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not set'))" 2>/dev/null; then
+            log "Error: Failed to import kokoro_tts Python module"
+            python -c "import sys; print('\nPython path:'); print('\n'.join(sys.path))" 2>/dev/null || true
+            export ENABLE_TTS=false
+            export DISABLE_TTS=true
+        else
+            log "kokoro_tts module imported successfully"
+            
+            # Test voice listing with better error handling
+            log "=== Testing Voice Listing ==="
+            if ! python -c "\
+import kokoro_tts; \
+print('Using model:', '$KOKORO_MODEL_PATH'); \
+print('Using voices:', '$KOKORO_VOICES_PATH'); \
+print('Voices:'); \
+kokoro_tts.list_voices()" 2>&1; then
+                log "Warning: Failed to list voices. This might be expected if models are not loaded yet."
+                log "Model files in $(dirname "$KOKORO_MODEL_PATH"):"
+                ls -la "$(dirname "$KOKORO_MODEL_PATH")" 2>/dev/null || true
+            fi
+        fi
     fi
     
     # Start the service
