@@ -96,15 +96,16 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install uv (recommended installer)
 RUN pip install --no-cache-dir uv
 
-# Install Python dependencies
+# Install Python dependencies in a single layer to minimize image size
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
-    # Install basic requirements first
+    # Install all requirements in one go to minimize layers
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
     # Install kokoro-tts and its dependencies
-RUN pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
+    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
     # Verify the package is importable
     python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__}' if hasattr(kokoro_tts, '__version__') else 'kokoro-tts imported successfully')" && \
+    # Clean up
     rm -f requirements.txt
 
 # Set up application directory
