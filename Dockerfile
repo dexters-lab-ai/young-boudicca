@@ -103,8 +103,12 @@ RUN python -m pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
     # Install kokoro-tts and its dependencies
     pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
-    # Verify the package is importable
+    # Create a symlink to kokoro-tts in /usr/local/bin
+    ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
+    # Verify the package is importable and executable
     python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__}' if hasattr(kokoro_tts, '__version__') else 'kokoro-tts imported successfully')" && \
+    which kokoro-tts && \
+    kokoro-tts --version && \
     # Clean up
     rm -f requirements.txt
 
