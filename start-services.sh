@@ -49,95 +49,24 @@ start_services() {
     export PYTHONPATH="/app:$PYTHONPATH"
     source /opt/venv/bin/activate
     
-    # Verify Python path and modules
+    # Set Python path and verify environment
     log "Python path: $PYTHONPATH"
     python -c "import sys; print('Python sys.path:', sys.path)" || true
     
-    # Check if kokoro-tts is installed and in PATH
-    if ! command -v kokoro-tts &> /dev/null; then
-        log "kokoro-tts not found in PATH. Searching for it in Python environment..."
-        
-        # Try to find kokoro-tts in Python environment
-        KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))' 2>/dev/null || echo '')
-        
-        if [ -n "$KOKORO_PATH" ]; then
-            log "Found kokoro-tts at $KOKORO_PATH. Creating symlink in /usr/local/bin..."
-            ln -sf "$KOKORO_PATH" "/usr/local/bin/kokoro-tts"
-            export PATH="/usr/local/bin:$PATH"
-        else
-            log "kokoro-tts not found. Installing..."
-            pip install --no-cache-dir kokoro-tts
-            
-            # Try to find it again after installation
-            KOKORO_PATH=$(python -c 'import shutil; print(shutil.which("kokoro-tts"))' 2>/dev/null || echo '')
-            if [ -n "$KOKORO_PATH" ]; then
-                ln -sf "$KOKORO_PATH" "/usr/local/bin/kokoro-tts"
-                export PATH="/usr/local/bin:$PATH"
-            fi
-        fi
-    fi
-
-    # Verify kokoro-tts Python package is installed and importable
-    log "Verifying kokoro-tts Python package..."
-    if python -c "import kokoro_tts" &> /dev/null; then
-        log "kokoro-tts Python package is installed and importable"
+    # Verify kokoro-tts is available
+    if command -v kokoro-tts &> /dev/null; then
+        log "kokoro-tts is available at: $(which kokoro-tts)"
         export ENABLE_TTS=true
         export DISABLE_TTS=false
         
-        # Get version info if available
-        VERSION_INFO=$(python -c "import kokoro_tts; print(getattr(kokoro_tts, '__version__', 'unknown'))" 2>/dev/null || echo 'unknown')
-        log "kokoro-tts version: $VERSION_INFO"
-        
-        # Verify we can list voices (this is what the app will try to do)
+        # Verify we can list voices
         if python -c "from kokoro_tts import list_voices; list_voices()" &> /dev/null; then
             log "kokoro-tts can list voices successfully"
         else
             log "Warning: kokoro-tts is installed but cannot list voices. TTS may not function correctly."
         fi
     else
-        log "Warning: kokoro-tts Python package is not available. TTS will be disabled."
-        log "Attempting to install kokoro-tts..."
-        
-        if pip install --no-cache-dir kokoro-tts &> /dev/null; then
-            log "Successfully installed kokoro-tts"
-            export ENABLE_TTS=true
-            export DISABLE_TTS=false
-        else
-            log "Failed to install kokoro-tts. TTS will be disabled."
-            export DISABLE_TTS=true
-            export ENABLE_TTS=false
-        fi
-    fi
-
-    # Verify kokoro-tts installation
-    if command -v kokoro-tts &> /dev/null; then
-        log "Verifying kokoro-tts installation..."
-        log "kokoro-tts path: $(which kokoro-tts)"
-        log "Python path: $(which python)"
-        log "Python version: $(python --version 2>&1 || echo 'unknown')"
-        
-        if kokoro-tts --version &> /dev/null; then
-            log "kokoro-tts is working correctly (version: $(kokoro-tts --version 2>&1 | head -n 1 || echo 'unknown'))"
-        else
-            log "Warning: kokoro-tts is installed but not working properly. TTS may not function."
-            log "Attempting to run kokoro-tts via Python module..."
-            
-            # Try running as Python module as fallback
-            if python -m kokoro_tts --version &> /dev/null; then
-                log "Successfully ran kokoro-tts as Python module"
-                # Create a wrapper script
-                echo '#!/bin/sh
-                python -m kokoro_tts "$@"' > /usr/local/bin/kokoro-tts
-                chmod +x /usr/local/bin/kokoro-tts
-                export DISABLE_TTS=false
-            else
-                log "Error: Failed to run kokoro-tts as Python module"
-                export DISABLE_TTS=true
-                export ENABLE_TTS=false
-            fi
-        fi
-    else
-        log "Warning: kokoro-tts is not available. TTS will be disabled."
+        log "Error: kokoro-tts is not available. TTS will be disabled."
         export DISABLE_TTS=true
         export ENABLE_TTS=false
     fi
