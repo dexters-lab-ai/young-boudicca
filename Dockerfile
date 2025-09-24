@@ -3,7 +3,7 @@
 # ============================================
 FROM node:20-alpine as builder
 
-# Install build dependencies
+# Install build dependencies with version pinning
 RUN apk add --no-cache \
     python3 \
     make \
@@ -15,37 +15,32 @@ RUN apk add --no-cache \
     libusb-dev \
     && rm -rf /var/cache/apk/*
 
-# Install Python TTS service dependencies
-RUN pip install --no-cache-dir fastapi uvicorn kokoro-tts
-
-# Set working directory and permissions
+# Set working directory
 WORKDIR /app
+
+# Copy package files first for better caching
 COPY package.json package-lock.json ./
+
+# Install Node.js dependencies
 RUN npm ci --no-audit --no-fund --unsafe-perm
 
-# Copy application code
-COPY . .
-
-# Install TypeScript and build dependencies
+# Install TypeScript globally
 RUN npm install -g typescript
 
-# Install dependencies first
-RUN npm ci
+# Copy the rest of the application
+COPY . .
+
+# Install Python TTS service dependencies
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir fastapi uvicorn kokoro-tts
 
 # Build the application
 RUN npm run build
 
-# Create necessary directories
-RUN mkdir -p /app/server
-
-# Copy server files
-COPY server/ /app/server/
-
-# Verify server files were copied
-RUN echo "=== Server files in /app/server ===" && \
-    ls -la /app/server/ && \
-    echo "=== Python WS files ===" && \
-    ls -la /app/server/python-ws/ || true
+# Verify server files
+RUN mkdir -p /app/server/python-tts && \
+    echo "=== Server files in /app/server ===" && \
+    ls -la /app/server/
 
 # Create server package.json for ES modules
 RUN mkdir -p /app/dist/server && \
@@ -59,35 +54,28 @@ RUN npx tsc --project tsconfig.server.json
 RUN echo "=== Build output ===" && \
     ls -la dist/server/
 
-# Verify the build
-RUN ls -la dist/server/
-
 # ============================================
-# Production stage
+# Final stage - Production
 # ============================================
-FROM python:3.11-slim as runtime
+FROM node:20-alpine
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    netcat-openbsd \
-    libudev-dev \
-    pkg-config \
-    libusb-1.0-0-dev \
-    portaudio19-dev \
-    libasound2-dev \
-    libsndfile1-dev \
-    ffmpeg \
-    libportaudio2 \
-    portaudio19-dev \
-    python3-pyaudio \
-    python3-dev \
-    espeak \
-    libespeak1 \
-    libespeak-ng1 \
-    espeak-ng \
-    libespeak-ng-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    linux-headers \
+    udev \
+    eudev-dev \
+    libusb-dev \
+    portaudio-dev \
+    alsa-lib-dev \
+    && rm -rf /var/cache/apk/*
+
+# Install Python dependencies
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir fastapi uvicorn kokoro-tts
 
 # Install Node.js 20 and create node user
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -214,34 +214,68 @@ print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not se
     log "Contents of /app/server/python-ws:"
     ls -la /app/server/python-ws/ 2>&1 || log "Could not list /app/server/python-ws/"
     
-    # Start the FastAPI app
+    # Start the FastAPI app with detailed logging
     log "\n=== Starting Uvicorn Server ==="
-    log "Command: python -m uvicorn app:app --host 0.0.0.0 --port 8899"
+    log "Working directory: $(pwd)"
+    log "Python path: $(python -c 'import sys; print("\n".join(sys.path))')"
+    log "Python version: $(python --version)"
+    log "Pip list:\n$(pip list 2>/dev/null || echo 'pip list failed')"
     
-    # Start the server in the background and log output
-    python -m uvicorn app:app --host 0.0.0.0 --port 8899 \
-        --log-level debug \
-        --log-config /dev/null \
-        --no-access-log \
-        &> /tmp/uvicorn.log &
-    PYTHON_PID=$!
-    
-    # Give it a moment to start
-    sleep 5
-    
-    # Check if the service is running and listening on the port
-    if ! ps -p $! > /dev/null; then
-        log "Error: Python TTS service failed to start"
-        log "Uvicorn log output:"
-        cat /tmp/uvicorn.log || true
+    # Check if the app module exists
+    if [ ! -f "app.py" ]; then
+        log "Error: app.py not found in $(pwd)"
+        log "Current directory contents:"
+        ls -la .
         exit 1
     fi
+
+    # Start the server in the background with debug logging
+    log "Starting Uvicorn with: python -m uvicorn app:app --host 0.0.0.0 --port 8899 --log-level debug"
+    python -m uvicorn app:app \
+        --host 0.0.0.0 \
+        --port 8899 \
+        --log-level debug \
+        --no-access-log \
+        --log-config /dev/null \
+        &> /tmp/uvicorn.log &
     
-    # Check if the service is responding
-    if ! curl -s http://localhost:8899/health >/dev/null; then
-        log "Error: Python TTS service is not responding"
-        log "Uvicorn log output:"
-        cat /tmp/uvicorn.log || true
+    PYTHON_PID=$!
+    log "Uvicorn started with PID: $PYTHON_PID"
+    
+    # Wait for the service to start with timeout
+    MAX_RETRIES=10
+    RETRY_COUNT=0
+    SERVICE_STARTED=0
+    
+    log "Waiting for Python TTS service to start..."
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if ps -p $PYTHON_PID > /dev/null; then
+            # Check if the service is responding
+            if curl -s -f http://localhost:8899/health >/dev/null 2>&1; then
+                log "Python TTS service is up and running!"
+                SERVICE_STARTED=1
+                break
+            fi
+        else
+            log "Error: Python TTS process ($PYTHON_PID) is not running"
+            log "Uvicorn log output:"
+            cat /tmp/uvicorn.log 2>/dev/null || log "No log file found"
+            exit 1
+        fi
+        
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        log "Waiting for service to be ready... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+        sleep 3
+    done
+    
+    if [ $SERVICE_STARTED -eq 0 ]; then
+        log "Error: Python TTS service failed to start within time limit"
+        log "Last 50 lines of Uvicorn log:"
+        tail -n 50 /tmp/uvicorn.log 2>/dev/null || log "No log file found"
+        log "\nChecking port 8899:"
+        netstat -tuln | grep 8899 || true
+        log "\nProcess list:"
+        ps aux | grep uvicorn || true
         exit 1
     fi
     
