@@ -198,5 +198,7 @@ RUN chmod +x /app/start-services.sh && \
 # Run as non-root user
 USER node
 
-# Start the application using bash to ensure proper shell features
-CMD ["bash", "/app/start-services.sh"]
+# Set environment variables and start the application
+ENV PYTHONPATH="/app:/app/server"
+WORKDIR /app
+CMD ["bash", "-c", "export PATH=/opt/venv/bin:$PATH && . /opt/venv/bin/activate && /app/start-services.sh"]
