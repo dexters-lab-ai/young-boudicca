@@ -101,14 +101,19 @@ COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
     # Install all requirements in one go to minimize layers
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    # Install kokoro-tts and its dependencies
     pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
-    # Create a symlink to kokoro-tts in /usr/local/bin
+    # Create a directory for model files
+    mkdir -p /app/models && \
+    # Download the model files
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
+    # Create symlink for the executable
     ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
-    # Verify the package is importable and executable
-    python -c "import kokoro_tts; print(f'kokoro-tts version: {kokoro_tts.__version__}' if hasattr(kokoro_tts, '__version__') else 'kokoro-tts imported successfully')" && \
+    # Verify installation
+    python -c "import kokoro_tts; print('kokoro-tts imported successfully')" && \
+    # Verify the executable is in PATH and show help
     which kokoro-tts && \
-    kokoro-tts --version && \
+    kokoro-tts --help && \
     # Clean up
     rm -f requirements.txt
 
