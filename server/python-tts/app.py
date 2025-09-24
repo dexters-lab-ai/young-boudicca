@@ -1,30 +1,111 @@
-import io
-import os
 import asyncio
-import socket
 import json
+import logging
+import os
+import signal
 import struct
 import time
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pathlib import Path
+from typing import Optional, Dict, Any, AsyncGenerator, Tuple
 
-app = FastAPI(title="Kokoro TTS Service", version="1.0.0")
+from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, validator
 
-# --- Globals ---
-tts_process: asyncio.subprocess.Process | None = None
-KOKORO_SERVER_HOST = '127.0.0.1'
-KOKORO_SERVER_PORT = 65432
-KOKORO_HEALTH_PORT = KOKORO_SERVER_PORT + 1
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger('kokoro-tts-api')
 
-# --- Model Path Resolution ---
-HERE = os.path.dirname(os.path.abspath(__file__))
-WORKDIR = HERE
-# Check for models in the current directory, then the parent (server/)
-if not (os.path.exists(os.path.join(WORKDIR, "voices-v1.0.bin")) and os.path.exists(os.path.join(WORKDIR, "kokoro-v1.0.onnx"))):
-    PARENT = os.path.abspath(os.path.join(HERE, os.pardir))
-    if os.path.exists(os.path.join(PARENT, "voices-v1.0.bin")) and os.path.exists(os.path.join(PARENT, "kokoro-v1.0.onnx")):
-        WORKDIR = PARENT
+# --- Configuration ---
+class Config:
+    HOST: str = os.getenv('KOKORO_API_HOST', '0.0.0.0')
+    PORT: int = int(os.getenv('KOKORO_API_PORT', '8899'))
+    SERVER_HOST: str = os.getenv('KOKORO_SERVER_HOST', '127.0.0.1')
+    SERVER_PORT: int = int(os.getenv('KOKORO_SERVER_PORT', '65432'))
+    MAX_TEXT_LENGTH: int = int(os.getenv('KOKORO_MAX_TEXT_LENGTH', '1000'))
+    STARTUP_TIMEOUT: int = int(os.getenv('KOKORO_STARTUP_TIMEOUT', '30'))
+    PROCESS_CHECK_INTERVAL: float = 1.0
+
+# Initialize FastAPI
+app = FastAPI(
+    title="Kokoro TTS Service",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Global State ---
+class AppState:
+    def __init__(self):
+        self.process: Optional[asyncio.subprocess.Process] = None
+        self.start_time: float = 0
+        self.shutting_down: bool = False
+        self.startup_lock = asyncio.Lock()
+
+app_state = AppState()
+
+# --- Models ---
+class HealthResponse(BaseModel):
+    status: str
+    uptime: float
+    server_pid: Optional[int] = None
+    server_status: Optional[str] = None
+    server_uptime: Optional[float] = None
+    version: str = "1.0.0"
+
+class SpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=Config.MAX_TEXT_LENGTH)
+    voice: Optional[str] = Field(
+        default=None,
+        description="Voice ID (e.g., 'en-us_ljspeech')"
+    )
+    lang: Optional[str] = Field(
+        default=None,
+        description="Language code (e.g., 'en-us')",
+        regex=r'^[a-z]{2}(-[A-Z]{2})?$'
+    )
+    speed: Optional[float] = Field(
+        default=1.0,
+        ge=0.5,
+        le=2.0,
+        description="Speech rate (0.5-2.0)"
+    )
+
+    @validator('text')
+    def validate_text(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Text cannot be empty or whitespace")
+        return v.strip()
+
+# --- Helper Functions ---
+async def log_stream(stream: asyncio.StreamReader, prefix: str) -> None:
+    """Log output from a stream with a prefix."""
+    while not stream.at_eof():
+        try:
+            line = await stream.readline()
+            if line:
+                logger.info(f"[{prefix}] {line.decode().strip()}")
+        except Exception as e:
+            logger.error(f"Error reading from {prefix}: {e}")
+            break
+
+def get_uptime() -> float:
+    """Get application uptime in seconds."""
+    return time.time() - app_state.start_time
 
 # --- FastAPI App --- 
 
@@ -34,120 +115,296 @@ class SpeakRequest(BaseModel):
     lang: str | None = None
     speed: float | None = None
 
-@app.on_event("startup")
-async def startup_event():
-    """Starts the persistent kokoro_server.py process."""
-    global tts_process
-    server_script_path = os.path.join(os.path.dirname(__file__), 'kokoro_server.py')
-    print(f"[python-tts] Starting persistent TTS server: {server_script_path}")
+# --- Server Management ---
+async def start_tts_server() -> bool:
+    """Start the TTS server process if not already running."""
+    async with app_state.startup_lock:
+        if app_state.process is not None and app_state.process.returncode is None:
+            logger.info("TTS server is already running")
+            return True
+            
+        logger.info("Starting TTS server process...")
+        
+        try:
+            server_script = Path(__file__).parent / 'kokoro_server.py'
+            if not server_script.exists():
+                logger.error(f"Server script not found: {server_script}")
+                return False
+                
+            # Build the command
+            python_exec = os.getenv("PYTHON", sys.executable)
+            cmd = [python_exec, str(server_script)]
+            
+            # Set environment variables
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            
+            # Start the process
+            app_state.process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                start_new_session=True  # Prevent signals from being sent to the child
+            )
+            
+            logger.info(f"TTS server started with PID: {app_state.process.pid}")
+            
+            # Start loggers
+            asyncio.create_task(log_stream(app_state.process.stdout, "tts-stdout"))
+            asyncio.create_task(log_stream(app_state.process.stderr, "tts-stderr"))
+            
+            # Monitor the process
+            asyncio.create_task(monitor_tts_process())
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start TTS server: {e}", exc_info=True)
+            if app_state.process:
+                app_state.process.terminate()
+                app_state.process = None
+            return False
+
+async def monitor_tts_process() -> None:
+    """Monitor the TTS server process and restart if it fails."""
+    if not app_state.process:
+        return
+        
     try:
-        args = [os.getenv("PYTHON", os.sys.executable), server_script_path]
-        tts_process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        print(f"[python-tts] Kokoro server process started with PID: {tts_process.pid}")
+        returncode = await app_state.process.wait()
+        logger.warning(f"TTS server process exited with code {returncode}")
         
-        # Task to monitor and log stdout/stderr from the server process
-        async def log_output(stream, prefix):
-            if stream:
-                async for line in stream:
-                    print(f"[{prefix}] {line.decode().strip()}")
-        
-        asyncio.create_task(log_output(tts_process.stdout, "kokoro-server"))
-        asyncio.create_task(log_output(tts_process.stderr, "kokoro-server-err"))
-
+        if not app_state.shutting_down:
+            logger.info("Attempting to restart TTS server...")
+            await asyncio.sleep(1)  # Prevent tight restart loop
+            await start_tts_server()
+            
+    except asyncio.CancelledError:
+        logger.info("TTS process monitoring cancelled")
     except Exception as e:
-        print(f"[python-tts] FATAL: Failed to start kokoro_server.py: {e}")
-        tts_process = None
+        logger.error(f"Error monitoring TTS process: {e}", exc_info=True)
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Terminates the persistent TTS process."""
-    if tts_process and tts_process.returncode is None:
-        print("[python-tts] Terminating kokoro_server.py process...")
-        tts_process.terminate()
-        await tts_process.wait()
+async def stop_tts_server() -> None:
+    """Stop the TTS server process gracefully."""
+    if not app_state.process:
+        return
+        
+    try:
+        logger.info(f"Stopping TTS server (PID: {app_state.process.pid})...")
+        
+        # Try SIGTERM first
+        app_state.process.terminate()
+        
+        try:
+            await asyncio.wait_for(app_state.process.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("TTS server did not terminate gracefully, forcing...")
+            app_state.process.kill()
+            await app_state.process.wait()
+            
+        logger.info("TTS server stopped")
+        
+    except Exception as e:
+        logger.error(f"Error stopping TTS server: {e}", exc_info=True)
+    finally:
+        app_state.process = None
 
-async def is_tts_server_healthy():
-    """Pings the TTS server's health check endpoint."""
+# --- Health Checks ---
+async def check_tts_server_health(timeout: float = 1.0) -> Tuple[bool, str]:
+    """Check if the TTS server is healthy."""
+    if not app_state.process or app_state.process.returncode is not None:
+        return False, "TTS server process is not running"
+        
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(KOKORO_SERVER_HOST, KOKORO_HEALTH_PORT),
-            timeout=0.5
+            asyncio.open_connection(Config.SERVER_HOST, Config.SERVER_PORT + 1),  # Health port
+            timeout=timeout
         )
-        data = await reader.read(100)
+        data = await asyncio.wait_for(reader.read(100), timeout=timeout)
         writer.close()
         await writer.wait_closed()
-        return data == b'OK'
-    except Exception:
-        return False
+        
+        if data == b'OK':
+            return True, "OK"
+        return False, f"Unexpected health check response: {data}"
+        
+    except asyncio.TimeoutError:
+        return False, "Health check timed out"
+    except ConnectionRefusedError:
+        return False, "Connection refused"
+    except Exception as e:
+        return False, f"Health check failed: {str(e)}"
 
-@app.get("/health")
-async def health():
-    if not tts_process or tts_process.returncode is not None:
-        return {"status": "error", "detail": "TTS process is not running."}
+# --- API Endpoints ---
+@app.on_event("startup")
+async def startup():
+    """Initialize the application."""
+    app_state.start_time = time.time()
+    logger.info("Starting up...")
     
-    if await is_tts_server_healthy():
-        return {"status": "ok"}
-    else:
-        return {"status": "error", "detail": "TTS socket server not responding to health check."}
+    # Start the TTS server
+    if not await start_tts_server():
+        logger.error("Failed to start TTS server during startup")
+    
+    # Set up signal handlers
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+    
+    logger.info("Startup complete")
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Cleanup on application shutdown."""
+    if app_state.shutting_down:
+        return
+        
+    app_state.shutting_down = True
+    logger.info("Shutting down...")
+    
+    # Stop the TTS server
+    await stop_tts_server()
+    
+    logger.info("Shutdown complete")
+
+@app.get("/health", response_model=HealthResponse)
+async def health():
+    """Health check endpoint."""
+    server_healthy, server_status = await check_tts_server_health()
+    
+    return {
+        "status": "ok" if server_healthy else "degraded",
+        "uptime": get_uptime(),
+        "server_pid": app_state.process.pid if app_state.process else None,
+        "server_status": server_status,
+        "server_uptime": time.time() - app_state.process.start_time if app_state.process else None
+    }
 
 @app.post("/speak")
-async def speak(req: SpeakRequest):
-    """Connects to the persistent kokoro-tts server to synthesize audio."""
-    if not tts_process or tts_process.returncode is not None:
-        raise HTTPException(status_code=503, detail="TTS process is not running.")
-    if not req.text or not req.text.strip():
-        raise HTTPException(status_code=400, detail="Missing text for synthesis.")
-
-    # Wait for the TTS server to be healthy before proceeding
-    is_healthy = False
-    for _ in range(10):  # Retry for up to 5 seconds
-        if await is_tts_server_healthy():
-            is_healthy = True
+async def speak(request: SpeakRequest):
+    ""
+    Convert text to speech.
+    
+    This endpoint streams the generated audio directly to the client.
+    """
+    # Check if TTS server is running
+    if not app_state.process or app_state.process.returncode is not None:
+        if not await start_tts_server():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="TTS server is not available"
+            )
+    
+    # Wait for server to be ready
+    start_time = time.time()
+    while time.time() - start_time < Config.STARTUP_TIMEOUT:
+        healthy, _ = await check_tts_server_health()
+        if healthy:
             break
-        await asyncio.sleep(0.5)
-
-    if not is_healthy:
-        raise HTTPException(status_code=503, detail="TTS server did not become healthy in time.")
-
-    async def stream_generator():
-        """Connects to the socket server and yields audio chunks as they arrive."""
-        reader, writer = None, None
+        await asyncio.sleep(0.1)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS server is not responding"
+        )
+    
+    async def generate_audio():
+        """Stream audio from the TTS server."""
+        reader = writer = None
         try:
-            reader, writer = await asyncio.open_connection(KOKORO_SERVER_HOST, KOKORO_SERVER_PORT)
-            request_payload = json.dumps(req.dict()).encode('utf-8')
-            # Send a 4-byte header with the payload size
-            writer.write(struct.pack('<I', len(request_payload)))
-            # Send the payload
-            writer.write(request_payload)
+            # Connect to the TTS server
+            reader, writer = await asyncio.open_connection(
+                Config.SERVER_HOST,
+                Config.SERVER_PORT
+            )
+            
+            # Send the request
+            request_data = request.dict(exclude_unset=True)
+            payload = json.dumps(request_data).encode('utf-8')
+            
+            # Send payload length (4 bytes) followed by the payload
+            writer.write(struct.pack('<I', len(payload)) + payload)
             await writer.drain()
-
+            
+            # Stream the response
             while True:
-                # Read the 4-byte length prefix for the next chunk
-                len_prefix = await reader.readexactly(4)
-                chunk_len = struct.unpack('<I', len_prefix)[0]
-
-                # A zero-length chunk signals the end of the stream
+                # Read chunk length (4 bytes)
+                len_data = await reader.readexactly(4)
+                chunk_len = struct.unpack('<I', len_data)[0]
+                
+                # A zero-length chunk indicates the end of the stream
                 if chunk_len == 0:
                     break
-
-                # Read the audio chunk of the specified length and yield it
-                audio_chunk = await reader.readexactly(chunk_len)
-                yield audio_chunk
-
-        except ConnectionRefusedError:
-            print("[python-tts] Error: Could not connect to the TTS socket server.")
-            # This error won't be sent to client as headers are already sent.
+                
+                # Read the chunk data and yield it
+                chunk = await reader.readexactly(chunk_len)
+                yield chunk
+                
         except asyncio.IncompleteReadError:
-            print("[python-tts] Incomplete read from socket, connection likely closed.")
+            logger.warning("Incomplete read from TTS server")
+        except ConnectionResetError:
+            logger.error("Connection to TTS server was reset")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Connection to TTS server failed"
+            )
         except Exception as e:
-            print(f"[python-tts] Error in stream_generator: {e}")
+            logger.error(f"Error during TTS generation: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"TTS generation failed: {str(e)}"
+            )
         finally:
             if writer:
                 writer.close()
                 await writer.wait_closed()
+    
+    # Return the audio stream
+    return StreamingResponse(
+        generate_audio(),
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": "inline; filename=speech.wav",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
 
-    return StreamingResponse(stream_generator(), media_type="application/octet-stream")
+# Error handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with JSON responses."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "path": request.url.path,
+            "timestamp": time.time()
+        }
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all other exceptions."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal server error",
+            "path": request.url.path,
+            "timestamp": time.time()
+        }
+    )
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    import uvicorn
+    
+    uvicorn.run(
+        "app:app",
+        host=Config.HOST,
+        port=Config.PORT,
+        log_level="info",
+        reload=False,
+        workers=1  # We manage our own subprocesses
+    )
