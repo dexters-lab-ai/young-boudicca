@@ -47,19 +47,29 @@ check_service() {
 # Start services in sequence
 start_services() {
     # Start Python TTS service first
-    log "Starting Python TTS service..."
+    log "=== Starting Python TTS Service ==="
     
-    # Set environment variables
-    cd /app
+    # Set working directory
+    cd "$PYTHON_SERVICE_DIR"
     
-    # Clean up and set Python path
-    unset PYTHONPATH  # Start with a clean slate
-    export PYTHONPATH="/app"  # Point to the app root
+    # Log environment and service files
+    log "Working directory: $(pwd)"
+    log "Environment variables:"
+    env | grep -E 'PATH|PYTHON|KOKORO' || true
     
-    # Set paths
-    export PATH="/opt/venv/bin:$PATH"
-    export KOKORO_MODEL_PATH="/app/models/kokoro-v1.0.onnx"
-    export KOKORO_VOICES_PATH="/app/models/voices-v1.0.bin"
+    log "\nService files:"
+    ls -la .
+    
+    # Verify model files exist
+    if [ ! -f "$KOKORO_MODEL_PATH" ] || [ ! -f "$KOKORO_VOICES_PATH" ]; then
+        log "Error: Could not find model files in $PYTHON_SERVICE_DIR"
+        log "Contents of $PYTHON_SERVICE_DIR:"
+        ls -la "$PYTHON_SERVICE_DIR" 2>&1 || true
+        exit 1
+    fi
+    
+    log "\nModel files found:"
+    ls -l "$KOKORO_MODEL_PATH" "$KOKORO_VOICES_PATH"
     
     # Verify Python can find the server module
     log "Checking Python module paths..."
@@ -204,19 +214,38 @@ print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not se
     log "Contents of /app/server/python-ws:"
     ls -la /app/server/python-ws/ 2>&1 || log "Could not list /app/server/python-ws/"
     
-    # Start the service with the correct module path
-    log "Starting uvicorn with: python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899"
-    python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+    # Start the FastAPI app
+    log "\n=== Starting Uvicorn Server ==="
+    log "Command: python -m uvicorn app:app --host 0.0.0.0 --port 8899"
+    
+    # Start the server in the background and log output
+    python -m uvicorn app:app --host 0.0.0.0 --port 8899 \
+        --log-level debug \
+        --log-config /dev/null \
+        --no-access-log \
+        &> /tmp/uvicorn.log &
     PYTHON_PID=$!
     
     # Give it a moment to start
     sleep 5
     
-    # Check if the service is running
-    if ! ps -p $PYTHON_PID > /dev/null; then
+    # Check if the service is running and listening on the port
+    if ! ps -p $! > /dev/null; then
         log "Error: Python TTS service failed to start"
+        log "Uvicorn log output:"
+        cat /tmp/uvicorn.log || true
         exit 1
     fi
+    
+    # Check if the service is responding
+    if ! curl -s http://localhost:8899/health >/dev/null; then
+        log "Error: Python TTS service is not responding"
+        log "Uvicorn log output:"
+        cat /tmp/uvicorn.log || true
+        exit 1
+    fi
+    
+    log "Python TTS service started successfully"
     
     # Check if the service is listening on the port
     check_service 8899 "Python TTS" "/docs" || { 
@@ -265,14 +294,22 @@ log "Node: $(node --version)"
 log "NPM: $(npm --version)"
 log "Current directory: $(pwd)"
 
-# Check if server directory exists
-if [ ! -d "/app/server" ]; then
-    log "Error: /app/server directory not found!"
+# Set Python TTS service directory
+PYTHON_SERVICE_DIR="/app/python-tts"
+
+export PYTHON_SERVICE_DIR
+log "Using Python service directory: $PYTHON_SERVICE_DIR"
+
+# Verify Python TTS service files exist
+if [ ! -d "$PYTHON_SERVICE_DIR" ]; then
+    log "Error: Python TTS service directory not found at $PYTHON_SERVICE_DIR"
     log "Contents of /app:"
-    ls -la /app 2>&1 || true
-    log "\nPlease ensure the server files are properly copied to /app/server in the container"
+    ls -la /app/ 2>&1 || true
     exit 1
 fi
+
+log "Python TTS service files:"
+ls -la "$PYTHON_SERVICE_DIR" 2>&1 || true
 
 # Start all services
 start_services

@@ -15,6 +15,9 @@ RUN apk add --no-cache \
     libusb-dev \
     && rm -rf /var/cache/apk/*
 
+# Install Python TTS service dependencies
+RUN pip install --no-cache-dir fastapi uvicorn kokoro-tts
+
 # Set working directory and permissions
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -33,20 +36,28 @@ RUN npm ci
 RUN npm run build
 
 # Create necessary directories
-RUN mkdir -p dist/server
+RUN mkdir -p /app/server
 
 # Copy server files
-COPY server/ ./server/
+COPY server/ /app/server/
+
+# Verify server files were copied
+RUN echo "=== Server files in /app/server ===" && \
+    ls -la /app/server/ && \
+    echo "=== Python WS files ===" && \
+    ls -la /app/server/python-ws/ || true
 
 # Create server package.json for ES modules
-RUN echo '{"type": "module"}' > ./dist/server/package.json
+RUN mkdir -p /app/dist/server && \
+    echo '{"type": "module"}' > /app/dist/server/package.json
 
 # Copy and build TypeScript files for server
 COPY tsconfig.server.json ./
 RUN npx tsc --project tsconfig.server.json
 
 # Verify the build
-RUN ls -la dist/server/
+RUN echo "=== Build output ===" && \
+    ls -la dist/server/
 
 # Verify the build
 RUN ls -la dist/server/
@@ -98,41 +109,27 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install uv (recommended installer)
 RUN pip install --no-cache-dir uv
 
-# Install Python dependencies in a single layer to minimize image size
-COPY server/python-ws/requirements.txt .
-RUN python -m pip install --upgrade pip && \
-    # Install system dependencies and Python packages
-    apt-get update && apt-get install -y --no-install-recommends wget && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Install Python requirements
-    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
-    # Create a directory for model files
-    mkdir -p /app/models && \
-    # Download the model files
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
-    # Create symlink for the executable
-    ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
-    # Verify installation
-    python -c "import kokoro_tts; print('kokoro-tts imported successfully')" && \
-    # Verify the executable is in PATH and show help
-    which kokoro-tts && \
-    kokoro-tts --help && \
-    # Clean up
-    rm -f requirements.txt
-
 # Set up application directory
 WORKDIR /app
 
-# Copy built files from builder
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/dist ./dist
-COPY --chown=node:node --from=builder /app/package*.json ./
-COPY --chown=node:node --from=builder /app/public ./public
+# Copy application files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
 
-# Ensure the server directory exists in the final image
-RUN mkdir -p /app/dist/server
+# Create Python TTS service directory
+RUN mkdir -p /app/python-tts
+
+# Copy Python TTS service files
+COPY --from=builder /app/server/python-tts/ /app/python-tts/
+
+# Install Python TTS service dependencies
+WORKDIR /app/python-tts
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy start script and make it executable
+COPY --from=builder /app/start-services.sh .
+RUN chmod +x /app/start-services.sh
 
 # Install production dependencies
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
