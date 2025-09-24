@@ -46,8 +46,23 @@ check_service() {
 
 # Start services in sequence
 start_services() {
+    # Activate Python virtual environment
+    if [ -f "/opt/venv/bin/activate" ]; then
+        log "Activating Python virtual environment..."
+        . /opt/venv/bin/activate
+    else
+        log "Warning: Python virtual environment not found at /opt/venv"
+    fi
+
+    # Set Python path
+    export PYTHONPATH="/app:/app/server:$PYTHONPATH"
+    
     # Start Python TTS service first
     log "Starting Python TTS service..."
+    
+    # Ensure the output directory exists
+    mkdir -p /app/logs
+    
     # Set Python path and environment variables
     export PYTHONPATH="/app:/app/server:$PYTHONPATH"
     export PATH="/opt/venv/bin:$PATH"

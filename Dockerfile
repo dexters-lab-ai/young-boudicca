@@ -1,16 +1,23 @@
 # ============================================
 # Build stage - Node.js setup
 # ============================================
-FROM node:20-alpine as node-builder
+FROM node:20 as node-builder
 
 # Install build dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
     gcc \
     git \
-    && rm -rf /var/cache/apk/*
+    python3-pip \
+    python3-setuptools \
+    pkg-config \
+    build-essential \
+    libusb-1.0-0-dev \
+    linux-libc-dev \
+    linux-headers-generic \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -19,8 +26,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY tsconfig*.json ./
 
-# Install dependencies
-RUN npm ci --no-audit --no-fund --unsafe-perm
+# Install dependencies with --ignore-scripts to prevent postinstall issues
+RUN npm config set unsafe-perm true && \
+    npm ci --no-audit --no-fund --ignore-scripts
 
 # Copy application code
 COPY . .
@@ -41,6 +49,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     espeak \
     libespeak-ng1 \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsndfile1 \
+    libportaudio2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
