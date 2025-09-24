@@ -68,14 +68,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1-dev \
     ffmpeg \
     libportaudio2 \
+    portaudio19-dev \
+    python3-pyaudio \
     python3-dev \
     espeak \
     libespeak1 \
     libespeak-ng1 \
     espeak-ng \
     libespeak-ng-dev \
-    python3-pip \
-    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
@@ -88,54 +88,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown -R node:node /home/node \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
+# Create and activate virtual environment with proper permissions
 ENV VIRTUAL_ENV=/opt/venv
+RUN python -m venv $VIRTUAL_ENV \
+    && chown -R node:node $VIRTUAL_ENV \
+    && chmod -R 755 $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install Python dependencies first (system-wide)
-RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip3 install --no-cache-dir \
-        fastapi==0.115.0 \
-        uvicorn[standard]==0.30.0 \
-        numpy==1.19.5 \
-        requests==2.26.0 \
-        websockets==10.0 \
-        python-dotenv==1.0.0 \
-        soundfile==0.13.0 \
-        sounddevice==0.5.1 \
-        python-multipart==0.0.6 \
-        pyaudio==0.2.14 \
-        kokoro-tts==2.3.0
+# Install uv (recommended installer)
+RUN pip install --no-cache-dir uv
 
-# Create virtual environment and copy packages
-RUN python3 -m venv $VIRTUAL_ENV && \
-    . $VIRTUAL_ENV/bin/activate && \
-    pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir \
-        fastapi==0.115.0 \
-        uvicorn[standard]==0.30.0 \
-        numpy==1.19.5 \
-        requests==2.26.0 \
-        websockets==10.0 \
-        python-dotenv==1.0.0 \
-        soundfile==0.13.0 \
-        sounddevice==0.5.1 \
-        python-multipart==0.0.6 \
-        pyaudio==0.2.14 \
-        kokoro-tts==2.3.0 && \
-    chown -R node:node $VIRTUAL_ENV && \
-    chmod -R 755 $VIRTUAL_ENV && \
-    ln -sf $VIRTUAL_ENV/bin/kokoro-tts /usr/local/bin/kokoro-tts
-
-ENV PATH="$VIRTUAL_ENV/bin:$PATH" \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH="/app"
-
-# Create models directory and download model files
-RUN mkdir -p /app/models \
-    && wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin \
-    && wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx \
-    && chown -R node:node /app/models \
-    && chmod 644 /app/models/*
+# Install Python dependencies in a single layer to minimize image size
+COPY server/python-ws/requirements.txt .
+RUN python -m pip install --upgrade pip && \
+    # Install system dependencies and Python packages
+    apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Install Python requirements
+    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
+    # Create a directory for model files
+    mkdir -p /app/models && \
+    # Download the model files
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
+    # Create symlink for the executable
+    ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
+    # Verify installation
+    python -c "import kokoro_tts; print('kokoro-tts imported successfully')" && \
+    # Verify the executable is in PATH and show help
+    which kokoro-tts && \
+    kokoro-tts --help && \
+    # Clean up
+    rm -f requirements.txt
 
 # Set up application directory
 WORKDIR /app
@@ -161,15 +146,13 @@ RUN mkdir -p /app/public/uploads \
 # Set environment variables
 ENV NODE_ENV=production \
     PORT=8787 \
-    PYTHONPATH="/app/server/python-ws:/app" \
-    PATH="/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/node_modules/.bin" \
+    PYTHONPATH=/app/server/python-ws \
+    PATH="/opt/venv/bin:/app/node_modules/.bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin \
-    KOKORO_TTS_BIN="/opt/venv/bin/kokoro-tts" \
-    ENABLE_TTS="true" \
-    DISABLE_TTS="false"
+    KOKORO_TTS_BIN="/opt/venv/bin/kokoro-tts"
 
 # Verify kokoro-tts installation
 RUN echo "=== Verifying kokoro-tts installation ===" && \
@@ -199,18 +182,21 @@ EXPOSE 3000 8787 8899
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD nc -z localhost 3000 && nc -z localhost 8787 && nc -z localhost 8899 || exit 1
 
+# Install bash if not present
+RUN apt-get update && apt-get install -y --no-install-recommends bash && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy and set up startup script
 COPY --chown=node:node start-services.sh /app/start-services.sh
 RUN chmod +x /app/start-services.sh && \
     # Ensure node user has access to the virtual environment
     chown -R node:node /opt/venv && \
-    chmod -R 755 /opt/venv
+    chmod -R 755 /opt/venv && \
+    # Ensure bash is used for the script
+    sed -i 's|^#!/bin/sh|#!/bin/bash|' /app/start-services.sh
 
 # Run as non-root user
 USER node
 
-# Install bash if not present
-RUN apt-get update && apt-get install -y --no-install-recommends bash && rm -rf /var/lib/apt/lists/*
-
-# Start the application using the startup script with bash
+# Start the application using bash to ensure proper shell features
 CMD ["bash", "/app/start-services.sh"]

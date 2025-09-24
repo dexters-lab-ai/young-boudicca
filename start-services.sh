@@ -1,29 +1,12 @@
 #!/bin/bash
-# Boudi AI Services Startup Script
-set -euo pipefail
+set -e
 
-# Set up colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Ensure we're using bash for better compatibility
+export SHELL=/bin/bash
 
 # Set up logging
 log() {
-    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-}
-
-success() {
-    log "${GREEN}✓ $1${NC}"
-}
-
-warn() {
-    log "${YELLOW}⚠ $1${NC}"
-}
-
-error() {
-    log "${RED}✗ $1${NC}" >&2
-    exit 1
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 # Check if a service is running
@@ -65,16 +48,17 @@ check_service() {
 start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
-    # Set up Python environment
-    export PYTHONPATH="/app:${PYTHONPATH:-}"
+    # Set Python path and environment variables
+    export PYTHONPATH="/app:$PYTHONPATH"
+    export PATH="/opt/venv/bin:$PATH"
     
     # Activate virtual environment
     if [ -f "/opt/venv/bin/activate" ]; then
-        log "Activating Python virtual environment..."
-        . /opt/venv/bin/activate || error "Failed to activate virtual environment"
-        success "Virtual environment activated"
+        # shellcheck source=/dev/null
+        . /opt/venv/bin/activate
     else
-        error "Virtual environment not found at /opt/venv"
+        log "Error: Virtual environment not found at /opt/venv/bin/activate"
+        exit 1
     fi
     
     # Set Python path and verify environment
@@ -91,27 +75,6 @@ start_services() {
     
     # Check if kokoro-tts is available via KOKORO_TTS_BIN or in PATH
     KOKORO_BIN="${KOKORO_TTS_BIN:-$(command -v kokoro-tts 2>/dev/null || echo '')}"
-    
-    # Debug: Show all python paths
-    log "Python module search paths:"
-    python -c "import sys; print('\n'.join(sys.path))" || true
-    
-    # Debug: Show if kokoro_tts is importable
-    log "Checking if kokoro_tts is importable..."
-    if ! python -c "import kokoro_tts" 2>/dev/null; then
-        error "Failed to import kokoro_tts Python module"
-    else
-        success "kokoro_tts module imported successfully"
-        
-        # Get module information
-        log "kokoro_tts module info:"
-        python -c "
-import kokoro_tts
-print(f'Module path: {kokoro_tts.__file__}')
-print(f'Version: {getattr(kokoro_tts, "__version__", "unknown")}')
-print(f'Model path: {getattr(kokoro_tts, "DEFAULT_MODEL_PATH", "Not set")}')
-print(f'Voices path: {getattr(kokoro_tts, "DEFAULT_VOICES_PATH", "Not set")}') " || true
-    fi
     
     if [ -n "$KOKORO_BIN" ] && [ -x "$KOKORO_BIN" ]; then
         log "kokoro-tts found at: $KOKORO_BIN"
