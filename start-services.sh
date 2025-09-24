@@ -62,15 +62,28 @@ start_services() {
     export KOKORO_VOICES_PATH="/app/models/voices-v1.0.bin"
     
     # Verify Python can find the server module
-    if ! python -c "import sys; sys.path.append('/app'); from server.python_ws import main" 2>&1; then
-        log "Trying alternative import path (python-ws instead of python_ws)..."
-        if ! python -c "import sys; sys.path.append('/app'); from server.python-ws import main" 2>&1; then
+    log "Checking Python module paths..."
+    log "Contents of /app:"
+    ls -la /app 2>&1 || true
+    
+    if [ -d "/app/server/python-ws" ]; then
+        log "Found /app/server/python-ws directory"
+        log "Contents of /app/server/python-ws:"
+        ls -la /app/server/python-ws/ 2>&1 || true
+        
+        # Try to import the module using the correct path
+        if python -c "import sys; sys.path.append('/app'); from server.python_ws import main" 2>/dev/null; then
+            log "Successfully imported server.python_ws"
+        elif python -c "import sys; sys.path.append('/app'); from server.python-ws import main" 2>/dev/null; then
+            log "Successfully imported server.python-ws"
+        else
             log "Error: Could not import server module. Python path:"
             python -c "import sys; print('\n'.join(sys.path))"
-            log "Contents of /app/server:"
-            ls -la /app/server/ 2>&1 || true
             exit 1
         fi
+    else
+        log "Error: /app/server/python-ws directory not found"
+        exit 1
     fi
     
     # Debug information
@@ -251,6 +264,15 @@ log "Python: $(python --version 2>&1 || echo 'Not available')"
 log "Node: $(node --version)"
 log "NPM: $(npm --version)"
 log "Current directory: $(pwd)"
+
+# Check if server directory exists
+if [ ! -d "/app/server" ]; then
+    log "Error: /app/server directory not found!"
+    log "Contents of /app:"
+    ls -la /app 2>&1 || true
+    log "\nPlease ensure the server files are properly copied to /app/server in the container"
+    exit 1
+fi
 
 # Start all services
 start_services
