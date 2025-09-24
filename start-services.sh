@@ -49,8 +49,10 @@ start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
     
-    # Set environment variables
-    export PYTHONPATH="/app:/app/server:$PYTHONPATH"
+    # Set environment variables and ensure we're in the right directory
+    cd /app
+    export PYTHONPATH="/app:/app/server:${PYTHONPATH:-}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] PYTHONPATH set to: $PYTHONPATH"
     export PATH="/opt/venv/bin:$PATH"
     export KOKORO_MODEL_PATH="/app/models/kokoro-v1.0.onnx"
     export KOKORO_VOICES_PATH="/app/models/voices-v1.0.bin"
