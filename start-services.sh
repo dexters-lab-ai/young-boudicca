@@ -51,10 +51,27 @@ start_services() {
     
     # Set environment variables
     cd /app
-    export PYTHONPATH="/app:${PYTHONPATH:-}"
+    
+    # Clean up and set Python path
+    unset PYTHONPATH  # Start with a clean slate
+    export PYTHONPATH="/app"  # Point to the app root
+    
+    # Set paths
     export PATH="/opt/venv/bin:$PATH"
     export KOKORO_MODEL_PATH="/app/models/kokoro-v1.0.onnx"
     export KOKORO_VOICES_PATH="/app/models/voices-v1.0.bin"
+    
+    # Verify Python can find the server module
+    if ! python -c "import sys; sys.path.append('/app'); from server.python_ws import main" 2>&1; then
+        log "Trying alternative import path (python-ws instead of python_ws)..."
+        if ! python -c "import sys; sys.path.append('/app'); from server.python-ws import main" 2>&1; then
+            log "Error: Could not import server module. Python path:"
+            python -c "import sys; print('\n'.join(sys.path))"
+            log "Contents of /app/server:"
+            ls -la /app/server/ 2>&1 || true
+            exit 1
+        fi
+    fi
     
     # Debug information
     log "=== Environment ==="
@@ -167,6 +184,14 @@ print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not se
     export PATH="/opt/venv/bin:$PATH"
     
     # Start the service in the background
+    log "Starting uvicorn with: python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899"
+    cd /app  # Make sure we're in the app root
+    
+    # Debug: Show files in server/python-ws
+    log "Contents of /app/server/python-ws:"
+    ls -la /app/server/python-ws/ 2>&1 || log "Could not list /app/server/python-ws/"
+    
+    # Start the service with the correct module path
     log "Starting uvicorn with: python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899"
     python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
