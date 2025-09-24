@@ -47,103 +47,36 @@ check_service() {
 # Start services in sequence
 start_services() {
     # Start Python TTS service first
-    log "=== Starting Python TTS Service ==="
+    log "Starting Python TTS service..."
+    # Set Python path and environment variables
+    export PYTHONPATH="/app:/app/server:$PYTHONPATH"
+    export PATH="/opt/venv/bin:$PATH"
     
-    # Set working directory
-    cd "$PYTHON_SERVICE_DIR"
-    
-    # Log environment and service files
-    log "Working directory: $(pwd)"
-    log "Environment variables:"
-    env | grep -E 'PATH|PYTHON|KOKORO' || true
-    
-    log "\nService files:"
-    ls -la .
-    
-    # Verify model files exist
-    if [ ! -f "$KOKORO_MODEL_PATH" ] || [ ! -f "$KOKORO_VOICES_PATH" ]; then
-        log "Error: Could not find model files in $PYTHON_SERVICE_DIR"
-        log "Contents of $PYTHON_SERVICE_DIR:"
-        ls -la "$PYTHON_SERVICE_DIR" 2>&1 || true
-        exit 1
-    fi
-    
-    log "\nModel files found:"
-    ls -l "$KOKORO_MODEL_PATH" "$KOKORO_VOICES_PATH"
-    
-    # Verify Python can find the server module
-    log "Checking Python module paths..."
-    log "Contents of /app:"
-    ls -la /app 2>&1 || true
-    
-    if [ -d "/app/server/python-ws" ]; then
-        log "Found /app/server/python-ws directory"
-        log "Contents of /app/server/python-ws:"
-        ls -la /app/server/python-ws/ 2>&1 || true
-        
-        # Try to import the module using the correct path
-        if python -c "import sys; sys.path.append('/app'); from server.python_ws import main" 2>/dev/null; then
-            log "Successfully imported server.python_ws"
-        elif python -c "import sys; sys.path.append('/app'); from server.python-ws import main" 2>/dev/null; then
-            log "Successfully imported server.python-ws"
-        else
-            log "Error: Could not import server module. Python path:"
-            python -c "import sys; print('\n'.join(sys.path))"
-            exit 1
-        fi
+    # Activate virtual environment
+    if [ -f "/opt/venv/bin/activate" ]; then
+        # shellcheck source=/dev/null
+        . /opt/venv/bin/activate
     else
-        log "Error: /app/server/python-ws directory not found"
+        log "Error: Virtual environment not found at /opt/venv/bin/activate"
         exit 1
     fi
     
-    # Debug information
-    log "=== Environment ==="
-    log "Working directory: $(pwd)"
-    log "PYTHONPATH: $PYTHONPATH"
-    log "PATH: $PATH"
-    log "Python: $(which python)"
-    log "Python version: $(python --version 2>&1 || echo 'Error getting Python version')"
-    log "Python modules path: $(python -c 'import sys; print("\n".join(sys.path))')"
-    
-    # Verify Python environment
-    log "=== Python Environment ==="
-    log "Python: $(which python)"
-    log "Python version: $(python --version 2>&1 || echo 'Error getting Python version')"
+    # Set Python path and verify environment
     log "Python path: $PYTHONPATH"
     python -c "import sys; print('Python sys.path:', sys.path)" || true
     
-    # Verify kokoro-tts installation
-    log "\n=== Verifying kokoro-tts ==="
+    # Verify kokoro-tts is available
+    log "=== Verifying kokoro-tts installation ==="
     log "Environment:"
-    log "VIRTUAL_ENV: ${VIRTUAL_ENV:-Not set}"
-    log "PYTHONPATH: $PYTHONPATH"
-    log "KOKORO_MODEL_PATH: ${KOKORO_MODEL_PATH:-Not set}"
-    log "KOKORO_VOICES_PATH: ${KOKORO_VOICES_PATH:-Not set}"
+    log "  PATH: $PATH"
+    log "  VIRTUAL_ENV: $VIRTUAL_ENV"
+    log "  Python: $(which python)"
+    log "  Python version: $(python --version 2>&1 || echo 'Not found')"
     
-    # Check if kokoro-tts is in PATH
-    KOKORO_TTS_CMD=$(which kokoro-tts 2>/dev/null || echo "kokoro-tts not found")
-    log "kokoro-tts binary: $KOKORO_TTS_CMD"
+    # Check if kokoro-tts is available via KOKORO_TTS_BIN or in PATH
+    KOKORO_BIN="${KOKORO_TTS_BIN:-$(command -v kokoro-tts 2>/dev/null || echo '')}"
     
-    # List available voices using the correct CLI command
-    log "\n=== Verifying Voice Listing ==="
-    log "Using model: $KOKORO_MODEL_PATH"
-    log "Using voices: $KOKORO_VOICES_PATH"
-    
-    # List available voices using the CLI
-    log "Listing available voices:"
-    kokoro-tts --help-voices 2>&1 || log "Failed to list voices. This might be expected if models are not loaded yet."
-    
-    # Verify model files
-    log "\n=== Verifying Model Files ==="
-    log "Model directory: /app/models"
-    ls -la /app/models/ 2>&1 || log "Error listing /app/models"
-    
-    [ -f "$KOKORO_MODEL_PATH" ] && log "Model file found: $KOKORO_MODEL_PATH" || log "Error: Model file not found"
-    [ -f "$KOKORO_VOICES_PATH" ] && log "Voices file found: $KOKORO_VOICES_PATH" || log "Error: Voices file not found"
-    
-    if [ -n "$KOKORO_TTS_CMD" ] && [ "$KOKORO_TTS_CMD" != "kokoro-tts not found" ]; then
-        log "kokoro-tts found at: $KOKORO_TTS_CMD"
-        export KOKORO_TTS_BIN="$KOKORO_TTS_CMD"
+    if [ -n "$KOKORO_BIN" ] && [ -x "$KOKORO_BIN" ]; then
         log "kokoro-tts found at: $KOKORO_BIN"
         export KOKORO_TTS_BIN="$KOKORO_BIN"
         export ENABLE_TTS=true
@@ -181,112 +114,28 @@ print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not se
         else
             log "kokoro_tts module imported successfully"
             
-            # Test voice listing with the CLI command
+            # Test voice listing with better error handling
             log "=== Testing Voice Listing ==="
-            log "Using model: $KOKORO_MODEL_PATH"
-            log "Using voices: $KOKORO_VOICES_PATH"
-            log "Listing available voices:"
-            if ! kokoro-tts --help-voices 2>&1; then
-                log "Warning: Failed to list voices with --help-voices. Trying alternative method..."
-                if ! kokoro-tts --help 2>&1 | grep -A 20 "Supported voices:"; then
-                    log "Error: Could not list voices. Check if kokoro-tts is properly installed."
-                    log "Model files in $(dirname "$KOKORO_MODEL_PATH"):"
-                    ls -la "$(dirname "$KOKORO_MODEL_PATH")" 2>/dev/null || true
-                fi
+            if ! python -c "\
+import kokoro_tts; \
+print('Using model:', '$KOKORO_MODEL_PATH'); \
+print('Using voices:', '$KOKORO_VOICES_PATH'); \
+print('Voices:'); \
+kokoro_tts.list_voices()" 2>&1; then
+                log "Warning: Failed to list voices. This might be expected if models are not loaded yet."
+                log "Model files in $(dirname "$KOKORO_MODEL_PATH"):"
+                ls -la "$(dirname "$KOKORO_MODEL_PATH")" 2>/dev/null || true
             fi
         fi
     fi
     
-    # Start the Python TTS service
-    log "\n=== Starting Python TTS Service ==="
-    cd /app
-    
-    # Set environment variables for the service
-    export PYTHONUNBUFFERED=1
-    export PYTHONPATH="/app"
-    export PATH="/opt/venv/bin:$PATH"
-    
-    # Start the service in the background
-    log "Starting uvicorn with: python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899"
-    cd /app  # Make sure we're in the app root
-    
-    # Debug: Show files in server/python-ws
-    log "Contents of /app/server/python-ws:"
-    ls -la /app/server/python-ws/ 2>&1 || log "Could not list /app/server/python-ws/"
-    
-    # Start the FastAPI app with detailed logging
-    log "\n=== Starting Uvicorn Server ==="
-    log "Working directory: $(pwd)"
-    log "Python path: $(python -c 'import sys; print("\n".join(sys.path))')"
-    log "Python version: $(python --version)"
-    log "Pip list:\n$(pip list 2>/dev/null || echo 'pip list failed')"
-    
-    # Check if the app module exists
-    if [ ! -f "app.py" ]; then
-        log "Error: app.py not found in $(pwd)"
-        log "Current directory contents:"
-        ls -la .
-        exit 1
-    fi
-
-    # Start the server in the background with debug logging
-    log "Starting Uvicorn with: python -m uvicorn app:app --host 0.0.0.0 --port 8899 --log-level debug"
-    python -m uvicorn app:app \
-        --host 0.0.0.0 \
-        --port 8899 \
-        --log-level debug \
-        --no-access-log \
-        --log-config /dev/null \
-        &> /tmp/uvicorn.log &
-    
-    PYTHON_PID=$!
-    log "Uvicorn started with PID: $PYTHON_PID"
-    
-    # Wait for the service to start with timeout
-    MAX_RETRIES=10
-    RETRY_COUNT=0
-    SERVICE_STARTED=0
-    
-    log "Waiting for Python TTS service to start..."
-    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        if ps -p $PYTHON_PID > /dev/null; then
-            # Check if the service is responding
-            if curl -s -f http://localhost:8899/health >/dev/null 2>&1; then
-                log "Python TTS service is up and running!"
-                SERVICE_STARTED=1
-                break
-            fi
-        else
-            log "Error: Python TTS process ($PYTHON_PID) is not running"
-            log "Uvicorn log output:"
-            cat /tmp/uvicorn.log 2>/dev/null || log "No log file found"
-            exit 1
-        fi
-        
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        log "Waiting for service to be ready... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-        sleep 3
-    done
-    
-    if [ $SERVICE_STARTED -eq 0 ]; then
-        log "Error: Python TTS service failed to start within time limit"
-        log "Last 50 lines of Uvicorn log:"
-        tail -n 50 /tmp/uvicorn.log 2>/dev/null || log "No log file found"
-        log "\nChecking port 8899:"
-        netstat -tuln | grep 8899 || true
-        log "\nProcess list:"
-        ps aux | grep uvicorn || true
-        exit 1
-    fi
-    
-    log "Python TTS service started successfully"
-    
-    # Check if the service is listening on the port
-    check_service 8899 "Python TTS" "/docs" || { 
-        log "Error: Python TTS service is not responding"; 
-        kill $PYTHON_PID 2>/dev/null; 
-        exit 1; 
-    }
+    # Start the Python TTS service with proper working directory and environment
+    cd /app/server/python-tts && \
+    KOKORO_MODEL_PATH="/app/models/kokoro-v1.0.onnx" \
+    KOKORO_VOICES_PATH="/app/models/voices-v1.0.bin" \
+    PYTHONUNBUFFERED=1 \
+    python -m uvicorn app:app --host 0.0.0.0 --port 8899 --workers 1 &  PYTHON_PID=$!
+    check_service 8899 "Python TTS" "/docs" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
 
     # Then start Node.js API server
     log "Starting Node.js API server..."
@@ -327,23 +176,6 @@ log "Python: $(python --version 2>&1 || echo 'Not available')"
 log "Node: $(node --version)"
 log "NPM: $(npm --version)"
 log "Current directory: $(pwd)"
-
-# Set Python TTS service directory
-PYTHON_SERVICE_DIR="/app/python-tts"
-
-export PYTHON_SERVICE_DIR
-log "Using Python service directory: $PYTHON_SERVICE_DIR"
-
-# Verify Python TTS service files exist
-if [ ! -d "$PYTHON_SERVICE_DIR" ]; then
-    log "Error: Python TTS service directory not found at $PYTHON_SERVICE_DIR"
-    log "Contents of /app:"
-    ls -la /app/ 2>&1 || true
-    exit 1
-fi
-
-log "Python TTS service files:"
-ls -la "$PYTHON_SERVICE_DIR" 2>&1 || true
 
 # Start all services
 start_services

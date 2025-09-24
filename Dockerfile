@@ -3,7 +3,7 @@
 # ============================================
 FROM node:20-alpine as builder
 
-# Install build dependencies with version pinning
+# Install build dependencies
 RUN apk add --no-cache \
     python3 \
     make \
@@ -15,67 +15,68 @@ RUN apk add --no-cache \
     libusb-dev \
     && rm -rf /var/cache/apk/*
 
-# Set working directory
+# Set working directory and permissions
 WORKDIR /app
-
-# Copy package files first for better caching
 COPY package.json package-lock.json ./
-
-# Install Node.js dependencies
 RUN npm ci --no-audit --no-fund --unsafe-perm
 
-# Install TypeScript globally
-RUN npm install -g typescript
-
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
-# Install Python TTS service dependencies
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir fastapi uvicorn kokoro-tts
+# Install TypeScript and build dependencies
+RUN npm install -g typescript
+
+# Install dependencies first
+RUN npm ci
 
 # Build the application
 RUN npm run build
 
-# Verify server files
-RUN mkdir -p /app/server/python-tts && \
-    echo "=== Server files in /app/server ===" && \
-    ls -la /app/server/
+# Create necessary directories
+RUN mkdir -p dist/server
+
+# Copy server files
+COPY server/ ./server/
 
 # Create server package.json for ES modules
-RUN mkdir -p /app/dist/server && \
-    echo '{"type": "module"}' > /app/dist/server/package.json
+RUN echo '{"type": "module"}' > ./dist/server/package.json
 
 # Copy and build TypeScript files for server
 COPY tsconfig.server.json ./
 RUN npx tsc --project tsconfig.server.json
 
 # Verify the build
-RUN echo "=== Build output ===" && \
-    ls -la dist/server/
+RUN ls -la dist/server/
+
+# Verify the build
+RUN ls -la dist/server/
 
 # ============================================
-# Final stage - Production
+# Production stage
 # ============================================
-FROM node:20-alpine
+FROM python:3.11-slim as runtime
 
-# Install runtime dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    gcc \
-    linux-headers \
-    udev \
-    eudev-dev \
-    libusb-dev \
-    portaudio-dev \
-    alsa-lib-dev \
-    && rm -rf /var/cache/apk/*
-
-# Install Python dependencies
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir fastapi uvicorn kokoro-tts
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    netcat-openbsd \
+    libudev-dev \
+    pkg-config \
+    libusb-1.0-0-dev \
+    portaudio19-dev \
+    libasound2-dev \
+    libsndfile1-dev \
+    ffmpeg \
+    libportaudio2 \
+    portaudio19-dev \
+    python3-pyaudio \
+    python3-dev \
+    espeak \
+    libespeak1 \
+    libespeak-ng1 \
+    espeak-ng \
+    libespeak-ng-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -97,27 +98,41 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install uv (recommended installer)
 RUN pip install --no-cache-dir uv
 
+# Install Python dependencies in a single layer to minimize image size
+COPY server/python-ws/requirements.txt .
+RUN python -m pip install --upgrade pip && \
+    # Install system dependencies and Python packages
+    apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Install Python requirements
+    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
+    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
+    # Create a directory for model files
+    mkdir -p /app/models && \
+    # Download the model files
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
+    # Create symlink for the executable
+    ln -s /opt/venv/bin/kokoro-tts /usr/local/bin/kokoro-tts && \
+    # Verify installation
+    python -c "import kokoro_tts; print('kokoro-tts imported successfully')" && \
+    # Verify the executable is in PATH and show help
+    which kokoro-tts && \
+    kokoro-tts --help && \
+    # Clean up
+    rm -f requirements.txt
+
 # Set up application directory
 WORKDIR /app
 
-# Copy application files
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+# Copy built files from builder
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/package*.json ./
+COPY --chown=node:node --from=builder /app/public ./public
 
-# Create Python TTS service directory
-RUN mkdir -p /app/python-tts
-
-# Copy Python TTS service files
-COPY --from=builder /app/server/python-tts/ /app/python-tts/
-
-# Install Python TTS service dependencies
-WORKDIR /app/python-tts
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy start script and make it executable
-COPY --from=builder /app/start-services.sh .
-RUN chmod +x /app/start-services.sh
+# Ensure the server directory exists in the final image
+RUN mkdir -p /app/dist/server
 
 # Install production dependencies
 RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
@@ -183,7 +198,5 @@ RUN chmod +x /app/start-services.sh && \
 # Run as non-root user
 USER node
 
-# Set environment variables and start the application
-ENV PYTHONPATH="/app:/app/server"
-WORKDIR /app
-CMD ["bash", "-c", "export PATH=/opt/venv/bin:$PATH && . /opt/venv/bin/activate && /app/start-services.sh"]
+# Start the application using bash to ensure proper shell features
+CMD ["bash", "/app/start-services.sh"]
