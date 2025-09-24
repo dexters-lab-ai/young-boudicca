@@ -75,41 +75,24 @@ start_services() {
     # Verify kokoro-tts installation
     log "\n=== Verifying kokoro-tts ==="
     log "Environment:"
-    log "  PATH: $PATH"
-    log "  VIRTUAL_ENV: ${VIRTUAL_ENV:-Not set}"
-    log "  PYTHONPATH: $PYTHONPATH"
+    log "VIRTUAL_ENV: ${VIRTUAL_ENV:-Not set}"
+    log "PYTHONPATH: $PYTHONPATH"
+    log "KOKORO_MODEL_PATH: ${KOKORO_MODEL_PATH:-Not set}"
+    log "KOKORO_VOICES_PATH: ${KOKORO_VOICES_PATH:-Not set}"
     
-    # Check kokoro-tts binary
-    KOKORO_BIN=$(command -v kokoro-tts 2>/dev/null || echo "kokoro-tts not found in PATH")
-    log "kokoro-tts binary: $KOKORO_BIN"
+    # Check if kokoro-tts is in PATH
+    KOKORO_TTS_CMD=$(which kokoro-tts 2>/dev/null || echo "kokoro-tts not found")
+    log "kokoro-tts binary: $KOKORO_TTS_CMD"
     
-    if [ -n "$KOKORO_BIN" ] && [ "$KOKORO_BIN" != "kokoro-tts not found in PATH" ]; then
-        log "kokoro-tts version: $($KOKORO_BIN --version 2>&1 || echo 'Error getting version')"
-    fi
+    # List available voices using the correct CLI command
+    log "\n=== Verifying Voice Listing ==="
+    log "Using model: $KOKORO_MODEL_PATH"
+    log "Using voices: $KOKORO_VOICES_PATH"
     
-    # Verify Python module
-    log "\n=== Verifying Python Module ==="
-    python -c "
-import sys
-print('Python sys.path:', sys.path)
-try:
-    import kokoro_tts
-    print('kokoro_tts module imported successfully')
-    print('Module path:', kokoro_tts.__file__)
-    print('Version:', getattr(kokoro_tts, '__version__', 'unknown'))
+    # List available voices using the CLI
+    log "Listing available voices:"
+    kokoro-tts --help-voices 2>&1 || log "Failed to list voices. This might be expected if models are not loaded yet."
     
-    # Test listing voices if available
-    if hasattr(kokoro_tts, 'list_voices'):
-        print('Voices:', kokoro_tts.list_voices())
-    else:
-        print('list_voices() not available in kokoro_tts module')
-except Exception as e:
-    print(f'Error importing kokoro_tts: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-" || log "Warning: Python module verification failed"
-
     # Verify model files
     log "\n=== Verifying Model Files ==="
     log "Model directory: /app/models"
@@ -118,7 +101,9 @@ except Exception as e:
     [ -f "$KOKORO_MODEL_PATH" ] && log "Model file found: $KOKORO_MODEL_PATH" || log "Error: Model file not found"
     [ -f "$KOKORO_VOICES_PATH" ] && log "Voices file found: $KOKORO_VOICES_PATH" || log "Error: Voices file not found"
     
-    if [ -n "$KOKORO_BIN" ] && [ -x "$KOKORO_BIN" ]; then
+    if [ -n "$KOKORO_TTS_CMD" ] && [ "$KOKORO_TTS_CMD" != "kokoro-tts not found" ]; then
+        log "kokoro-tts found at: $KOKORO_TTS_CMD"
+        export KOKORO_TTS_BIN="$KOKORO_TTS_CMD"
         log "kokoro-tts found at: $KOKORO_BIN"
         export KOKORO_TTS_BIN="$KOKORO_BIN"
         export ENABLE_TTS=true
@@ -156,25 +141,51 @@ print('Default voices path:', getattr(kokoro_tts, 'DEFAULT_VOICES_PATH', 'Not se
         else
             log "kokoro_tts module imported successfully"
             
-            # Test voice listing with better error handling
+            # Test voice listing with the CLI command
             log "=== Testing Voice Listing ==="
-            if ! python -c "\
-import kokoro_tts; \
-print('Using model:', '$KOKORO_MODEL_PATH'); \
-print('Using voices:', '$KOKORO_VOICES_PATH'); \
-print('Voices:'); \
-kokoro_tts.list_voices()" 2>&1; then
-                log "Warning: Failed to list voices. This might be expected if models are not loaded yet."
-                log "Model files in $(dirname "$KOKORO_MODEL_PATH"):"
-                ls -la "$(dirname "$KOKORO_MODEL_PATH")" 2>/dev/null || true
+            log "Using model: $KOKORO_MODEL_PATH"
+            log "Using voices: $KOKORO_VOICES_PATH"
+            log "Listing available voices:"
+            if ! kokoro-tts --help-voices 2>&1; then
+                log "Warning: Failed to list voices with --help-voices. Trying alternative method..."
+                if ! kokoro-tts --help 2>&1 | grep -A 20 "Supported voices:"; then
+                    log "Error: Could not list voices. Check if kokoro-tts is properly installed."
+                    log "Model files in $(dirname "$KOKORO_MODEL_PATH"):"
+                    ls -la "$(dirname "$KOKORO_MODEL_PATH")" 2>/dev/null || true
+                fi
             fi
         fi
     fi
     
-    # Start the service
-    cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+    # Start the Python TTS service
+    log "\n=== Starting Python TTS Service ==="
+    cd /app
+    
+    # Set environment variables for the service
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH="/app"
+    export PATH="/opt/venv/bin:$PATH"
+    
+    # Start the service in the background
+    log "Starting uvicorn with: python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899"
+    python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
-    check_service 8899 "Python TTS" "/docs" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
+    
+    # Give it a moment to start
+    sleep 5
+    
+    # Check if the service is running
+    if ! ps -p $PYTHON_PID > /dev/null; then
+        log "Error: Python TTS service failed to start"
+        exit 1
+    fi
+    
+    # Check if the service is listening on the port
+    check_service 8899 "Python TTS" "/docs" || { 
+        log "Error: Python TTS service is not responding"; 
+        kill $PYTHON_PID 2>/dev/null; 
+        exit 1; 
+    }
 
     # Then start Node.js API server
     log "Starting Node.js API server..."
