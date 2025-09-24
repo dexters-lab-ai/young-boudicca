@@ -68,14 +68,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1-dev \
     ffmpeg \
     libportaudio2 \
-    portaudio19-dev \
-    python3-pyaudio \
     python3-dev \
     espeak \
     libespeak1 \
     libespeak-ng1 \
     espeak-ng \
     libespeak-ng-dev \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
@@ -88,18 +88,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown -R node:node /home/node \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment with proper permissions
+# Create virtual environment
 ENV VIRTUAL_ENV=/opt/venv
 
-# Install Python dependencies and create virtual environment
-RUN python -m venv $VIRTUAL_ENV \
-    && . $VIRTUAL_ENV/bin/activate \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r /tmp/requirements.txt uvicorn[standard] \
-    && pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio \
-    && chown -R node:node $VIRTUAL_ENV \
-    && chmod -R 755 $VIRTUAL_ENV \
-    && ln -sf $VIRTUAL_ENV/bin/kokoro-tts /usr/local/bin/kokoro-tts
+# Install Python dependencies first (system-wide)
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip3 install --no-cache-dir \
+        fastapi==0.115.0 \
+        uvicorn[standard]==0.30.0 \
+        numpy==1.19.5 \
+        requests==2.26.0 \
+        websockets==10.0 \
+        python-dotenv==1.0.0 \
+        soundfile==0.13.0 \
+        sounddevice==0.5.1 \
+        python-multipart==0.0.6 \
+        pyaudio==0.2.14 \
+        kokoro-tts==2.3.0
+
+# Create virtual environment and copy packages
+RUN python3 -m venv $VIRTUAL_ENV && \
+    . $VIRTUAL_ENV/bin/activate && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+        fastapi==0.115.0 \
+        uvicorn[standard]==0.30.0 \
+        numpy==1.19.5 \
+        requests==2.26.0 \
+        websockets==10.0 \
+        python-dotenv==1.0.0 \
+        soundfile==0.13.0 \
+        sounddevice==0.5.1 \
+        python-multipart==0.0.6 \
+        pyaudio==0.2.14 \
+        kokoro-tts==2.3.0 && \
+    chown -R node:node $VIRTUAL_ENV && \
+    chmod -R 755 $VIRTUAL_ENV && \
+    ln -sf $VIRTUAL_ENV/bin/kokoro-tts /usr/local/bin/kokoro-tts
 
 ENV PATH="$VIRTUAL_ENV/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
