@@ -99,7 +99,10 @@ RUN pip install --no-cache-dir uv
 # Install Python dependencies in a single layer to minimize image size
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
-    # Install all requirements in one go to minimize layers
+    # Install system dependencies and Python packages
+    apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Install Python requirements
     pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
     pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
     # Create a directory for model files
