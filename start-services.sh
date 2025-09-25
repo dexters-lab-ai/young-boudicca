@@ -136,9 +136,14 @@ start_services() {
         exit 1
     }
 
-    # Add check for kokoro_server.py as appuser
+    # Remove su command and directly check file existence and readability
     log "Checking kokoro_server.py as appuser..."
-    su - appuser -c "if [ -f /app/server/python-tts/kokoro_server.py ]; then echo 'kokoro_server.py exists and is readable'; else echo 'ERROR: kokoro_server.py not found or not readable by appuser'; exit 1; fi"
+    if [ -r /app/server/python-tts/kokoro_server.py ]; then
+        log "kokoro_server.py exists and is readable by appuser"
+    else
+        log "ERROR: kokoro_server.py not found or not readable by appuser"
+        exit 1
+    fi
 
     if [ ! -f "kokoro_server.py" ]; then
         echo "FATAL: kokoro_server.py not found in $(pwd)"
