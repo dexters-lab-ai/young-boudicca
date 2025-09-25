@@ -192,13 +192,14 @@ async def startup_event():
         if not os.path.exists(voices_path):
             raise FileNotFoundError(f"Voices file not found: {voices_path}")
             
-        # Initialize tokenizer and model
-        logger.info("Initializing tokenizer...")
-        tokenizer = Tokenizer()
-        
+        # Initialize the Kokoro model
         logger.info("Initializing Kokoro model (this may take a moment)...")
         model_load_start = time.time()
-        app_globals['kokoro'] = Kokoro(model_path, voices_path, tokenizer=tokenizer)
+        
+        # Initialize Kokoro with just the model and voices path
+        # Note: The Tokenizer is now handled internally by the Kokoro class
+        app_globals['kokoro'] = Kokoro(model_path, voices_path)
+        
         model_load_time = time.time() - model_load_start
         
         logger.info(f"Model loaded in {model_load_time:.2f} seconds")
