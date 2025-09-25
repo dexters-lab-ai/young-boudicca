@@ -48,8 +48,8 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir "numpy>=2.0.2" && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Verify installation by trying to list voices instead of checking version
-RUN python3 -c "from kokoro_tts import list_voices; print('Kokoro TTS available')"
+# Verify Kokoro installation (using the correct import and a basic test)
+RUN python3 -c "from kokoro_onnx import Kokoro; from kokoro_tts import TextToSpeech; print('Kokoro packages available')"
 
 # Download model files
 RUN mkdir -p /app/models && \
