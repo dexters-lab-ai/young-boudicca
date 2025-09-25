@@ -99,19 +99,25 @@ async def main():
     print("[kokoro-server] Starting...", file=sys.stderr)
 
     # --- Model Loading ---
-    workdir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(workdir, "kokoro-v1.0.onnx")
-    voices_path = os.path.join(workdir, "voices-v1.0.bin")
-
+    # Check in /app/models first (Docker container path)
+    model_path = "/app/models/kokoro-v1.0.onnx"
+    voices_path = "/app/models/voices-v1.0.bin"
+    
+    # If not found, check in the local directory structure
     if not (os.path.exists(model_path) and os.path.exists(voices_path)):
-        parent_dir = os.path.abspath(os.path.join(workdir, '..'))
-        model_path_parent = os.path.join(parent_dir, "kokoro-v1.0.onnx")
-        voices_path_parent = os.path.join(parent_dir, "voices-v1.0.bin")
-        if os.path.exists(model_path_parent) and os.path.exists(voices_path_parent):
-            workdir, model_path, voices_path = parent_dir, model_path_parent, voices_path_parent
-        else:
-            print(f"[kokoro-server] Error: Model files not found. Checked in {workdir} and {parent_dir}", file=sys.stderr)
-            sys.exit(1)
+        workdir = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(workdir, "kokoro-v1.0.onnx")
+        voices_path = os.path.join(workdir, "voices-v1.0.bin")
+        
+        # If still not found, check one directory up
+        if not (os.path.exists(model_path) and os.path.exists(voices_path)):
+            parent_dir = os.path.abspath(os.path.join(workdir, '..'))
+            model_path = os.path.join(parent_dir, "kokoro-v1.0.onnx")
+            voices_path = os.path.join(parent_dir, "voices-v1.0.bin")
+            
+            if not (os.path.exists(model_path) and os.path.exists(voices_path)):
+                print(f"[kokoro-server] Error: Model files not found. Checked in /app/models/, {workdir}, and {parent_dir}", file=sys.stderr)
+                sys.exit(1)
 
     print(f"[kokoro-server] Loading models from: {workdir}", file=sys.stderr)
     try:

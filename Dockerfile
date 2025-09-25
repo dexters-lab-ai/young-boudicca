@@ -15,22 +15,40 @@ RUN apk add --no-cache \
     libusb-dev \
     && rm -rf /var/cache/apk/*
 
-# Set working directory and permissions
+# Set working directory
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund --unsafe-perm
 
-# Copy application code
-COPY . .
+# First copy only package files for better layer caching
+COPY --chown=node:node package.json package-lock.json ./
 
-# Install TypeScript and build dependencies
+# Install production dependencies
+RUN npm ci --only=production --no-audit --no-fund --unsafe-perm
+
+# Copy the rest of the application code
+COPY --chown=node:node . .
+
+# Ensure models directory exists with correct permissions
+RUN mkdir -p /app/models && \
+    chown -R node:node /app/models
+
+# Handle model files - copy from root to models directory if they exist in root
+RUN if [ -f "/app/kokoro-v1.0.onnx" ] && [ -f "/app/voices-v1.0.bin" ]; then \
+        echo "Copying model files from root to /app/models/" && \
+        cp /app/kokoro-v1.0.onnx /app/models/ && \
+        cp /app/voices-v1.0.bin /app/models/ && \
+        chown -R node:node /app/models; \
+    elif [ -f "/app/models/kokoro-v1.0.onnx" ] && [ -f "/app/models/voices-v1.0.bin" ]; then \
+        echo "Model files already in /app/models/"; \
+    else \
+        echo "WARNING: Model files not found in expected locations"; \
+    fi
+
+# Install TypeScript globally for building
 RUN npm install -g typescript
 
-# Install dependencies first
-RUN npm ci
-
-# Build the application
-RUN npm run build
+# Install dev dependencies and build
+RUN npm ci --include=dev && \
+    npm run build
 
 # Create necessary directories
 RUN mkdir -p dist/server
