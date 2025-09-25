@@ -84,24 +84,16 @@ async def get_voices():
 
 if __name__ == "__main__":
     logger.info("Starting Kokoro TTS server")
-    import uvicorn
-    port = int(os.getenv('PORT', 8899))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-    # List of possible model locations in order of preference
-    possible_paths = [
-        # Docker container paths
-        ("/app/models/kokoro-v1.0.onnx", "/app/models/voices-v1.0.bin"),
-        # Local paths
-        (
-            os.path.join(os.path.dirname(__file__), "kokoro-v1.0.onnx"),
-            os.path.join(os.path.dirname(__file__), "voices-v1.0.bin")
-        ),
-        # Parent directory
-        (
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "kokoro-v1.0.onnx"),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "voices-v1.0.bin")
-        )
-    ]
+    try:
+        import uvicorn
+        port = int(os.getenv('PORT', 8899))
+        host = "0.0.0.0"
+        logger.info(f"[kokoro-server] Starting server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", reload=False, workers=1)
+    except Exception as e:
+        logger.error(f"[kokoro-server] Failed to start server: {e}")
+        logger.exception(e)
+        sys.exit(1)
 
     model_path = None
     voices_path = None
@@ -219,10 +211,6 @@ if __name__ == "__main__":
         logger.error(f"[kokoro-server] Failed to start server: {e}")
         logger.exception(e)
         sys.exit(1)
-        # Parent directory
-        (os.path.join(os.path.dirname(os.path.dirname(__file__)), "kokoro-v1.0.onnx"),
-         os.path.join(os.path.dirname(os.path.dirname(__file__)), "voices-v1.0.bin"))
-    ]
 
     model_path = None
     voices_path = None
@@ -303,6 +291,18 @@ if __name__ == "__main__":
     async with tts_server, health_server:
         await asyncio.gather(tts_server.serve_forever(), health_server.serve_forever())
 
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("[kokoro-server] Shutting down.", file=sys.stderr)
+        await asyncio.gather(tts_server.serve_forever(), health_server.serve_forever())
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("[kokoro-server] Shutting down.", file=sys.stderr)
 if __name__ == "__main__":
     try:
         asyncio.run(main())
