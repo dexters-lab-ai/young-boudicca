@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from kokoro_onnx import Kokoro
 from kokoro_onnx.tokenizer import Tokenizer
 
-# Add current directory to Python path
+# Make sure the current directory is in Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)

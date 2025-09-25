@@ -299,3 +299,7 @@ log "Current directory: $(pwd)"
 
 # Start all services
 start_services
+
+# Start Python TTS service
+cd /app/server/python-tts
+PYTHONPATH=/app/server/python-tts uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 &

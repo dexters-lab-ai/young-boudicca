@@ -130,9 +130,9 @@ ENV NODE_ENV=production \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
 
-# Create non-root user
-RUN useradd -r -u 1001 -g root appuser
-RUN chown -R appuser:root /app && \
+# Create non-root user (using system UID range)
+RUN useradd -r -u 999 -g root appuser && \
+    chown -R appuser:root /app && \
     chmod -R g=u /app
 USER appuser
 
