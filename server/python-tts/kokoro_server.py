@@ -24,7 +24,7 @@ import traceback
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, status
+from fastapi import FastAPI, HTTPException, Request, WebSocket, status as http_status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from scipy.io.wavfile import write as write_wav
@@ -396,14 +396,14 @@ async def lifespan(app: FastAPI):
     await shutdown_event()
 
 # Health check endpoint
-@app.get("/health", status_code=200, response_model=Dict[str, Any])
+@app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring and load balancers"""
     kokoro_model = app_globals.get('kokoro')
     current_time = time.time()
     uptime = current_time - app_globals['start_time']
     
-    status = {
+    health_status = {
         "status": "ok" if kokoro_model else "error",
         "service": "kokoro-tts",
         "version": "1.0.0",
@@ -421,12 +421,14 @@ async def health_check():
     if kokoro_model:
         try:
             voices = kokoro_model.list_voices() if hasattr(kokoro_model, 'list_voices') else ["default"]
-            status["voices_available"] = len(voices)
+            health_status["voices_available"] = len(voices)
         except Exception as e:
             logger.error(f"[health] Error checking voices: {e}")
-            status["error"] = str(e)
+            health_status["error"] = str(e)
     
-    return status
+    # Return the appropriate status code based on health
+    status_code = http_status.HTTP_200_OK if kokoro_model else http_status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(content=health_status, status_code=status_code)
 
 async def main():
     """Main entry point for the TTS server"""
