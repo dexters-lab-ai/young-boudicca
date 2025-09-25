@@ -55,8 +55,14 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 logger.info(f"Added {current_dir} to Python path")
 
-# Create FastAPI app
-app = FastAPI(title="Kokoro TTS Server")
+# Create FastAPI app with lifespan management
+app = FastAPI(
+    title="Kokoro TTS Server",
+    description="High-performance Text-to-Speech service using Kokoro",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -65,6 +71,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Processing-Time"]
 )
 
 # Global state
@@ -391,13 +398,38 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await shutdown_event()
 
-# Update FastAPI app with lifespan
-app = FastAPI(
-    title="Kokoro TTS Server",
-    description="High-performance Text-to-Speech service using Kokoro",
-    version="1.0.0",
-    lifespan=lifespan
-)
+# Health check endpoint
+@app.get("/health", status_code=200, response_model=Dict[str, Any])
+async def health_check():
+    """Health check endpoint for monitoring and load balancers"""
+    kokoro_model = app_globals.get('kokoro')
+    current_time = time.time()
+    uptime = current_time - app_globals['start_time']
+    
+    status = {
+        "status": "ok" if kokoro_model else "error",
+        "service": "kokoro-tts",
+        "version": "1.0.0",
+        "uptime_seconds": round(uptime, 2),
+        "uptime_human": str(timedelta(seconds=int(uptime))),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "requests_processed": app_globals['requests_processed'],
+        "avg_processing_time": round(
+            app_globals['total_processing_time'] / app_globals['requests_processed'], 3
+        ) if app_globals['requests_processed'] > 0 else 0,
+        "model_loaded": kokoro_model is not None,
+        "voices_available": 0
+    }
+    
+    if kokoro_model:
+        try:
+            voices = kokoro_model.list_voices() if hasattr(kokoro_model, 'list_voices') else ["default"]
+            status["voices_available"] = len(voices)
+        except Exception as e:
+            logger.error(f"[health] Error checking voices: {e}")
+            status["error"] = str(e)
+    
+    return status
 
 async def main():
     """Main entry point for the TTS server"""
