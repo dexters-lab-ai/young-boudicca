@@ -50,6 +50,9 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
+# Ensure python source is available in the python-builder image so runtime can copy from it
+COPY server/python-tts /app/server/python-tts
+
 # Create and populate models directory
 RUN mkdir -p /app/models && \
     cd /app/models && \
@@ -114,7 +117,10 @@ COPY --from=frontend-builder /app/dist /app/dist
 
 # Copy built backend
 COPY --from=backend-builder /app/dist/server /app/dist/server
-COPY --from=backend-builder /app/server/python-tts /app/server/python-tts
+
+# Replace copy-from-backend/context with copy-from-python-builder to guarantee python sources are present
+COPY --from=python-builder /app/server/python-tts /app/server/python-tts
+
 COPY --from=backend-builder /app/package*.json /app/
 
 # Copy startup script
@@ -131,15 +137,6 @@ ENV NODE_ENV=production \
     PORT=8787 \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
-
-# Copy only Python source files and requirements
-# COPY server/python-tts/*.py /app/server/python-tts/
-# COPY server/python-tts/requirements.txt /app/server/python-tts/
-# Copy entire python-tts directory (ensures kokoro_server.py and any other files are included)
-COPY server/python-tts /app/server/python-tts
-
-# Create models directory and download model files
-# ...existing code...
 
 # Verify files
 RUN echo "=== Verifying files ===" && \

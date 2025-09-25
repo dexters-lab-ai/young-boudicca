@@ -1,103 +1,40 @@
-# Dependencies
-node_modules
-
-# Version control
+# Ignore VCS
 .git
 .gitignore
-.gitattributes
 
-# Build outputs
+# Node and build artifacts
+node_modules
 dist
 build
-out
-dist-ssr
-coverage
-*.lcov
-.next
-.nuxt
-.cache
-.parcel-cache
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-logs
-
-# Environment variables
 .env
-.env.*
-!.env.example
-SENTINEL/
+.env.* 
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
-*.swo
-*~
-
-# Testing
-__tests__
-test
-tests
-coverage
-.nyc_output
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.env
+# Local dev virtualenvs
 .venv
-env.bak/
-venv.bak/
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 
-# Node.js
-.npm
-.eslintcache
-
-# Misc
+# OS files
 .DS_Store
 Thumbs.db
-.vercel
-.netlify
 
-# Ignore nginx config (no longer used)
-nginx.conf
+# Logs and temp
+*.log
+tmp/
+temp/
 
-# Ignore local development files
-*.local
+# Large ML model files — keep out of build context (we download them in the Dockerfile)
+*.onnx
+*.bin
+/app/models
+models/
 
-# Ignore Python TTS module (handled in Dockerfile)
-server/python-tts/
-!server/python-tts/requirements.txt
+# Ignore editor files
+.vscode
+.idea
 
-# Ignore Docker-specific files
-Dockerfile*
-docker-compose*
-.dockerignore
-
-# Ignore IDE specific files
-.idea/
-*.sublime-*
-*.code-workspace
-
-# Docker ignore
-npm-debug.log
-*.pyc
-.pytest_cache
-.coverage
-htmlcov
+# Do NOT ignore server/python-tts or .py files — ensure kokoro_server.py is included
+# (explicitly allow python-tts by leaving it out of patterns above)
