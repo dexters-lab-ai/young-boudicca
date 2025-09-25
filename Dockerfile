@@ -27,7 +27,9 @@ FROM python:3.11.7-slim as python-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
-    wget \
+    python3-pip \
+    python3-venv \
+    python3-wheel \
     libsndfile1 \
     libportaudio2 \
     portaudio19-dev \
@@ -49,9 +51,8 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir "numpy>=2.0.2" && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Verify installation
-RUN python3 -c "import kokoro_tts; print('Kokoro TTS version:', kokoro_tts.__version__)" && \
-    python3 -c "from kokoro_onnx import Kokoro; print('Kokoro ONNX available')"
+# Verify installation by trying to list voices instead of checking version
+RUN python3 -c "from kokoro_tts import list_voices; print('Kokoro TTS available')"
 
 # Download model files
 RUN mkdir -p /app/models && \

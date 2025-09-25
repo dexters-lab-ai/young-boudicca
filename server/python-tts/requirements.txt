@@ -1,12 +1,12 @@
+numpy>=2.0.2
 kokoro-tts==2.3.0
+kokoro-onnx==0.3.9
 fastapi>=0.68.0,<1.0.0
 uvicorn[standard]>=0.15.0,<1.0.0
 websockets>=10.0,<16.0
 python-multipart>=0.0.5,<1.0.0
-numpy>=2.0.2
 scipy>=1.7.0
 soundfile>=0.10.3
-onnxruntime>=1.13.1
 ebooklib>=0.18
 beautifulsoup4>=4.12.3
 pymupdf>=1.25.4
