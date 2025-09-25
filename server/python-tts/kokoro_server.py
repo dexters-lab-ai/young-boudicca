@@ -99,19 +99,19 @@ async def synthesize_tts(request: Request):
     """Synthesize speech from text."""
     if kokoro is None:
         raise HTTPException(status_code=503, detail="Service not ready")
-    
+
     try:
         # Parse request body
         body = await request.json()
         text = body.get("text", "")
         voice = body.get("voice", "en-us_ljspeech")
         speed = float(body.get("speed", 1.0))
-        
+
         if not text:
             raise HTTPException(status_code=400, detail="Text is required")
-        
+
         logger.info(f"[kokoro-server] Processing request for text: '{text[:50]}...'")
-        
+
         # Create a generator for streaming the audio
         async def generate_audio():
             try:
@@ -127,7 +127,7 @@ async def synthesize_tts(request: Request):
                 logger.error(f"[kokoro-server] Error during audio generation: {e}")
                 logger.exception(e)
                 raise HTTPException(status_code=500, detail="Error generating audio")
-        
+
         # Return the audio stream
         return StreamingResponse(
             generate_audio(),
@@ -137,7 +137,7 @@ async def synthesize_tts(request: Request):
                 "X-Content-Type-Options": "nosniff"
             }
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
