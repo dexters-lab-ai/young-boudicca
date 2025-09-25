@@ -131,7 +131,14 @@ start_services() {
     ls -la /app/models/
 
     # Start Python TTS service with better error handling
-    cd /app/server/python-tts || exit 1
+    cd /app/server/python-tts || {
+        log "ERROR: Failed to change to Python TTS directory"
+        exit 1
+    }
+
+    # Add check for kokoro_server.py as appuser
+    log "Checking kokoro_server.py as appuser..."
+    su - appuser -c "if [ -f /app/server/python-tts/kokoro_server.py ]; then echo 'kokoro_server.py exists and is readable'; else echo 'ERROR: kokoro_server.py not found or not readable by appuser'; exit 1; fi"
 
     if [ ! -f "kokoro_server.py" ]; then
         echo "FATAL: kokoro_server.py not found in $(pwd)"
