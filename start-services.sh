@@ -48,8 +48,10 @@ check_service() {
 start_services() {
     # Start Python TTS service first
     log "Starting Python TTS service..."
-    # Set Python path and environment variables
-    export PYTHONPATH="/app:$PYTHONPATH"
+    
+    # Set up environment
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH="/app:/app/server:$PYTHONPATH"
     export PATH="/opt/venv/bin:$PATH"
     
     # Activate virtual environment
@@ -61,9 +63,34 @@ start_services() {
         exit 1
     fi
     
-    # Set Python path and verify environment
+    # Verify Python environment
+    log "=== Python Environment ==="
+    log "Python: $(which python)"
+    log "Python version: $(python --version 2>&1 || echo 'Not found')"
     log "Python path: $PYTHONPATH"
-    python -c "import sys; print('Python sys.path:', sys.path)" || true
+    log "Working directory: $(pwd)"
+    log "Contents of /app/server/python-tts: $(ls -la /app/server/python-tts 2>/dev/null || echo 'Not found')"
+    
+    # Start the Python server
+    cd /app/server/python-tts || { log "Failed to change to python-tts directory"; exit 1; }
+    
+    # Verify we can import the required modules
+    log "=== Verifying Python Imports ==="
+    python -c "
+import sys
+print(f'Python sys.path: {sys.path}')
+try:
+    from kokoro_onnx import Kokoro
+    from kokoro_onnx.config import SAMPLE_RATE
+    from kokoro_onnx.tokenizer import Tokenizer
+    print('Successfully imported Kokoro modules')
+    print(f'Kokoro version: {Kokoro.__version__ if hasattr(Kokoro, "__version__") else "unknown"}')
+except ImportError as e:
+    print(f'Error importing Kokoro: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+" || exit 1
     
     # Verify kokoro-tts is available
     log "=== Verifying kokoro-tts installation ==="
