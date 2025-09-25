@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "server": "node --import tsx server/index.ts",
     "start": "node --import tsx server/index.ts",
-    "python-ws": "python3 -m uvicorn server.python-tts.kokoro_server:app --host 127.0.0.1 --port 8899",
+    "python-ws": "cd server/python-tts && python3 -m uvicorn kokoro_server:app --host 127.0.0.1 --port 8899",
     "dev:all": "concurrently \"npm:server\" \"npm:dev\" \"npm:python-ws\"",
     "build:server": "tsc --project tsconfig.server.json"
   },

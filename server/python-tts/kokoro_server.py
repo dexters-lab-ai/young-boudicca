@@ -9,7 +9,13 @@ from fastapi.responses import StreamingResponse
 from kokoro_onnx import Kokoro
 from kokoro_onnx.tokenizer import Tokenizer
 
-app = FastAPI()
+# Add current directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Create FastAPI app
+app = FastAPI(title="Kokoro TTS Server")
 
 # Add CORS middleware
 app.add_middleware(
