@@ -53,8 +53,66 @@ RUN npm ci --include=dev && \
 # Create necessary directories
 RUN mkdir -p dist/server
 
-# Copy server files
-COPY server/ ./server/
+# Show current directory structure for debugging
+RUN echo "=== Current directory structure ===" && ls -la /app/
+
+# Create server directory structure
+RUN mkdir -p /app/server/python-tts
+
+# Copy Python TTS files directly to the target directory
+COPY --chown=node:node server/python-tts/ /app/server/python-tts/
+
+# Verify the files were copied correctly
+RUN echo "=== Python TTS files after copy ===" && \
+    ls -la /app/server/python-tts/ && \
+    [ -f "/app/server/python-tts/kokoro_server.py" ] || (echo "kokoro_server.py not found" && exit 1)
+
+# Set correct permissions
+RUN chown -R node:node /app/server/python-tts && \
+    chmod +x /app/server/python-tts/kokoro_server.py
+
+# Install system dependencies for Python and TTS
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    build-essential \
+    libsndfile1 \
+    libsndfile1-dev \
+    libopenblas-dev \
+    libatlas-base-dev \
+    gfortran \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate Python virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and setuptools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install Python dependencies
+COPY --chown=node:node server/python-tts/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
+
+# Install kokoro-tts package with specific version for compatibility
+RUN pip install --no-cache-dir kokoro-tts
+
+# Install additional required packages for the TTS service
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    python-multipart \
+    numpy \
+    scipy \
+    soundfile \
+    onnxruntime
+
+# Verify Python installation
+RUN python3 --version && \
+    pip --version && \
+    pip list | grep -E 'kokoro|fastapi|uvicorn|onnxruntime'
 
 # Create server package.json for ES modules
 RUN echo '{"type": "module"}' > ./dist/server/package.json

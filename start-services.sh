@@ -71,26 +71,75 @@ start_services() {
     log "Working directory: $(pwd)"
     log "Contents of /app/server/python-tts: $(ls -la /app/server/python-tts 2>/dev/null || echo 'Not found')"
     
-    # Start the Python server
+    # Start the Python TTS service
+    log "=== Starting Python TTS Service ==="
+    log "Current directory: $(pwd)"
+    log "Python path: $(which python3)"
+    log "Python version: $(python3 --version)"
+    
+    # Check if the Python TTS service directory exists
+    if [ ! -d "/app/server/python-tts" ]; then
+        log "Error: Python TTS service directory not found at /app/server/python-tts"
+        log "Current directory contents: $(ls -la /app/)"
+        log "Server directory contents: $(ls -la /app/server/ 2>/dev/null || echo 'No server directory')"
+        exit 1
+    fi
+    
+    # Change to the Python TTS service directory
     cd /app/server/python-tts || { log "Failed to change to python-tts directory"; exit 1; }
     
-    # Verify we can import the required modules
-    log "=== Verifying Python Imports ==="
-    python -c "
+    # Log the directory contents for debugging
+    log "Python TTS service directory contents: $(ls -la)"
+    
+    # Verify Python environment and dependencies
+    log "=== Verifying Python Environment ==="
+    python3 -c "
 import sys
 print(f'Python sys.path: {sys.path}')
 try:
+    import fastapi
+    import uvicorn
     from kokoro_onnx import Kokoro
     from kokoro_onnx.config import SAMPLE_RATE
     from kokoro_onnx.tokenizer import Tokenizer
-    print('Successfully imported Kokoro modules')
-    print(f'Kokoro version: {Kokoro.__version__ if hasattr(Kokoro, "__version__") else "unknown"}')
+    print('Successfully imported all required modules')
 except ImportError as e:
-    print(f'Error importing Kokoro: {e}')
+    print(f'Error importing module: {e}')
     import traceback
     traceback.print_exc()
     sys.exit(1)
-" || exit 1
+"
+    
+    # Start the Python TTS service in the background
+    log "Starting Python TTS FastAPI service on port 8899..."
+    nohup python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --workers 1 --log-level info > /app/tts-service.log 2>&1 &
+    TTS_PID=$!
+    
+    # Wait for the service to start
+    sleep 5
+    
+    # Check if the service is running
+    if ! ps -p $TTS_PID > /dev/null; then
+        log "Error: Failed to start Python TTS service"
+        log "TTS service log output:"
+        cat /app/tts-service.log
+        exit 1
+    fi
+    
+    # Verify the service is responding
+    log "Verifying TTS service health..."
+    if ! curl -s http://localhost:8899/health | grep -q '"status":"ok"'; then
+        log "Error: TTS service health check failed"
+        log "TTS service log output:"
+        cat /app/tts-service.log
+        exit 1
+    fi
+    
+    log "Python TTS service started successfully with PID $TTS_PID"
+    log "TTS service log is available at /app/tts-service.log"
+    log "TTS service health check: $(curl -s http://localhost:8899/health)"
+    
+    # Python imports were already verified above, no need to verify again
     
     # Verify kokoro-tts is available
     log "=== Verifying kokoro-tts installation ==="
