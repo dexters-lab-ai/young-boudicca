@@ -1,7 +1,7 @@
 # ============================================
 # Base stage for Python dependencies
 # ============================================
-FROM python:3.11-slim as python-base
+FROM python:3.11.7-slim as python-base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -9,12 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     python3-pip \
     python3-venv \
+    python3-wheel \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
 ENV VIRTUAL_ENV=/opt/venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Upgrade pip and install build tools
+RUN pip install --no-cache-dir pip==24.0 wheel setuptools
 
 # Install Python dependencies
 COPY server/python-tts/requirements.txt /tmp/

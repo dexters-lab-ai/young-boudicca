@@ -248,6 +248,10 @@ kokoro_tts.list_voices()" 2>&1; then
         fi
     fi
     
+    # Verify Python environment before starting services
+    echo "Verifying Python environment..."
+    python /app/server/python-tts/verify_env.py || exit 1
+
     # Start the service
     cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
     PYTHON_PID=$!
