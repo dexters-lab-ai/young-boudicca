@@ -33,28 +33,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     espeak-ng \
     libespeak-ng-dev \
     libffi-dev \
+    wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
-ENV VIRTUAL_ENV=/opt/venv
+# Create virtual environment and set environment variables
+ENV VIRTUAL_ENV=/opt/venv \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Copy requirements first
+# Install dependencies
 COPY server/python-tts/requirements.txt /tmp/requirements.txt
-
-# Install dependencies in the correct order
 RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir "numpy>=2.0.2" && \
+    pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Verify Kokoro installation (using the correct imports)
+# Verify Kokoro installation
 RUN python3 -c "from kokoro_onnx import Kokoro; from kokoro_onnx.tokenizer import Tokenizer; print('Kokoro packages available')"
 
-# Download model files
+# Download model files (with retry and verification)
 RUN mkdir -p /app/models && \
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
-    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx
+    for i in $(seq 1 3); do \
+        if wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+        wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
+        [ -s /app/models/voices-v1.0.bin ] && [ -s /app/models/kokoro-v1.0.onnx ]; then \
+            echo "Model files downloaded successfully"; \
+            break; \
+        else \
+            echo "Attempt $i failed, retrying..."; \
+            sleep 5; \
+        fi; \
+        if [ $i -eq 3 ]; then exit 1; fi; \
+    done
 
 # ============================================
 # Backend build stage

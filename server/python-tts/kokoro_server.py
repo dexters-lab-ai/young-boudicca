@@ -1,9 +1,13 @@
 """FastAPI server for Kokoro TTS"""
 import os
 import sys
-from fastapi import FastAPI, WebSocket
+import time
+import traceback
+from fastapi import FastAPI, WebSocket, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from kokoro_tts import TextToSpeech, list_voices
+from fastapi.responses import StreamingResponse
+from kokoro_onnx import Kokoro
+from kokoro_onnx.tokenizer import Tokenizer
 
 app = FastAPI()
 
@@ -17,14 +21,27 @@ app.add_middleware(
 )
 
 # Initialize TTS engine
-tts = None
+kokoro = None
 
 @app.on_event("startup")
 async def startup_event():
-    global tts
-    model_path = os.getenv('KOKORO_MODEL_PATH', '/app/models/kokoro-v1.0.onnx')
-    voices_path = os.getenv('KOKORO_VOICES_PATH', '/app/models/voices-v1.0.bin')
-    tts = TextToSpeech(model_path=model_path, voices_path=voices_path)
+    """Initialize TTS engine on startup"""
+    global kokoro
+    try:
+        model_path = os.getenv('KOKORO_MODEL_PATH', '/app/models/kokoro-v1.0.onnx')
+        voices_path = os.getenv('KOKORO_VOICES_PATH', '/app/models/voices-v1.0.bin')
+        
+        print(f"[kokoro-server] Initializing tokenizer...", file=sys.stderr)
+        tokenizer = Tokenizer()
+        
+        print(f"[kokoro-server] Loading model from: {model_path}", file=sys.stderr)
+        kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
+        print("[kokoro-server] TTS engine initialized successfully", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"[kokoro-server] Failed to initialize TTS engine: {e}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+        raise
 
 @app.websocket("/ws/tts")
 async def websocket_endpoint(websocket: WebSocket):
@@ -41,7 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
                 
             try:
-                audio_data = tts.synthesize(text, voice=voice)
+                audio_data = kokoro.synthesize(text, voice=voice)
                 await websocket.send_bytes(audio_data)
             except Exception as e:
                 await websocket.send_json({"error": str(e)})
@@ -55,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_voices():
     """Return list of available voices"""
     try:
-        voices = list_voices()
+        voices = kokoro.list_voices()
         return {"voices": voices}
     except Exception as e:
         return {"error": str(e)}

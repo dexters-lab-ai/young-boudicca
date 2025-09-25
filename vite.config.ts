@@ -15,27 +15,30 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: true,
         sourcemap: !isProduction,
         minify: isProduction ? 'esbuild' : false,
+        chunkSizeWarningLimit: 1000,
         rollupOptions: {
-          external: ['react', 'react-dom', 'react-router-dom'],
           output: {
-            globals: {
-              'react': 'React',
-              'react-dom': 'ReactDOM',
-              'react-router-dom': 'ReactRouterDOM',
-            },
-            manualChunks: (id) => {
-              if (id.includes('node_modules/three') || id.includes('@react-three')) {
-                return 'three';
-              }
-              if (id.includes('@solana/')) {
-                return 'solana';
-              }
-              if (id.includes('node_modules')) {
-                return 'vendor';
-              }
-            },
-          },
-        },
+            manualChunks: {
+              vendor: [
+                'react',
+                'react-dom',
+                'react-router-dom'
+              ],
+              three: [
+                'three',
+                '@react-three/fiber',
+                '@react-three/drei'
+              ],
+              solana: [
+                '@solana/web3.js',
+                '@solana/wallet-adapter-base',
+                '@solana/wallet-adapter-react',
+                '@solana/wallet-adapter-react-ui',
+                '@solana/wallet-adapter-wallets'
+              ]
+            }
+          }
+        }
       },
       server: {
         host: true,
