@@ -94,3 +94,10 @@ docker-compose*
 .idea/
 *.sublime-*
 *.code-workspace
+
+# Docker ignore
+npm-debug.log
+*.pyc
+.pytest_cache
+.coverage
+htmlcov

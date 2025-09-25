@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     python3-wheel \
+    libsndfile1 \
+    wget \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
@@ -18,21 +21,16 @@ RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Upgrade pip and install build tools
-RUN pip install --no-cache-dir pip==24.0 wheel setuptools
+RUN pip install --no-cache-dir -U pip setuptools wheel
 
 # Install Python dependencies
 COPY server/python-tts/requirements.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
-    pip install --no-cache-dir \
-    "kokoro-tts==2.3.0" \
-    "fastapi<1.0.0" \
-    "uvicorn[standard]<1.0.0" \
-    "websockets<16.0" \
-    "python-multipart<1.0.0" \
-    "numpy<2.0.0" \
-    "scipy<2.0.0" \
-    "soundfile<1.0.0" \
-    "onnxruntime-cpu>=1.8.0,<1.9.0"
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Download model files
+RUN mkdir -p /app/models && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx
 
 # ============================================
 # Build stage - Node.js setup
