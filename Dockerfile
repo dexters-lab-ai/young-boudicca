@@ -142,3 +142,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD nc -z localhost 3000 && nc -z localhost 8787 && nc -z localhost 8899
 
 CMD ["./start-services.sh"]
+
+# Copy Python TTS files with clear logging
+RUN echo "=== Copying Python TTS files ===" && \
+    ls -la /app/server/python-tts/ || true && \
+    mkdir -p /app/server/python-tts && \
+    echo "Directory created: /app/server/python-tts"
+
+COPY server/python-tts/*.py /app/server/python-tts/
+RUN echo "=== Python TTS files copied ===" && \
+    ls -la /app/server/python-tts/

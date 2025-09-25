@@ -1,18 +1,17 @@
 """FastAPI server for Kokoro TTS"""
 import os
 import sys
-import time
-import traceback
-from fastapi import FastAPI, WebSocket, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from kokoro_onnx import Kokoro
-from kokoro_onnx.tokenizer import Tokenizer
+import logging
 
-# Make sure the current directory is in Python path
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Add the current directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
+logger.info(f"Added {current_dir} to Python path")
 
 # Create FastAPI app
 app = FastAPI(title="Kokoro TTS Server")
@@ -37,16 +36,16 @@ async def startup_event():
         model_path = os.getenv('KOKORO_MODEL_PATH', '/app/models/kokoro-v1.0.onnx')
         voices_path = os.getenv('KOKORO_VOICES_PATH', '/app/models/voices-v1.0.bin')
         
-        print(f"[kokoro-server] Initializing tokenizer...", file=sys.stderr)
+        logger.info(f"[kokoro-server] Initializing tokenizer...")
         tokenizer = Tokenizer()
         
-        print(f"[kokoro-server] Loading model from: {model_path}", file=sys.stderr)
+        logger.info(f"[kokoro-server] Loading model from: {model_path}")
         kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
-        print("[kokoro-server] TTS engine initialized successfully", file=sys.stderr)
+        logger.info("[kokoro-server] TTS engine initialized successfully")
         
     except Exception as e:
-        print(f"[kokoro-server] Failed to initialize TTS engine: {e}", file=sys.stderr)
-        print(traceback.format_exc(), file=sys.stderr)
+        logger.error(f"[kokoro-server] Failed to initialize TTS engine: {e}")
+        logger.exception(e)
         raise
 
 @app.websocket("/ws/tts")
@@ -70,7 +69,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"error": str(e)})
                 
     except Exception as e:
-        print(f"WebSocket error: {e}", file=sys.stderr)
+        logger.error(f"WebSocket error: {e}")
     finally:
         await websocket.close()
 
@@ -84,6 +83,7 @@ async def get_voices():
         return {"error": str(e)}
 
 if __name__ == "__main__":
+    logger.info("Starting Kokoro TTS server")
     import uvicorn
     port = int(os.getenv('PORT', 8899))
     uvicorn.run(app, host="0.0.0.0", port=port)
@@ -111,42 +111,42 @@ if __name__ == "__main__":
         if os.path.exists(mp) and os.path.exists(vp):
             model_path = os.path.abspath(mp)
             voices_path = os.path.abspath(vp)
-            print(f"[kokoro-server] Found model files at: {model_path}", file=sys.stderr)
+            logger.info(f"[kokoro-server] Found model files at: {model_path}")
             break
     
     if not model_path or not voices_path:
         error_msg = "[kokoro-server] ERROR: Could not find model files in any of these locations:\n"
         for i, (mp, vp) in enumerate(possible_paths):
             error_msg += f"  {i+1}. {mp}\n     {vp}\n"
-        print(error_msg, file=sys.stderr)
+        logger.error(error_msg)
         raise RuntimeError("Model files not found. Check server logs for details.")
 
-    print(f"[kokoro-server] Loading model from: {model_path}", file=sys.stderr)
-    print(f"[kokoro-server] Loading voices from: {voices_path}", file=sys.stderr)
+    logger.info(f"[kokoro-server] Loading model from: {model_path}")
+    logger.info(f"[kokoro-server] Loading voices from: {voices_path}")
     
     try:
         # Initialize tokenizer and model
-        print("[kokoro-server] Initializing tokenizer...", file=sys.stderr)
+        logger.info("[kokoro-server] Initializing tokenizer...")
         tokenizer = Tokenizer()
         
-        print("[kokoro-server] Loading Kokoro model (this may take a moment)...", file=sys.stderr)
+        logger.info("[kokoro-server] Loading Kokoro model (this may take a moment)...")
         start_time = time.time()
         kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
         load_time = time.time() - start_time
         
-        print(f"[kokoro-server] Model loaded successfully in {load_time:.2f} seconds", file=sys.stderr)
+        logger.info(f"[kokoro-server] Model loaded successfully in {load_time:.2f} seconds")
         
         # Verify model is working by getting a voice list
         try:
             voice_list = kokoro.list_voices() if hasattr(kokoro, 'list_voices') else ["default"]
-            print(f"[kokoro-server] Available voices: {voice_list}", file=sys.stderr)
+            logger.info(f"[kokoro-server] Available voices: {voice_list}")
         except Exception as e:
-            print(f"[kokoro-server] Warning: Could not list voices - {e}", file=sys.stderr)
+            logger.warning(f"[kokoro-server] Warning: Could not list voices - {e}")
     
     except Exception as e:
         error_msg = f"[kokoro-server] FATAL: Failed to initialize Kokoro model: {str(e)}"
-        print(error_msg, file=sys.stderr)
-        print(traceback.format_exc(), file=sys.stderr)
+        logger.error(error_msg)
+        logger.exception(e)
         raise RuntimeError("Failed to initialize Kokoro model. Check server logs for details.")
 
 @app.get("/health")
@@ -172,7 +172,7 @@ async def synthesize_tts(request: Request):
         if not text:
             raise HTTPException(status_code=400, detail="Text is required")
         
-        print(f"[kokoro-server] Processing request for text: '{text[:50]}...'", file=sys.stderr)
+        logger.info(f"[kokoro-server] Processing request for text: '{text[:50]}...'")
         
         # Create a generator for streaming the audio
         async def generate_audio():
@@ -186,8 +186,8 @@ async def synthesize_tts(request: Request):
                 ):
                     yield samples.tobytes()
             except Exception as e:
-                print(f"[kokoro-server] Error during audio generation: {e}", file=sys.stderr)
-                print(traceback.format_exc(), file=sys.stderr)
+                logger.error(f"[kokoro-server] Error during audio generation: {e}")
+                logger.exception(e)
                 raise HTTPException(status_code=500, detail="Error generating audio")
         
         # Return the audio stream
@@ -203,29 +203,22 @@ async def synthesize_tts(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[kokoro-server] Error in /synthesize endpoint: {e}", file=sys.stderr)
-        print(traceback.format_exc(), file=sys.stderr)
+        logger.error(f"[kokoro-server] Error in /synthesize endpoint: {e}")
+        logger.exception(e)
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    """Run the FastAPI application directly if this file is executed."""
-    port = int(os.environ.get("PORT", 8899))
-    host = os.environ.get("HOST", "0.0.0.0")
-    
-    print(f"[kokoro-server] Starting server on {host}:{port}", file=sys.stderr)
-    uvicorn.run(
-        "kokoro_server:app",
-        host=host,
-        port=port,
-        log_level="info",
-        reload=False,
-        workers=1
-    )
-        # Docker container paths
-        ("/app/models/kokoro-v1.0.onnx", "/app/models/voices-v1.0.bin"),
-        # Local development paths
-        (os.path.join(os.path.dirname(__file__), "kokoro-v1.0.onnx"),
-         os.path.join(os.path.dirname(__file__), "voices-v1.0.bin")),
+    logger.info("Starting Kokoro TTS server")
+    try:
+        import uvicorn
+        port = int(os.getenv('PORT', 8899))
+        host = "0.0.0.0"
+        logger.info(f"[kokoro-server] Starting server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", reload=False, workers=1)
+    except Exception as e:
+        logger.error(f"[kokoro-server] Failed to start server: {e}")
+        logger.exception(e)
+        sys.exit(1)
         # Parent directory
         (os.path.join(os.path.dirname(os.path.dirname(__file__)), "kokoro-v1.0.onnx"),
          os.path.join(os.path.dirname(os.path.dirname(__file__)), "voices-v1.0.bin"))
@@ -308,6 +301,13 @@ if __name__ == "__main__":
         sys.exit(1)
 
     async with tts_server, health_server:
+        await asyncio.gather(tts_server.serve_forever(), health_server.serve_forever())
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("[kokoro-server] Shutting down.", file=sys.stderr)
         await asyncio.gather(tts_server.serve_forever(), health_server.serve_forever())
 
 if __name__ == "__main__":
