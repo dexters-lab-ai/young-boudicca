@@ -50,7 +50,24 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Verify Kokoro installation
+# Create and populate models directory
+RUN mkdir -p /app/models && \
+    cd /app/models && \
+    echo "Downloading model files..." && \
+    for i in $(seq 1 3); do \
+        if wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin && \
+           wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx && \
+           [ -s voices-v1.0.bin ] && [ -s kokoro-v1.0.onnx ]; then \
+            echo "Model files downloaded successfully"; \
+            break; \
+        else \
+            echo "Attempt $i failed, retrying..."; \
+            sleep 5; \
+        fi; \
+        if [ $i -eq 3 ]; then exit 1; fi; \
+    done
+
+# Verify Kokoro installation with downloaded models
 RUN python3 -c "from kokoro_onnx import Kokoro; from kokoro_onnx.tokenizer import Tokenizer; print('Kokoro packages available')"
 
 # ============================================
@@ -119,24 +136,7 @@ ENV NODE_ENV=production \
 COPY server/python-tts/*.py /app/server/python-tts/
 COPY server/python-tts/requirements.txt /app/server/python-tts/
 
-# Create models directory and download model files
-RUN mkdir -p /app/models && \
-    cd /app/models && \
-    echo "Downloading model files..." && \
-    for i in $(seq 1 3); do \
-        if wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin && \
-           wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx && \
-           [ -s voices-v1.0.bin ] && [ -s kokoro-v1.0.onnx ]; then \
-            echo "Model files downloaded successfully"; \
-            break; \
-        else \
-            echo "Attempt $i failed, retrying..."; \
-            sleep 5; \
-        fi; \
-        if [ $i -eq 3 ]; then exit 1; fi; \
-    done
-
-# Verify files
+# Verify files after copy
 RUN echo "=== Verifying files ===" && \
     echo "Python files:" && \
     ls -la /app/server/python-tts/ && \
