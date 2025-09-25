@@ -427,7 +427,7 @@ async def health_check():
             health_status["error"] = str(e)
     
     # Return the appropriate status code based on health
-    status_code = http_status.HTTP_200_OK if kokoro_model else http_status.HTTP_503_SERVICE_UNAVAILABLE
+    status_code = 200 if kokoro_model else 503
     return JSONResponse(content=health_status, status_code=status_code)
 
 async def main():
