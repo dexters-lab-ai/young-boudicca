@@ -5,8 +5,8 @@ FROM node:20-alpine as builder
 
 # Install build dependencies
 RUN apk add --no-cache \
-    python3 \
-    python3-dev \
+    python3=~3.11 \
+    python3-dev=~3.11 \
     py3-pip \
     make \
     g++ \
@@ -84,10 +84,10 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && \
     uvicorn[standard] \
     websockets \
     python-multipart \
-    numpy \
-    scipy \
+    "numpy<2.0.0" \
+    "scipy<2.0.0" \
     soundfile \
-    onnxruntime
+    "onnxruntime>=1.8.0,<1.9.0"
 
 # Ensure model files are downloaded and in the correct location
 RUN mkdir -p /app/models && \
@@ -172,7 +172,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1-dev \
     ffmpeg \
     libportaudio2 \
-    portaudio19-dev \
     python3-pyaudio \
     python3-dev \
     espeak \
@@ -180,6 +179,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libespeak-ng1 \
     espeak-ng \
     libespeak-ng-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 and create node user
@@ -205,12 +205,16 @@ RUN pip install --no-cache-dir uv
 # Install Python dependencies in a single layer to minimize image size
 COPY server/python-ws/requirements.txt .
 RUN python -m pip install --upgrade pip && \
-    # Install system dependencies and Python packages
-    apt-get update && apt-get install -y --no-install-recommends wget && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Install Python requirements
-    pip install --no-cache-dir -r requirements.txt uvicorn[standard] && \
-    pip install --no-cache-dir kokoro-tts sounddevice numpy pyaudio && \
+    pip install --no-cache-dir \
+        kokoro-tts==2.3.0 \
+        fastapi \
+        uvicorn[standard] \
+        websockets \
+        python-multipart \
+        "numpy<2.0.0" \
+        "scipy<2.0.0" \
+        soundfile \
+        "onnxruntime>=1.8.0,<1.9.0" && \
     # Create a directory for model files
     mkdir -p /app/models && \
     # Download the model files
