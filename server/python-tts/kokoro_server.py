@@ -2,6 +2,11 @@
 import os
 import sys
 import logging
+import asyncio
+from fastapi import FastAPI, WebSocket, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from your_kokoro_module import Kokoro, Tokenizer  # Replace with actual import
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -82,65 +87,6 @@ async def get_voices():
     except Exception as e:
         return {"error": str(e)}
 
-if __name__ == "__main__":
-    logger.info("Starting Kokoro TTS server")
-    try:
-        import uvicorn
-        port = int(os.getenv('PORT', 8899))
-        host = "0.0.0.0"
-        logger.info(f"[kokoro-server] Starting server on {host}:{port}")
-        uvicorn.run(app, host=host, port=port, log_level="info", reload=False, workers=1)
-    except Exception as e:
-        logger.error(f"[kokoro-server] Failed to start server: {e}")
-        logger.exception(e)
-        sys.exit(1)
-
-    model_path = None
-    voices_path = None
-    
-    # Find the first valid pair of model files
-    for mp, vp in possible_paths:
-        if os.path.exists(mp) and os.path.exists(vp):
-            model_path = os.path.abspath(mp)
-            voices_path = os.path.abspath(vp)
-            logger.info(f"[kokoro-server] Found model files at: {model_path}")
-            break
-    
-    if not model_path or not voices_path:
-        error_msg = "[kokoro-server] ERROR: Could not find model files in any of these locations:\n"
-        for i, (mp, vp) in enumerate(possible_paths):
-            error_msg += f"  {i+1}. {mp}\n     {vp}\n"
-        logger.error(error_msg)
-        raise RuntimeError("Model files not found. Check server logs for details.")
-
-    logger.info(f"[kokoro-server] Loading model from: {model_path}")
-    logger.info(f"[kokoro-server] Loading voices from: {voices_path}")
-    
-    try:
-        # Initialize tokenizer and model
-        logger.info("[kokoro-server] Initializing tokenizer...")
-        tokenizer = Tokenizer()
-        
-        logger.info("[kokoro-server] Loading Kokoro model (this may take a moment)...")
-        start_time = time.time()
-        kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
-        load_time = time.time() - start_time
-        
-        logger.info(f"[kokoro-server] Model loaded successfully in {load_time:.2f} seconds")
-        
-        # Verify model is working by getting a voice list
-        try:
-            voice_list = kokoro.list_voices() if hasattr(kokoro, 'list_voices') else ["default"]
-            logger.info(f"[kokoro-server] Available voices: {voice_list}")
-        except Exception as e:
-            logger.warning(f"[kokoro-server] Warning: Could not list voices - {e}")
-    
-    except Exception as e:
-        error_msg = f"[kokoro-server] FATAL: Failed to initialize Kokoro model: {str(e)}"
-        logger.error(error_msg)
-        logger.exception(e)
-        raise RuntimeError("Failed to initialize Kokoro model. Check server logs for details.")
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -160,6 +106,60 @@ async def synthesize_tts(request: Request):
         text = body.get("text", "")
         voice = body.get("voice", "en-us_ljspeech")
         speed = float(body.get("speed", 1.0))
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text is required")
+        
+        logger.info(f"[kokoro-server] Processing request for text: '{text[:50]}...'")
+        
+        # Create a generator for streaming the audio
+        async def generate_audio():
+            try:
+                async for samples, _ in kokoro.create_stream(
+                    text=text,
+                    voice=voice,
+                    speed=speed,
+                    lang=voice.split('_')[0] if '_' in voice else 'en-us',
+                    trim=False
+                ):
+                    yield samples.tobytes()
+            except Exception as e:
+                logger.error(f"[kokoro-server] Error during audio generation: {e}")
+                logger.exception(e)
+                raise HTTPException(status_code=500, detail="Error generating audio")
+        
+        # Return the audio stream
+        return StreamingResponse(
+            generate_audio(),
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": "attachment; filename=speech.wav",
+                "X-Content-Type-Options": "nosniff"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[kokoro-server] Error in /synthesize endpoint: {e}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def main():
+    logger.info("Starting Kokoro TTS server")
+    try:
+        import uvicorn
+        port = int(os.getenv('PORT', 8899))
+        host = "0.0.0.0"
+        logger.info(f"[kokoro-server] Starting server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", reload=False, workers=1)
+    except Exception as e:
+        logger.error(f"[kokoro-server] Failed to start server: {e}")
+        logger.exception(e)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    asyncio.run(main())
         
         if not text:
             raise HTTPException(status_code=400, detail="Text is required")
