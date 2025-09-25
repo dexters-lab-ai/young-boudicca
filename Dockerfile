@@ -6,6 +6,8 @@ FROM node:20-alpine as builder
 # Install build dependencies
 RUN apk add --no-cache \
     python3 \
+    python3-dev \
+    py3-pip \
     make \
     g++ \
     gcc \
@@ -13,7 +15,18 @@ RUN apk add --no-cache \
     udev \
     eudev-dev \
     libusb-dev \
+    wget \
     && rm -rf /var/cache/apk/*
+
+# Create Python virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Fix pip installation and upgrade
+RUN wget https://bootstrap.pypa.io/get-pip.py && \
+    python3 get-pip.py && \
+    rm get-pip.py && \
+    pip3 install --no-cache-dir --upgrade pip setuptools wheel
 
 # Set working directory
 WORKDIR /app
@@ -63,9 +76,18 @@ RUN mkdir -p /app/server/python-tts
 COPY --chown=node:node server/python-tts/ /app/server/python-tts/
 
 # Install Python dependencies for TTS server
-RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/server/python-tts/requirements.txt && \
-    pip install --no-cache-dir kokoro-tts==2.3.0 fastapi uvicorn[standard] websockets
+COPY server/python-tts/requirements.txt /tmp/
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && \
+    pip3 install --no-cache-dir \
+    kokoro-tts==2.3.0 \
+    fastapi \
+    uvicorn[standard] \
+    websockets \
+    python-multipart \
+    numpy \
+    scipy \
+    soundfile \
+    onnxruntime
 
 # Ensure model files are downloaded and in the correct location
 RUN mkdir -p /app/models && \
