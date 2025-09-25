@@ -62,10 +62,16 @@ RUN mkdir -p /app/server/python-tts
 # Copy Python TTS files directly to the target directory
 COPY --chown=node:node server/python-tts/ /app/server/python-tts/
 
-# Verify the files were copied correctly
-RUN echo "=== Python TTS files after copy ===" && \
-    ls -la /app/server/python-tts/ && \
-    [ -f "/app/server/python-tts/kokoro_server.py" ] || (echo "kokoro_server.py not found" && exit 1)
+# Install Python dependencies for TTS server
+RUN python -m pip install --upgrade pip && \
+    pip install --no-cache-dir -r /app/server/python-tts/requirements.txt && \
+    pip install --no-cache-dir kokoro-tts==2.3.0 fastapi uvicorn[standard] websockets
+
+# Ensure model files are downloaded and in the correct location
+RUN mkdir -p /app/models && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
+    wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
+    chown -R node:node /app/models
 
 # Set correct permissions
 RUN chown -R node:node /app/server/python-tts && \

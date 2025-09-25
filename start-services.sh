@@ -44,6 +44,49 @@ check_service() {
     done
 }
 
+# Function to check if a port is available
+check_port() {
+    nc -z localhost $1 >/dev/null 2>&1
+    return $?
+}
+
+# Function to wait for a port to become available
+wait_for_port() {
+    local port=$1
+    local service=$2
+    local retries=30
+    
+    echo "Waiting for $service on port $port..."
+    while check_port $port; do
+        retries=$((retries - 1))
+        if [ $retries -eq 0 ]; then
+            echo "Error: Port $port is still in use after waiting"
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "$service port $port is available"
+}
+
+# Ensure required environment variables are set
+export NODE_ENV=${NODE_ENV:-production}
+export PORT=${PORT:-8787}
+export KOKORO_MODEL_PATH=${KOKORO_MODEL_PATH:-/app/models/kokoro-v1.0.onnx}
+export KOKORO_VOICES_PATH=${KOKORO_VOICES_PATH:-/app/models/voices-v1.0.bin}
+
+# Check if model files exist
+if [ ! -f "$KOKORO_MODEL_PATH" ] || [ ! -f "$KOKORO_VOICES_PATH" ]; then
+    echo "Error: Required model files not found"
+    echo "KOKORO_MODEL_PATH: $KOKORO_MODEL_PATH"
+    echo "KOKORO_VOICES_PATH: $KOKORO_VOICES_PATH"
+    exit 1
+fi
+
+# Wait for ports to be available
+wait_for_port 3000 "Frontend"
+wait_for_port 8787 "Backend"
+wait_for_port 8899 "TTS Server"
+
 # Start services in sequence
 start_services() {
     # Start Python TTS service first
@@ -69,7 +112,7 @@ start_services() {
     log "Python version: $(python --version 2>&1 || echo 'Not found')"
     log "Python path: $PYTHONPATH"
     log "Working directory: $(pwd)"
-    log "Contents of /app/server/python-tts: $(ls -la /app/server/python-tts 2>/dev/null || echo 'Not found')"
+    log "Contents of /app/server/python-tts: $(ls -la /app/server/python-tts 2>/dev/null || echo 'Not Found')"
     
     # Start the Python TTS service
     log "=== Starting Python TTS Service ==="

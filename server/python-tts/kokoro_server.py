@@ -1,46 +1,13 @@
+"""FastAPI server for Kokoro TTS"""
 import os
 import sys
-import asyncio
-import json
-import time
-import traceback
-from pathlib import Path
-from typing import Optional
-
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from kokoro_tts import TextToSpeech, list_voices
 
-# Add the server directory to Python path
-server_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if server_dir not in sys.path:
-    sys.path.insert(0, server_dir)
+app = FastAPI()
 
-# Add virtual environment site-packages
-venv_path = '/opt/venv/lib/python3.11/site-packages'
-if os.path.exists(venv_path) and venv_path not in sys.path:
-    sys.path.append(venv_path)
-
-print(f"[kokoro-server] Python sys.path: {sys.path}")
-
-# Try to import required modules
-try:
-    from kokoro_onnx import Kokoro
-    from kokoro_onnx.config import SAMPLE_RATE
-    from kokoro_onnx.tokenizer import Tokenizer
-    print("[kokoro-server] Successfully imported Kokoro modules")
-except ImportError as e:
-    print(f"[kokoro-server] Error importing Kokoro: {e}", file=sys.stderr)
-    print("Python path:", sys.path, file=sys.stderr)
-    print("Current directory:", os.getcwd(), file=sys.stderr)
-    print("Files in current directory:", os.listdir('.'), file=sys.stderr)
-    sys.exit(1)
-
-# Initialize FastAPI app
-app = FastAPI(title="Kokoro TTS Service", version="1.0.0")
-
-# CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,21 +16,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables
-kokoro = None
-tokenizer = None
-
-class TTSRequest:
-    def __init__(self, text: str, voice: str = "en-us_ljspeech", speed: float = 1.0):
-        self.text = text
-        self.voice = voice
-        self.speed = speed
+# Initialize TTS engine
+tts = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the Kokoro TTS model when the application starts."""
-    global kokoro, tokenizer
+    global tts
+    model_path = os.getenv('KOKORO_MODEL_PATH', '/app/models/kokoro-v1.0.onnx')
+    voices_path = os.getenv('KOKORO_VOICES_PATH', '/app/models/voices-v1.0.bin')
+    tts = TextToSpeech(model_path=model_path, voices_path=voices_path)
+
+@app.websocket("/ws/tts")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
     
+    try:
+        while True:
+            data = await websocket.receive_json()
+            text = data.get('text')
+            voice = data.get('voice', 'en-US-Standard-A')
+            
+            if not text:
+                await websocket.send_json({"error": "No text provided"})
+                continue
+                
+            try:
+                audio_data = tts.synthesize(text, voice=voice)
+                await websocket.send_bytes(audio_data)
+            except Exception as e:
+                await websocket.send_json({"error": str(e)})
+                
+    except Exception as e:
+        print(f"WebSocket error: {e}", file=sys.stderr)
+    finally:
+        await websocket.close()
+
+@app.get("/voices")
+async def get_voices():
+    """Return list of available voices"""
+    try:
+        voices = list_voices()
+        return {"voices": voices}
+    except Exception as e:
+        return {"error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv('PORT', 8899))
+    uvicorn.run(app, host="0.0.0.0", port=port)
     # List of possible model locations in order of preference
     possible_paths = [
         # Docker container paths
