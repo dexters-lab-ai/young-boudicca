@@ -9,11 +9,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copy frontend source files
-COPY tsconfig*.json ./
-COPY vite.config.ts ./
-COPY src/ ./src/
-COPY public/ ./public/
+# Copy ALL frontend source files including index.html
+COPY . .
 
 # Build frontend
 RUN npm run build
