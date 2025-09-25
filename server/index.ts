@@ -280,37 +280,46 @@ function loadVoicesCacheFromDisk() {
   }
 }
 
-function preloadKokoroVoicesCache() {
-  // Avoid double-load if already cached
+async function preloadKokoroVoicesCache() {
+  // Skip if already loaded
   if (kokoroVoicesCache.length > 0) return;
-  // Prefer disk cache if present
+  
+  // Try to load from disk cache first
   loadVoicesCacheFromDisk();
   if (kokoroVoicesCache.length > 0) return;
-  const isWindows = process.platform === 'win32';
-  const pythonExecutable = isWindows ? path.join(__dirname, '.venv', 'Scripts', 'python.exe') : 'python3';
-  const command = fs.existsSync(pythonExecutable) ? pythonExecutable : 'kokoro-tts';
-  const args = fs.existsSync(pythonExecutable) ? ['-m', 'kokoro_tts', '--help-voices'] : ['--help-voices'];
-  // Choose model directory dynamically (server/ or server/python-tts/)
-  const pythonTtsDirH = path.join(__dirname, 'python-tts');
-  const modelDir = (fs.existsSync(path.join(__dirname, 'voices-v1.0.bin')) && fs.existsSync(path.join(__dirname, 'kokoro-v1.0.onnx')))
-    ? __dirname
-    : pythonTtsDirH;
+
   try {
-    const p = spawn(command, args, {
-      cwd: modelDir,
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8:ignore', PYTHONUTF8: '1' },
-    });
-    let out = '';
-    p.stdout.on('data', (d) => (out += d.toString()));
-    p.on('close', (code) => {
-      if (code === 0) {
-        kokoroVoicesCache = parseVoicesOutput(out);
-        kokoroVoicesLastLoaded = Date.now();
-        saveVoicesCacheToDisk();
-        console.log(`[Server] Preloaded ${kokoroVoicesCache.length} Kokoro voices.`);
-      }
-    });
-  } catch {}
+    console.log('[Server] Fetching TTS voices from HTTP API...');
+    
+    // Make HTTP request to the TTS service
+    const response = await fetch('http://localhost:8899/voices');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.status === 'success' && Array.isArray(data.voices)) {
+      // Transform the response to match our expected format
+      kokoroVoicesCache = data.voices.map((voice: string) => ({
+        value: voice,
+        label: voice
+      }));
+      kokoroVoicesLastLoaded = Date.now();
+      saveVoicesCacheToDisk();
+      console.log(`[Server] Loaded ${kokoroVoicesCache.length} voices from TTS service.`);
+    } else {
+      throw new Error('Invalid response format from TTS service');
+    }
+  } catch (error) {
+    console.error('[Server] Failed to load voices from TTS service:', error);
+    
+    // Fallback to default voice if the service is not available
+    if (kokoroVoicesCache.length === 0) {
+      kokoroVoicesCache = [{ value: 'default', label: 'Default' }];
+      console.log('[Server] Using default voice');
+    }
+  }
 }
 preloadKokoroVoicesCache();
 
