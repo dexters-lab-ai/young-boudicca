@@ -151,7 +151,6 @@ start_services() {
         exit 1
     fi
 
-    # Start the service with explicit path
     PYTHONPATH=/app/server/python-tts python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
@@ -262,42 +261,42 @@ kokoro_tts.list_voices()" 2>&1; then
         log "Starting compiled server from dist/server/index.js"
         node --import tsx dist/server/index.js &
     elif [ -f "server/index.ts" ]; then
-        node --import tsx server/index.ts &ectly (development mode)"
-    elsenode --import tsx server/index.ts &
+        log "Starting TypeScript server directly (development mode)"
+        node --import tsx server/index.ts &
+    else
         log "Error: Could not find server entry point"
-        ls -la dist/ server/ 2>/dev/null || truepoint"
         ls -la dist/ server/ 2>/dev/null || true
         exit 1
-    fiDE_PID=$!
-    NODE_PID=$!ce 8787 "Node.js API" "/health" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
+    fi
+    NODE_PID=$!
     check_service 8787 "Node.js API" "/health" || { kill $PYTHON_PID $NODE_PID 2>/dev/null; exit 1; }
+
     # Finally start Vite preview
-    # Finally start Vite previewerver..."
-    log "Starting Vite preview server..."0.0.0 --port 3000 &
+    log "Starting Vite preview server..."
     cd /app && npx vite preview --host 0.0.0.0 --port 3000 &
-    VITE_PID=$!ce 3000 "Vite Preview" "/" || { kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; exit 1; }
+    VITE_PID=$!
     check_service 3000 "Vite Preview" "/" || { kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; exit 1; }
+
     log "All services started successfully"
-    log "All services started successfully"
+    
     # Cleanup on exit
-    # Cleanup on exitng down services..."; kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; wait' EXIT TERM INT
     trap 'log "Shutting down services..."; kill $PYTHON_PID $NODE_PID $VITE_PID 2>/dev/null; wait' EXIT TERM INT
+    
     # Keep the script running
-    # Keep the script runningone
     while true; do sleep 1; done
 }
+
 # Main execution
 log "=== Starting Boudi AI Services ==="
-log "Environment: $NODE_ENV"ervices ==="
+log "Environment: $NODE_ENV"
 log "Python: $(python --version 2>&1 || echo 'Not available')"
-log "Node: $(node --version)"on 2>&1 || echo 'Not available')"
-log "NPM: $(npm --version)")"
+log "Node: $(node --version)"
+log "NPM: $(npm --version)"
 log "Current directory: $(pwd)"
-log "Current directory: $(pwd)"
+
 # Start all services
-start_servicesrvices
 start_services
+
 # Start Python TTS service
-cd /app/server/python-ttse
-python3 -m uvicorn --app-dir /app/server/python-tts kokoro_server:app --host 0.0.0.0 --port 8899 &
+cd /app/server/python-tts
 python3 -m uvicorn --app-dir /app/server/python-tts kokoro_server:app --host 0.0.0.0 --port 8899 &
