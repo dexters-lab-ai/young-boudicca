@@ -133,10 +133,15 @@ ENV NODE_ENV=production \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
 
 # Copy only Python source files and requirements
-COPY server/python-tts/*.py /app/server/python-tts/
-COPY server/python-tts/requirements.txt /app/server/python-tts/
+# COPY server/python-tts/*.py /app/server/python-tts/
+# COPY server/python-tts/requirements.txt /app/server/python-tts/
+# Copy entire python-tts directory (ensures kokoro_server.py and any other files are included)
+COPY server/python-tts /app/server/python-tts
 
-# Verify files after copy
+# Create models directory and download model files
+# ...existing code...
+
+# Verify files
 RUN echo "=== Verifying files ===" && \
     echo "Python files:" && \
     ls -la /app/server/python-tts/ && \
