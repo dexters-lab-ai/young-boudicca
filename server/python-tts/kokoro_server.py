@@ -121,23 +121,20 @@ async def startup_event():
         logger.info(f"[kokoro-server] Loading model from: {model_path}")
         logger.info(f"[kokoro-server] Loading voices from: {voices_path}")
         
-        # Initialize tokenizer and model
-        start_time = time.time()
-        logger.info("[kokoro-server] Initializing tokenizer...")
-        tokenizer = Tokenizer()
-        
-        logger.info("[kokoro-server] Loading Kokoro model (this may take a moment)...")
-        kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
-        load_time = time.time() - start_time
-        
-        # Store in global state
-        app_globals['kokoro'] = kokoro
-        app_globals['start_time'] = time.time()
+        # Initialize Kokoro model
+        try:
+            logger.info("[kokoro-server] Loading Kokoro model (this may take a moment)...")
+            kokoro = Kokoro(model_path, voices_path)
+            app_globals['kokoro'] = kokoro
+            logger.info("[kokoro-server] Model loaded successfully")
+        except Exception as e:
+            logger.critical(f"[kokoro-server] Failed to initialize TTS engine: {e}")
+            logger.exception(e)
+            raise
         
         # Verify model is working
         try:
             voices = kokoro.list_voices() if hasattr(kokoro, 'list_voices') else ["default"]
-            logger.info(f"[kokoro-server] Model loaded successfully in {load_time:.2f} seconds")
             logger.info(f"[kokoro-server] Available voices: {voices}")
         except Exception as e:
             logger.warning(f"[kokoro-server] Could not list voices: {e}")
