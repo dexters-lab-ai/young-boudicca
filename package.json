@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "server": "node --import tsx server/index.ts",
     "start": "node --import tsx server/index.ts",
-    "python-ws": "cd server/python-tts && PYTHONPATH=/app/server/python-tts uvicorn kokoro_server:app --host 0.0.0.0 --port 8899",
-    "dev:all": "concurrently \"npm:server\" \"npm:dev\" \"npm:python-ws\"",
+    "tts-server": "cd server/python-tts && set PYTHONPATH=%CD% && uvicorn kokoro_server:app --host 0.0.0.0 --port 8899",
+    "dev:all": "concurrently \"npm:server\" \"npm:dev\" \"npm:tts-server\"",
     "build:server": "tsc --project tsconfig.server.json"
   },
   "dependencies": {

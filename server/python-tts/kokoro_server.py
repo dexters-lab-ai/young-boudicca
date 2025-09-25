@@ -83,65 +83,155 @@ app_globals = {
 }
 
 def find_model_files() -> tuple[str, str]:
-    """Locate model files with fallback paths"""
-    # Check environment variables first
+    """Locate model files with fallback paths
+    
+    Returns:
+        tuple: (model_path, voices_path)
+        
+    Raises:
+        FileNotFoundError: If model files cannot be found in any location
+    """
+    # Get environment variables with defaults
     model_path = os.getenv('KOKORO_MODEL_PATH')
     voices_path = os.getenv('KOKORO_VOICES_PATH')
     
-    if model_path and voices_path and os.path.exists(model_path) and os.path.exists(voices_path):
-        return model_path, voices_path
+    # If both paths are provided via environment variables, use them
+    if model_path and voices_path:
+        model_path = os.path.abspath(model_path)
+        voices_path = os.path.abspath(voices_path)
+        
+        if os.path.exists(model_path) and os.path.exists(voices_path):
+            logger.info("Using model files from environment variables:")
+            logger.info(f"- Model: {model_path}")
+            logger.info(f"- Voices: {voices_path}")
+            return model_path, voices_path
+        else:
+            logger.warning("Environment variables point to non-existent files. Falling back to default locations.")
     
-    # Check common locations
+    # Define possible locations to search for model files
     possible_paths = [
+        # Local directory (relative to script)
         (os.path.join(current_dir, 'kokoro-v1.0.onnx'), 
          os.path.join(current_dir, 'voices-v1.0.bin')),
+        # Local models subdirectory (relative to script)
         (os.path.join(current_dir, 'models', 'kokoro-v1.0.onnx'),
          os.path.join(current_dir, 'models', 'voices-v1.0.bin')),
-        ('/app/models/kokoro-v1.0.onnx', '/app/models/voices-v1.0.bin')
+        # Docker container path (production)
+        ('/app/server/python-tts/models/kokoro-v1.0.onnx', 
+         '/app/server/python-tts/models/voices-v1.0.bin'),
+        # Development path (from project root)
+        (os.path.abspath(os.path.join(current_dir, '..', '..', 'server', 'python-tts', 'models', 'kokoro-v1.0.onnx')),
+         os.path.abspath(os.path.join(current_dir, '..', '..', 'server', 'python-tts', 'models', 'voices-v1.0.bin')))
     ]
     
+    # Check each possible path
     for mp, vp in possible_paths:
         if os.path.exists(mp) and os.path.exists(vp):
+            logger.info("Found model files at:")
+            logger.info(f"- Model: {mp}")
+            logger.info(f"- Voices: {vp}")
             return os.path.abspath(mp), os.path.abspath(vp)
     
-    raise FileNotFoundError("Could not find model files in any of the expected locations")
+    # If we get here, no valid paths were found
+    error_msg = "\nERROR: Could not find model files in any of the following locations:\n"
+    for mp, vp in possible_paths:
+        error_msg += f"- Model: {mp} ({'EXISTS' if os.path.exists(mp) else 'NOT FOUND'})\n"
+        error_msg += f"- Voices: {vp} ({'EXISTS' if os.path.exists(vp) else 'NOT FOUND'})\n\n"
+    
+    error_msg += "TROUBLESHOOTING TIPS:\n"
+    error_msg += "1. Download the model files (kokoro-v1.0.onnx and voices-v1.0.bin)\n"
+    error_msg += "2. Place them in one of the following locations:\n"
+    for mp, _ in possible_paths:
+        error_msg += f"   - {os.path.dirname(mp)}/\n"
+    error_msg += "\n3. OR set the KOKORO_MODEL_PATH and KOKORO_VOICES_PATH environment variables\n"
+    
+    logger.error(error_msg)
+    raise FileNotFoundError("Could not find Kokoro model files. See logs for details.")
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize TTS engine on startup with enhanced error handling"""
+    """Initialize TTS engine on startup with enhanced error handling and logging"""
     global app_globals
     
+    startup_start_time = time.time()
+    logger.info("=" * 80)
+    logger.info("Starting Kokoro TTS Server")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Script directory: {current_dir}")
+    logger.info("-" * 80)
+    
+    # Check for required modules
     if not kokoro_imported:
-        logger.critical("Kokoro modules not found. Please install the required packages.")
-        raise ImportError("Required Kokoro modules not found")
+        error_msg = "[kokoro-server] Critical: Kokoro modules not found. Please install the required packages."
+        logger.critical(error_msg)
+        logger.info("=" * 80)
+        raise ImportError(error_msg)
     
     try:
-        # Find and validate model files
+        # Log environment variables (safely)
+        logger.info("Environment variables:")
+        for var in ['KOKORO_MODEL_PATH', 'KOKORO_VOICES_PATH', 'PORT', 'HOST']:
+            value = os.getenv(var, 'Not set')
+            logger.info(f"  {var}: {value if var not in ['KOKORO_MODEL_PATH', 'KOKORO_VOICES_PATH'] else '********'}")
+        
+        logger.info("-" * 80)
+        logger.info("Searching for model files...")
+        
+        # Find and load model files
         model_path, voices_path = find_model_files()
-        logger.info(f"[kokoro-server] Loading model from: {model_path}")
-        logger.info(f"[kokoro-server] Loading voices from: {voices_path}")
         
-        # Initialize Kokoro model
-        try:
-            logger.info("[kokoro-server] Loading Kokoro model (this may take a moment)...")
-            kokoro = Kokoro(model_path, voices_path)
-            app_globals['kokoro'] = kokoro
-            logger.info("[kokoro-server] Model loaded successfully")
-        except Exception as e:
-            logger.critical(f"[kokoro-server] Failed to initialize TTS engine: {e}")
-            logger.exception(e)
-            raise
+        logger.info("-" * 80)
+        logger.info(f"[kokoro-server] Initializing TTS engine with model: {os.path.basename(model_path)}")
+        logger.info(f"Model path: {model_path}")
+        logger.info(f"Voices path: {voices_path}")
         
-        # Verify model is working
+        # Verify model files exist and are accessible
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        if not os.path.exists(voices_path):
+            raise FileNotFoundError(f"Voices file not found: {voices_path}")
+            
+        # Initialize tokenizer and model
+        logger.info("Initializing tokenizer...")
+        tokenizer = Tokenizer()
+        
+        logger.info("Initializing Kokoro model (this may take a moment)...")
+        model_load_start = time.time()
+        app_globals['kokoro'] = Kokoro(model_path, voices_path, tokenizer=tokenizer)
+        model_load_time = time.time() - model_load_start
+        
+        logger.info(f"Model loaded in {model_load_time:.2f} seconds")
+        
+        # Test voice listing
         try:
-            voices = kokoro.list_voices() if hasattr(kokoro, 'list_voices') else ["default"]
-            logger.info(f"[kokoro-server] Available voices: {voices}")
+            voices = app_globals['kokoro'].list_voices() if hasattr(app_globals['kokoro'], 'list_voices') else ["default"]
+            logger.info(f"[kokoro-server] Successfully loaded {len(voices)} voices")
+            if len(voices) > 0:
+                logger.info(f"[kokoro-server] Available voices: {', '.join(voices[:5])}{'...' if len(voices) > 5 else ''}")
         except Exception as e:
-            logger.warning(f"[kokoro-server] Could not list voices: {e}")
+            logger.warning(f"[kokoro-server] Could not list voices (this may be normal): {str(e)}")
+        
+        startup_time = time.time() - startup_start_time
+        logger.info("-" * 80)
+        logger.info(f"[kokoro-server] TTS engine initialized in {startup_time:.2f} seconds")
+        logger.info("=" * 80)
         
     except Exception as e:
-        logger.critical(f"[kokoro-server] Failed to initialize TTS engine: {e}")
-        logger.exception(e)
+        logger.critical("=" * 80)
+        logger.critical(f"[kokoro-server] FATAL: Failed to initialize TTS engine: {str(e)}")
+        logger.critical("Stack trace:")
+        logger.critical(traceback.format_exc())
+        logger.critical("=" * 80)
+        
+        # Provide helpful error message
+        if "No such file or directory" in str(e):
+            logger.critical("\nTROUBLESHOOTING TIP: It looks like a file is missing. Please check:")
+            logger.critical(f"1. Model files exist at the specified paths")
+            logger.critical(f"2. File permissions are correct")
+            logger.critical(f"3. Environment variables point to the right locations")
+            logger.critical("=" * 80)
+        
         raise
 
 @app.websocket("/ws/tts")
