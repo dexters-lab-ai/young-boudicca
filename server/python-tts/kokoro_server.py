@@ -233,31 +233,6 @@ async def get_voices():
             detail=str(e)
         )
 
-@app.get("/health")
-async def health_check():
-    """Comprehensive health check endpoint with system status"""
-    kokoro_model = app_globals.get('kokoro')
-    current_time = time.time()
-    uptime = current_time - app_globals['start_time']
-    
-    status = {
-        "status": "ok" if kokoro_model else "error",
-        "service": "kokoro-tts",
-        "version": "1.0.0",
-        "uptime_seconds": round(uptime, 2),
-        "uptime_human": str(timedelta(seconds=int(uptime))),
-        "requests_processed": app_globals['requests_processed'],
-        "avg_processing_time": round(
-            app_globals['total_processing_time'] / app_globals['requests_processed'], 3
-        ) if app_globals['requests_processed'] > 0 else 0,
-        "timestamp": current_time
-    }
-    
-    if not kokoro_model:
-        status["error"] = "TTS engine not initialized"
-    
-    status_code = status.HTTP_200_OK if kokoro_model else status.HTTP_503_SERVICE_UNAVAILABLE
-    return JSONResponse(content=status, status_code=status_code)
 
 @app.post("/synthesize")
 async def synthesize_tts(request: Request):
@@ -395,7 +370,6 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await shutdown_event()
 
-# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring and load balancers"""
