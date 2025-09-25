@@ -53,21 +53,6 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
 # Verify Kokoro installation
 RUN python3 -c "from kokoro_onnx import Kokoro; from kokoro_onnx.tokenizer import Tokenizer; print('Kokoro packages available')"
 
-# Download model files (with retry and verification)
-RUN mkdir -p /app/models && \
-    for i in $(seq 1 3); do \
-        if wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin -O /app/models/voices-v1.0.bin && \
-        wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx -O /app/models/kokoro-v1.0.onnx && \
-        [ -s /app/models/voices-v1.0.bin ] && [ -s /app/models/kokoro-v1.0.onnx ]; then \
-            echo "Model files downloaded successfully"; \
-            break; \
-        else \
-            echo "Attempt $i failed, retrying..."; \
-            sleep 5; \
-        fi; \
-        if [ $i -eq 3 ]; then exit 1; fi; \
-    done
-
 # ============================================
 # Backend build stage
 # ============================================
@@ -130,10 +115,43 @@ ENV NODE_ENV=production \
     KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx \
     KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
 
+# Copy only Python source files and requirements
+COPY server/python-tts/*.py /app/server/python-tts/
+COPY server/python-tts/requirements.txt /app/server/python-tts/
+
+# Create models directory and download model files
+RUN mkdir -p /app/models && \
+    cd /app/models && \
+    echo "Downloading model files..." && \
+    for i in $(seq 1 3); do \
+        if wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin && \
+           wget -q https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx && \
+           [ -s voices-v1.0.bin ] && [ -s kokoro-v1.0.onnx ]; then \
+            echo "Model files downloaded successfully"; \
+            break; \
+        else \
+            echo "Attempt $i failed, retrying..."; \
+            sleep 5; \
+        fi; \
+        if [ $i -eq 3 ]; then exit 1; fi; \
+    done
+
+# Verify files
+RUN echo "=== Verifying files ===" && \
+    echo "Python files:" && \
+    ls -la /app/server/python-tts/ && \
+    echo "Model files:" && \
+    ls -la /app/models/
+
 # Create non-root user (using system UID range)
 RUN useradd -r -u 999 -g root appuser && \
     chown -R appuser:root /app && \
     chmod -R g=u /app
+
+# Verify files after copy
+RUN ls -la /app/server/python-tts/ && \
+    test -f /app/server/python-tts/kokoro_server.py || (echo "ERROR: kokoro_server.py not found!" && exit 1)
+
 USER appuser
 
 EXPOSE 3000 8787 8899
@@ -142,13 +160,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD nc -z localhost 3000 && nc -z localhost 8787 && nc -z localhost 8899
 
 CMD ["./start-services.sh"]
-
-# Copy Python TTS files with clear logging
-RUN echo "=== Copying Python TTS files ===" && \
-    ls -la /app/server/python-tts/ || true && \
-    mkdir -p /app/server/python-tts && \
-    echo "Directory created: /app/server/python-tts"
-
-COPY server/python-tts/*.py /app/server/python-tts/
-RUN echo "=== Python TTS files copied ===" && \
-    ls -la /app/server/python-tts/

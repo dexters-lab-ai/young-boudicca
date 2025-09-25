@@ -1,32 +1,32 @@
-"""Verify Python environment and dependencies."""
+"""Verify Python environment and dependencies"""
+import os
 import sys
-import pkg_resources
 
 def verify_environment():
-    """Verify Python version and required packages."""
+    print("=== Python Environment Verification ===")
+    
+    # Check Python version
     print(f"Python version: {sys.version}")
     
-    required = [
-        'kokoro-tts==2.3.0',
-        'fastapi',
-        'uvicorn',
-        'websockets',
-        'python-multipart',
-        'numpy',
-        'scipy',
-        'soundfile',
-        'onnxruntime',
-    ]
+    # Check paths
+    print("\nPython paths:")
+    for path in sys.path:
+        print(f"  {path}")
     
-    for package in required:
-        try:
-            pkg_resources.require(package)
-            dist = pkg_resources.get_distribution(package.split('==')[0])
-            print(f"✓ {dist.key} {dist.version}")
-        except pkg_resources.DistributionNotFound:
-            print(f"✗ {package} not found")
-        except pkg_resources.VersionConflict as e:
-            print(f"✗ {package} version conflict: {e}")
+    # Check critical files
+    server_file = os.path.join(os.path.dirname(__file__), "kokoro_server.py")
+    if not os.path.exists(server_file):
+        raise RuntimeError(f"Critical file missing: {server_file}")
+    
+    # Try imports
+    try:
+        from kokoro_onnx import Kokoro
+        from kokoro_onnx.tokenizer import Tokenizer
+        print("\nRequired packages available")
+    except ImportError as e:
+        raise RuntimeError(f"Failed to import required packages: {e}")
 
+if __name__ == "__main__":
+    verify_environment()
 if __name__ == "__main__":
     verify_environment()
