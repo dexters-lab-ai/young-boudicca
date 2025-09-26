@@ -147,8 +147,8 @@ start_services() {
         exit 1
     fi
 
-    # Start the WebSocket server
-    log "Starting WebSocket server..."
+    # Start the TTS service which will handle the WebSocket server
+    log "Starting TTS service..."
     
     # Set up Python environment
     export PYTHONUNBUFFERED=1
@@ -160,21 +160,21 @@ start_services() {
         exit 1
     }
     
-    # Verify kokoro_server.py exists and is readable
-    if [ ! -f "kokoro_server.py" ] || [ ! -r "kokoro_server.py" ]; then
-        log "ERROR: kokoro_server.py not found or not readable in $(pwd)"
+    # Verify app.py exists and is readable
+    if [ ! -f "app.py" ] || [ ! -r "app.py" ]; then
+        log "ERROR: app.py not found or not readable in $(pwd)"
         log "Current directory: $(pwd)"
         log "Directory contents:"
         ls -la
         exit 1
     fi
     
-    log "Starting WebSocket server with PYTHONPATH=$PYTHONPATH"
+    log "Starting TTS service with PYTHONPATH=$PYTHONPATH"
     log "Current directory: $(pwd)"
-    log "Starting server with: python -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug"
+    log "Starting server with: python -m uvicorn app:app --host 0.0.0.0 --port 8899 --log-level debug"
     
     # Start the server
-    python -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
+    python -m uvicorn app:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     
