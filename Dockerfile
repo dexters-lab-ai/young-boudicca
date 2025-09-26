@@ -20,15 +20,6 @@ RUN npm run build
 # ============================================
 FROM python:3.11.7-slim-bookworm as python-builder
 
-# Add LLVM repository for Bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    gnupg \
-    ca-certificates \
-    && wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-11 main" >> /etc/apt/sources.list.d/llvm.list \
-    && echo "deb-src http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-11 main" >> /etc/apt/sources.list.d/llvm.list
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -44,9 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     wget \
     curl \
-    llvm-11 \
-    llvm-11-tools \
-    libllvm11 \
+    llvm \
+    llvm-runtime \
+    llvm-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment and set environment variables
@@ -109,15 +100,6 @@ RUN npm run build:server
 # ============================================
 FROM python:3.11.7-slim-bookworm as runtime
 
-# Add LLVM repository for Bookworm in runtime
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    gnupg \
-    ca-certificates \
-    && wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-11 main" >> /etc/apt/sources.list.d/llvm.list \
-    && echo "deb-src http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-11 main" >> /etc/apt/sources.list.d/llvm.list
-
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
@@ -126,7 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     espeak-ng \
     libespeak-ng-dev \
     libffi-dev \
-    libllvm11 \
+    llvm-runtime \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and other dependencies
