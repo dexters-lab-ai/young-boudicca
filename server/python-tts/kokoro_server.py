@@ -24,7 +24,7 @@ import traceback
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, status as http_status
+from fastapi import FastAPI, HTTPException, Request, status as http_status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from scipy.io.wavfile import write as write_wav
@@ -74,7 +74,8 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "X-Processing-Time"]
 )
 
-# Global state
+# Global variables
+kokoro = None
 app_globals = {
     'kokoro': None,
     'start_time': time.time(),
@@ -151,175 +152,38 @@ def find_model_files() -> tuple[str, str]:
 @app.on_event("startup")
 async def startup_event():
     """Initialize TTS engine on startup with enhanced error handling and logging"""
-    global app_globals
+    global kokoro, app_globals
     
-    startup_start_time = time.time()
-    logger.info("=" * 80)
-    logger.info("Starting Kokoro TTS Server")
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Working directory: {os.getcwd()}")
-    logger.info(f"Script directory: {current_dir}")
-    logger.info("-" * 80)
-    
-    # Check for required modules
-    if not kokoro_imported:
-        error_msg = "[kokoro-server] Critical: Kokoro modules not found. Please install the required packages."
-        logger.critical(error_msg)
-        logger.info("=" * 80)
-        raise ImportError(error_msg)
+    logger.info("Starting up TTS server...")
     
     try:
-        # Log environment variables (safely)
-        logger.info("Environment variables:")
-        for var in ['KOKORO_MODEL_PATH', 'KOKORO_VOICES_PATH', 'PORT', 'HOST']:
-            value = os.getenv(var, 'Not set')
-            logger.info(f"  {var}: {value if var not in ['KOKORO_MODEL_PATH', 'KOKORO_VOICES_PATH'] else '********'}")
-        
-        logger.info("-" * 80)
-        logger.info("Searching for model files...")
-        
-        # Find and load model files
+        # Find model files
         model_path, voices_path = find_model_files()
+        logger.info(f"Found model files:\n- Model: {model_path}\n- Voices: {voices_path}")
         
-        logger.info("-" * 80)
-        logger.info(f"[kokoro-server] Initializing TTS engine with model: {os.path.basename(model_path)}")
-        logger.info(f"Model path: {model_path}")
-        logger.info(f"Voices path: {voices_path}")
+        # Initialize Kokoro
+        logger.info("Initializing Kokoro TTS engine...")
+        tokenizer = Tokenizer()
+        kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
         
-        # Verify model files exist and are accessible
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found: {model_path}")
-        if not os.path.exists(voices_path):
-            raise FileNotFoundError(f"Voices file not found: {voices_path}")
-            
-        # Initialize the Kokoro model
-        logger.info("Initializing Kokoro model (this may take a moment)...")
-        model_load_start = time.time()
+        # Store in app globals
+        app_globals['kokoro'] = kokoro
         
-        # Initialize Kokoro with the model and voices path
-        app_globals['kokoro'] = Kokoro(model_path, voices_path)
+        # Warm up the model
+        logger.info("Warming up TTS engine...")
+        start_time = time.time()
+        test_text = "Initializing TTS service. "
+        async for _ in kokoro.create_stream(text=test_text, voice="en-us_ljspeech"):
+            break
+        warmup_time = time.time() - start_time
         
-        # Add list_voices method if it doesn't exist
-        if not hasattr(app_globals['kokoro'], 'list_voices'):
-            def list_voices(self):
-                """List all available voices from the voices file."""
-                try:
-                    # These are the standard voices available in Kokoro TTS
-                    # Update this list based on your actual voices
-                    voices = [
-                        "en-us_ljspeech", "en-gb_amy", "es-es_tux", "fr-fr_evi", "de-de_evi",
-                        "it-it_evi", "pt-br_evi", "ru-ru_evi", "zh-cn_evi", "ja-jp_evi",
-                        "ko-kr_evi", "hi-in_evi", "ar-eg_evi", "nl-nl_evi", "sv-se_evi",
-                        "tr-tr_evi", "pl-pl_evi"
-                    ]
-                    return voices
-                except Exception as e:
-                    logger.error(f"Error listing voices: {e}")
-                    return ["default"]
-            
-            # Attach the method to the Kokoro instance
-            from types import MethodType
-            app_globals['kokoro'].list_voices = MethodType(list_voices, app_globals['kokoro'])
-        
-        model_load_time = time.time() - model_load_start
-        logger.info(f"Model loaded in {model_load_time:.2f} seconds")
-        
-        # Test voice listing
-        try:
-            voices = app_globals['kokoro'].list_voices()
-            logger.info(f"[kokoro-server] Successfully loaded {len(voices)} voices")
-            if len(voices) > 0:
-                logger.info(f"[kokoro-server] Available voices: {', '.join(voices[:5])}{'...' if len(voices) > 5 else ''}")
-        except Exception as e:
-            logger.warning(f"[kokoro-server] Could not list voices: {str(e)}")
-            # Set a default voice if listing fails
-            app_globals['kokoro'].list_voices = lambda: ["default"]
-        
-        startup_time = time.time() - startup_start_time
-        logger.info("-" * 80)
-        logger.info(f"[kokoro-server] TTS engine initialized in {startup_time:.2f} seconds")
-        logger.info("=" * 80)
+        logger.info(f"TTS engine ready in {warmup_time:.2f} seconds")
         
     except Exception as e:
-        logger.critical("=" * 80)
-        logger.critical(f"[kokoro-server] FATAL: Failed to initialize TTS engine: {str(e)}")
-        logger.critical("Stack trace:")
-        logger.critical(traceback.format_exc())
-        logger.critical("=" * 80)
-        
-        # Provide helpful error message
-        if "No such file or directory" in str(e):
-            logger.critical("\nTROUBLESHOOTING TIP: It looks like a file is missing. Please check:")
-            logger.critical(f"1. Model files exist at the specified paths")
-            logger.critical(f"2. File permissions are correct")
-            logger.critical(f"3. Environment variables point to the right locations")
-            logger.critical("=" * 80)
-        
-        raise
+        logger.error(f"Failed to initialize TTS engine: {e}")
+        logger.error(traceback.format_exc())
+        raise RuntimeError(f"Failed to initialize TTS engine: {e}")
 
-@app.websocket("/ws/tts")
-async def websocket_endpoint(websocket: WebSocket):
-    """Handle WebSocket connections for real-time TTS"""
-    await websocket.accept()
-    client_ip = websocket.client.host if websocket.client else "unknown"
-    logger.info(f"[ws] New connection from {client_ip}")
-    
-    kokoro_model = app_globals.get('kokoro')
-    if not kokoro_model:
-        await websocket.send_json({"error": "TTS engine not ready"})
-        await websocket.close()
-        return
-    
-    try:
-        while True:
-            request_start = time.time()
-            data = await websocket.receive_json()
-            
-            text = data.get('text', '').strip()
-            voice = data.get('voice', 'en-us_ljspeech')
-            speed = float(data.get('speed', 1.0))
-            
-            if not text:
-                await websocket.send_json({"error": "No text provided"})
-                continue
-            
-            try:
-                # Log the request
-                logger.info(f"[ws] Processing request from {client_ip} - Text: '{text[:50]}...'")
-                
-                # Stream audio chunks
-                async for samples, _ in kokoro_model.create_stream(
-                    text=text,
-                    voice=voice,
-                    speed=speed,
-                    lang=voice.split('_')[0] if '_' in voice else 'en-us',
-                    trim=False
-                ):
-                    # Send audio chunk with length prefix
-                    audio_bytes = samples.tobytes()
-                    len_prefix = struct.pack('<I', len(audio_bytes))
-                    await websocket.send_bytes(len_prefix + audio_bytes)
-                
-                # Signal end of stream
-                await websocket.send_bytes(struct.pack('<I', 0))
-                
-                # Log performance
-                process_time = time.time() - request_start
-                app_globals['requests_processed'] += 1
-                app_globals['total_processing_time'] += process_time
-                logger.info(f"[ws] Processed in {process_time:.3f}s - '{text[:30]}...'")
-                
-            except Exception as e:
-                logger.error(f"[ws] Processing error: {e}")
-                logger.exception(e)
-                await websocket.send_json({"error": str(e)})
-                
-    except Exception as e:
-        if not isinstance(e, (asyncio.CancelledError, RuntimeError)):
-            logger.error(f"[ws] Connection error from {client_ip}: {e}")
-    finally:
-        await websocket.close()
-        logger.info(f"[ws] Closed connection from {client_ip}")
 
 @app.get("/voices")
 async def get_voices():
@@ -362,7 +226,6 @@ async def get_voices():
             "voices": ["default"],
             "timestamp": time.time()
         }
-
 
 @app.post("/synthesize")
 async def synthesize_tts(request: Request):
@@ -488,8 +351,12 @@ async def synthesize_tts(request: Request):
 
 async def shutdown_event():
     """Handle server shutdown"""
-    logger.info("[kokoro-server] Shutting down...")
-    # Add any cleanup code here if needed
+    logger.info("Shutting down TTS server...")
+    
+    # Clean up Kokoro resources
+    if kokoro:
+        logger.info("Cleaning up TTS engine...")
+        # Add any Kokoro-specific cleanup here if needed
     logger.info("[kokoro-server] Shutdown complete")
 
 async def lifespan(app: FastAPI):

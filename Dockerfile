@@ -5,9 +5,9 @@ FROM node:20-slim as frontend-builder
 
 WORKDIR /app
 
-# Install only the dependencies needed for building
+# Install dependencies with npm install for better compatibility
 COPY package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy ALL frontend source files including index.html
 COPY . .
@@ -82,7 +82,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy backend source
 COPY server/ ./server/
@@ -130,7 +130,7 @@ RUN chmod +x /app/start-services.sh
 WORKDIR /app
 
 # Install production node_modules
-RUN npm ci --only=production
+RUN npm install --only=production --legacy-peer-deps
 
 # Set environment variables
 ENV NODE_ENV=production \
