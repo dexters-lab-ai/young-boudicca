@@ -48,7 +48,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY server/python-tts/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy==1.24.3 && \
-    pip install --no-cache-dir numba==0.58.1 llvmlite==0.41.1 && \
+    pip install --no-cache-dir llvmlite==0.41.1 && \
+    pip install --no-cache-dir numba==0.60.0 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Ensure python source is available in the python-builder image so runtime can copy from it
