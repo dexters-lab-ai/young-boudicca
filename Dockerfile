@@ -96,11 +96,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     llvm-runtime \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the virtual environment from the builder stage
-COPY --from=python-builder /opt/venv /opt/venv
+# First, install Python dependencies in the runtime stage
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the PATH to use the virtual environment
-ENV PATH="/opt/venv/bin:$PATH"
+# Create a new virtual environment in the runtime stage
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Install required Python packages
+RUN pip install --no-cache-dir -U pip && \
+    pip install --no-cache-dir uvicorn[standard] fastapi kokoro-tts
 
 # Install Node.js and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -113,10 +122,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy Python environment
-COPY --from=python-builder /opt/venv /opt/venv
+# Copy only the model files from the builder stage
 COPY --from=python-builder /app/models /app/models
-ENV PATH="/opt/venv/bin:$PATH"
+
+# Ensure the models are readable
+RUN chmod -R 644 /app/models/*
 
 # Copy built frontend
 COPY --from=frontend-builder /app/dist /app/dist

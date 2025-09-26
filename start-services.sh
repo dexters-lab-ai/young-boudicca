@@ -65,18 +65,32 @@ check_port() {
 wait_for_port() {
     local port=$1
     local service=$2
-    local retries=30
+    local max_retries=30
+    local retries=0
     
-    echo "Waiting for $service on port $port..."
-    while check_port $port; do
-        retries=$((retries - 1))
-        if [ $retries -eq 0 ]; then
-            echo "Error: Port $port is still in use after waiting"
-            exit 1
+    log "Waiting for $service to be available on port $port..."
+    while [ $retries -lt $max_retries ]; do
+        # Check if the port is open and the service is responding
+        if nc -z localhost $port; then
+            # If it's the TTS service, also check the health endpoint
+            if [ "$service" = "TTS Service" ]; then
+                if curl -s -f "http://localhost:${port}/health" 2>/dev/null | grep -q '"status":"ok"'; then
+                    log "$service is ready on port $port"
+                    return 0
+                fi
+            else
+                log "$service is ready on port $port"
+                return 0
+            fi
         fi
-        sleep 1
+        
+        retries=$((retries + 1))
+        log "Waiting for $service to be ready... (attempt $retries/$max_retries)"
+        sleep 2
     done
-    echo "$service port $port is available"
+    
+    log "Error: $service did not become available on port $port after $max_retries attempts"
+    return 1
 }
 
 # Ensure required environment variables are set
@@ -98,71 +112,44 @@ wait_for_port 3000 "Frontend"
 wait_for_port 8787 "Backend"
 wait_for_port 8899 "TTS Server"
 
-# Start services in sequence
-start_services() {
-    # Start Python TTS service first
+# Function to start the TTS service
+start_tts_service() {
     log "Starting Python TTS service..."
+    cd /app/server/python-tts
     
-    # Set up environment
-    export PYTHONUNBUFFERED=1
-    export PYTHONPATH="/app:/app/server:$PYTHONPATH"
-    export PATH="/opt/venv/bin:$PATH"
+    # Activate the virtual environment
+    source /opt/venv/bin/activate
     
-    # Activate virtual environment
-    if [ -f "/opt/venv/bin/activate" ]; then
-        # shellcheck source=/dev/null
-        . /opt/venv/bin/activate
-    else
-        log "Error: Virtual environment not found at /opt/venv/bin/activate"
-        exit 1
-    fi
+    # Debug: Show Python and pip versions
+    log "Python version: $(python --version 2>&1)"
+    log "Pip version: $(pip --version 2>&1)"
+    log "Installed packages:"
+    pip list
     
-    # Verify Python environment
-    log "=== Python Environment ==="
-    log "Python version: $(python3 --version)"
-    log "Python path: $PYTHONPATH"
-    log "Working directory: $(pwd)"
-    
-    # List contents of key directories
-    log "=== Directory Contents ==="
-    log "Python TTS directory:"
-    ls -la /app/server/python-tts/
-    log "Models directory:"
-    ls -la /app/models/
-
-    # Start Python TTS service with better error handling
-    cd /app/server/python-tts || {
-        log "ERROR: Failed to change to Python TTS directory"
-        exit 1
-    }
-
-    # Remove su command and directly check file existence and readability
-    log "Checking kokoro_server.py as appuser..."
-    if [ -r /app/server/python-tts/kokoro_server.py ]; then
-        log "kokoro_server.py exists and is readable by appuser"
-    else
-        log "ERROR: kokoro_server.py not found or not readable by appuser"
-        exit 1
-    fi
-
-    if [ ! -f "kokoro_server.py" ]; then
-        echo "FATAL: kokoro_server.py not found in $(pwd)"
-        ls -la
-        exit 1
-    fi
-
-    PYTHONPATH=/app/server/python-tts python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
-
+    # Start the TTS service
+    log "Starting uvicorn with: $(which python) -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899"
+    python -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 &
     TTS_PID=$!
+    echo $TTS_PID > /tmp/tts.pid
     
-    # Wait for the service to start
+    # Give it a moment to start
     sleep 5
     
     # Check if the service is running
     if ! ps -p $TTS_PID > /dev/null; then
-        log "Error: Failed to start Python TTS service"
+        log "Error: TTS service failed to start"
         log "TTS service log output:"
-        cat /app/tts-service.log
+        cat /app/tts-service.log 2>/dev/null || echo "No log file found"
+        exit 1
+    fi
+    
+    log "TTS service started with PID $TTS_PID"
+    
+    # Wait for the service to be ready
+    if ! wait_for_port 8899 "TTS Service"; then
+        log "Error: TTS service did not become ready"
+        log "TTS service log output:"
+        cat /app/tts-service.log 2>/dev/null || echo "No log file found"
         exit 1
     fi
     
