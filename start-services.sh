@@ -130,25 +130,26 @@ start_services() {
     log "Models directory:"
     ls -la /app/models/
 
-    # Change to server directory
-    cd /app/server || {
-        log "ERROR: Failed to change to server directory"
+    # Change to python-tts directory where the WebSocket server files are located
+    cd /app/server/python-tts || {
+        log "ERROR: Failed to change to python-tts directory"
+        ls -la /app/server/
         exit 1
     }
 
-    # Check if main.py exists and is readable
-    log "Checking main.py as appuser..."
-    if [ -r /app/server/main.py ]; then
-        log "main.py exists and is readable by appuser"
+    # Check if kokoro_server.py exists and is readable
+    log "Checking kokoro_server.py as appuser..."
+    if [ -r /app/server/python-tts/kokoro_server.py ]; then
+        log "kokoro_server.py exists and is readable by appuser"
     else
-        log "ERROR: main.py not found or not readable by appuser"
-        ls -la /app/server/
+        log "ERROR: kokoro_server.py not found or not readable by appuser"
+        ls -la /app/server/python-tts/
         exit 1
     fi
 
     # Start the WebSocket server
     log "Starting WebSocket server..."
-    PYTHONPATH=/app/server python3 -m uvicorn main:app --host 0.0.0.0 --port 8899 --log-level debug &
+    PYTHONPATH=/app/server/python-tts python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     

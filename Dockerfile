@@ -53,8 +53,8 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
 # Ensure python source is available in the python-builder image so runtime can copy from it
 COPY server/python-tts /app/server/python-tts
 
-# Copy WebSocket server files to the main app directory
-COPY server/python-ws/* /app/server/
+# Copy WebSocket server files to the python-tts directory
+COPY server/python-ws/* /app/server/python-tts/
 
 # Create and populate models directory
 RUN mkdir -p /app/models && \
