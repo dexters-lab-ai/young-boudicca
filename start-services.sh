@@ -177,26 +177,8 @@ start_services() {
     log "TTS service log is available at /app/tts-service.log"
     log "TTS service health check: $(curl -s http://localhost:8899/health)"
     
-    # Start WebSocket server
-    log "Starting WebSocket server..."
-    cd /app/server/python-ws
-    PYTHONPATH=/app/server python3 main.py &
-    WS_PID=$!
-    cd - > /dev/null  # Return to the previous directory
-    
-    # Wait for the WebSocket server to start
-    sleep 3
-    
-    # Check if the WebSocket server is running
-    if ! ps -p $WS_PID > /dev/null; then
-        log "Error: Failed to start WebSocket server"
-        log "WebSocket server log output:"
-        cat /app/ws-server.log
-        exit 1
-    fi
-    
-    log "WebSocket server started successfully with PID $WS_PID"
-    log "WebSocket server is available at ws://localhost:8900/ws/tts"
+    # WebSocket server is now part of kokoro_server.py which is already running on port 8899
+    log "WebSocket server is available at ws://localhost:8899/ws/tts"
     
     # Python imports were already verified above, no need to verify again
     
