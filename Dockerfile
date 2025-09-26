@@ -94,7 +94,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libespeak-ng-dev \
     libffi-dev \
     llvm-runtime \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install uvicorn for running the FastAPI server
+RUN pip3 install --no-cache-dir uvicorn[standard]
 
 # Install Node.js and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
