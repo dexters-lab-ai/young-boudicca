@@ -4,8 +4,8 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from server.python_ws.router import router as ws_router
-from server.python_ws.tts_service import tts_service
+from .router import router as ws_router
+from .tts_service import tts_service
 
 # Configure logging
 logging.basicConfig(

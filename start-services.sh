@@ -181,8 +181,8 @@ start_services() {
     
     # Start WebSocket server
     log "Starting WebSocket server..."
-    cd /app  # Change to the app directory where the server package is located
-    PYTHONPATH=/app python3 -m server.python_ws.main &
+    cd /app/server/python_ws
+    PYTHONPATH=/app python3 -m uvicorn main:app --host 0.0.0.0 --port 8900 --log-level info &
     WS_PID=$!
     cd - > /dev/null  # Return to the previous directory
     
