@@ -108,11 +108,11 @@ COPY tsconfig.server.json ./
 RUN npm run build:server
 
 # ============================================
-# Production stage
+# Runtime stage
 # ============================================
 FROM python:3.11.7-slim as runtime
 
-# Install Node.js and other dependencies
+# Install system dependencies and create app user
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
@@ -121,6 +121,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
+    groupadd -r appuser && \
+    useradd -r -g appuser appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appuser /app && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy Python environment
