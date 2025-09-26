@@ -1,4 +1,4 @@
-""
+"""
 Boudi AI WebSocket Server
 
 This module provides WebSocket-based TTS (Text-to-Speech) functionality
@@ -9,5 +9,5 @@ __version__ = "1.0.0"
 __all__ = ["websocket_manager", "tts_service"]
 
 # Import main components
-from .manager import websocket_manager
-from .tts_service import tts_service
+from server.python_ws.manager import websocket_manager
+from server.python_ws.tts_service import tts_service
