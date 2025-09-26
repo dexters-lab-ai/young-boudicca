@@ -344,10 +344,8 @@ async function fetchVoicesFromService(): Promise<KokoroVoice[]> {
     }
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error) {
-      if ('name' in error && error.name === 'AbortError') {
-        throw new Error(`Request to TTS service timed out after ${TTS_CONFIG.requestTimeout}ms`);
-      }
+    if (error.name === 'AbortError') {
+      throw new Error(`Request to TTS service timed out after ${TTS_CONFIG.requestTimeout}ms`);
     }
     throw error;
   }

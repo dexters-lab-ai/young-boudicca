@@ -7,7 +7,11 @@ import { Chat, GoogleGenAI, Content } from '@google/genai';
 import { availableTools } from '../lib/tools';
 import { getExpressionForText } from '../lib/expressionEngine';
 
-const TTS_WEBSOCKET_URL = 'ws://127.0.0.1:8899/ws/tts';
+// Use relative URL that works in both development and production
+const TTS_WEBSOCKET_URL = (() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/api/ws/tts`;
+})();
 
 interface UseVoiceAgentProps {
     apiKey: string | null;
@@ -62,6 +66,10 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
     const aiRef = useRef<GoogleGenAI | null>(null);
     const websocketRef = useRef<WebSocket | null>(null);
     const gestureDebounceRef = useRef<number | null>(null);
+    const reconnectAttempts = useRef(0);
+    const maxReconnectAttempts = 5;
+    const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+    const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
     const detectGesture = useCallback((text: string): string | null => {
         const t = text.toLowerCase();
@@ -89,17 +97,112 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
 
         const ws = websocketRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-            onError('TTS WebSocket is not connected.');
+            onError('TTS WebSocket is not connected. Please try again.');
+            // Attempt to reconnect if not already trying
+            if (reconnectAttempts.current < maxReconnectAttempts) {
+                console.log('[useVoiceAgent] Attempting to reconnect WebSocket...');
+                connectWebSocket();
+            }
             return;
         }
 
         console.log(`[useVoiceAgent] Sending sentence to WebSocket: "${trimmedSentence}"`);
-        ws.send(JSON.stringify({
-            text: trimmedSentence,
-            voice: preferredVoiceName,
-            lang: preferredLanguage,
-        }));
-    }, [onError, preferredLanguage, preferredVoiceName]);
+        try {
+            ws.send(JSON.stringify({
+                text: trimmedSentence,
+                voice: preferredVoiceName,
+                speed: 1.0, // Default speed, can be made configurable
+                language: preferredLanguage,
+            }));
+        } catch (error) {
+            console.error('[useVoiceAgent] Error sending message to WebSocket:', error);
+            onError('Failed to send message to TTS service');
+        }
+    }, [onError, preferredVoiceName, preferredLanguage]);
+
+    const connectWebSocket = useCallback(() => {
+        // Clean up any existing connection
+        if (websocketRef.current) {
+            websocketRef.current.close();
+        }
+
+        if (reconnectAttempts.current >= maxReconnectAttempts) {
+            console.warn('[useVoiceAgent] Max reconnection attempts reached');
+            return;
+        }
+
+        console.log(`[useVoiceAgent] Connecting to WebSocket: ${TTS_WEBSOCKET_URL}`);
+        const ws = new WebSocket(TTS_WEBSOCKET_URL);
+        websocketRef.current = ws;
+
+        ws.onopen = () => {
+            console.log('[useVoiceAgent] TTS WebSocket connected.');
+            setIsWebSocketConnected(true);
+            reconnectAttempts.current = 0; // Reset reconnection attempts on successful connection
+            if (reconnectTimeout.current) {
+                clearTimeout(reconnectTimeout.current);
+                reconnectTimeout.current = null;
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('[useVoiceAgent] TTS WebSocket disconnected.');
+            setIsWebSocketConnected(false);
+            
+            // Attempt to reconnect with exponential backoff
+            if (reconnectAttempts.current < maxReconnectAttempts) {
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+                console.log(`[useVoiceAgent] Attempting to reconnect in ${delay}ms...`);
+                
+                reconnectTimeout.current = setTimeout(() => {
+                    reconnectAttempts.current++;
+                    connectWebSocket();
+                }, delay);
+            } else {
+                onError('Failed to connect to TTS service after multiple attempts');
+            }
+        };
+
+        ws.onerror = (event) => {
+            console.error('[useVoiceAgent] TTS WebSocket error:', event);
+            onError('TTS WebSocket connection error');
+        };
+
+        ws.onmessage = async (event) => {
+            try {
+                if (typeof event.data === 'string') {
+                    const message = JSON.parse(event.data);
+                    console.log('[useVoiceAgent] Received message:', message);
+                    
+                    switch (message.type) {
+                        case 'audio_chunk':
+                            if (message.data) {
+                                // Convert hex string to ArrayBuffer
+                                const hexString = message.data;
+                                const bytes = new Uint8Array(hexString.length / 2);
+                                for (let i = 0; i < hexString.length; i += 2) {
+                                    bytes[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+                                }
+                                audioPlayerRef.current?.enqueue(bytes.buffer);
+                            }
+                            break;
+                        case 'status':
+                            console.log(`[useVoiceAgent] Status: ${message.message}`);
+                            break;
+                        case 'error':
+                            console.error(`[useVoiceAgent] Error: ${message.message}`);
+                            onError(`TTS Error: ${message.message}`);
+                            break;
+                        case 'complete':
+                            console.log('[useVoiceAgent] TTS generation complete');
+                            break;
+                    }
+                }
+            } catch (e) {
+                console.error('[useVoiceAgent] Error processing WebSocket message:', e);
+            }
+        };
+    }, [onError]);
 
 
     // Effect to initialize clients and WebSocket connection
@@ -121,45 +224,23 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
         }
 
         // Initialize WebSocket
-        const ws = new WebSocket(TTS_WEBSOCKET_URL);
-        websocketRef.current = ws;
-
-        ws.onopen = () => console.log('[useVoiceAgent] TTS WebSocket connected.');
-        ws.onclose = () => console.log('[useVoiceAgent] TTS WebSocket disconnected.');
-        ws.onerror = (event) => {
-            console.error('[useVoiceAgent] TTS WebSocket error:', event);
-            onError('TTS WebSocket connection failed. Please ensure the backend server is running.');
-        };
-
-        ws.onmessage = async (event) => {
-            if (event.data instanceof Blob) {
-                const audioData = await event.data.arrayBuffer();
-                if (audioData.byteLength > 0) {
-                    audioPlayerRef.current?.enqueue(audioData);
-                }
-            } else if (typeof event.data === 'string') {
-                try {
-                    const message = JSON.parse(event.data);
-                    if (message.type === 'sample_rate' && audioPlayerRef.current) {
-                        console.log(`[useVoiceAgent] Received sample rate: ${message.value}`);
-                        audioPlayerRef.current.setSampleRate(message.value);
-                    }
-                } catch (e) {
-                    console.error('[useVoiceAgent] Failed to parse incoming JSON message:', e);
-                }
-            }
-        };
+        connectWebSocket();
 
         // Cleanup function
         return () => {
-            if (ws) {
-                ws.close();
+            if (websocketRef.current) {
+                websocketRef.current.close();
+                websocketRef.current = null;
             }
             if (audioPlayerRef.current) {
                 audioPlayerRef.current.stop();
             }
             if (gestureDebounceRef.current) {
                 clearTimeout(gestureDebounceRef.current);
+            }
+            if (reconnectTimeout.current) {
+                clearTimeout(reconnectTimeout.current);
+                reconnectTimeout.current = null;
             }
         };
     }, [apiKey, onError, setActiveAnimation, setActiveExpression, setIsAudioPlaying]);

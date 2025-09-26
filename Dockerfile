@@ -5,9 +5,9 @@ FROM node:20-slim as frontend-builder
 
 WORKDIR /app
 
-# Install dependencies with npm install for better compatibility
+# Install only the dependencies needed for building
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm ci
 
 # Copy ALL frontend source files including index.html
 COPY . .
@@ -18,29 +18,43 @@ RUN npm run build
 # ============================================
 # Python dependencies stage
 # ============================================
-FROM python:3.11.7-slim-bookworm as python-builder
+FROM python:3.11.7-slim as python-builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
     python3-pip \
     python3-venv \
+    python3-wheel \
     libsndfile1 \
+    libportaudio2 \
     portaudio19-dev \
     espeak-ng \
+    libespeak-ng-dev \
+    libffi-dev \
     wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
-ENV VIRTUAL_ENV=/opt/venv
+# Create virtual environment and set environment variables
+ENV VIRTUAL_ENV=/opt/venv \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install Kokoro TTS using the recommended method
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir kokoro-tts
+# Install dependencies
+COPY server/python-tts/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir numpy>=2.0.2 && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Ensure python source is available in the python-builder image so runtime can copy from it
 COPY server/python-tts /app/server/python-tts
+
+# Copy WebSocket server files
+COPY server/python_ws /app/server/python_ws
 
 # Create and populate models directory
 RUN mkdir -p /app/models && \
@@ -71,7 +85,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm ci
 
 # Copy backend source
 COPY server/ ./server/
@@ -83,33 +97,7 @@ RUN npm run build:server
 # ============================================
 # Production stage
 # ============================================
-FROM python:3.11.7-slim-bookworm as runtime
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    libportaudio2 \
-    portaudio19-dev \
-    espeak-ng \
-    libespeak-ng-dev \
-    libffi-dev \
-    llvm-runtime \
-    && rm -rf /var/lib/apt/lists/*
-
-# First, install Python dependencies in the runtime stage
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create a new virtual environment in the runtime stage
-ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Install required Python packages
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir uvicorn[standard] fastapi kokoro-tts
+FROM python:3.11.7-slim as runtime
 
 # Install Node.js and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -122,11 +110,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy only the model files from the builder stage
+# Copy Python environment
+COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /app/models /app/models
-
-# Ensure the models are readable
-RUN chmod -R 644 /app/models/*
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy built frontend
 COPY --from=frontend-builder /app/dist /app/dist
@@ -134,8 +121,11 @@ COPY --from=frontend-builder /app/dist /app/dist
 # Copy built backend
 COPY --from=backend-builder /app/dist/server /app/dist/server
 
-# Replace copy-from-backend/context with copy-from-python-builder to guarantee python sources are present
+# Copy application code
+COPY --from=backend-builder /app/dist/server /app/server
+COPY --from=python-builder /app/models /app/models
 COPY --from=python-builder /app/server/python-tts /app/server/python-tts
+COPY --from=python-builder /app/server/python_ws /app/server/python_ws
 
 COPY --from=backend-builder /app/package*.json /app/
 
@@ -146,7 +136,7 @@ RUN chmod +x /app/start-services.sh
 WORKDIR /app
 
 # Install production node_modules
-RUN npm install --only=production --legacy-peer-deps
+RUN npm ci --only=production
 
 # Set environment variables
 ENV NODE_ENV=production \
