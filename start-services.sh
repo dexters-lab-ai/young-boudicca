@@ -181,8 +181,10 @@ start_services() {
     
     # Start WebSocket server
     log "Starting WebSocket server..."
-    PYTHONPATH=/app/server/python_ws python3 -m server.python_ws.main &
+    cd /app  # Change to the app directory where the server package is located
+    PYTHONPATH=/app python3 -m server.python_ws.main &
     WS_PID=$!
+    cd - > /dev/null  # Return to the previous directory
     
     # Wait for the WebSocket server to start
     sleep 3
