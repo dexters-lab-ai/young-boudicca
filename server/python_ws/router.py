@@ -2,8 +2,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import APIRouter
 import json
 import logging
-from .manager import websocket_manager
-from .tts_service import tts_service
+from server.python_ws.manager import websocket_manager
+from server.python_ws.tts_service import tts_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
