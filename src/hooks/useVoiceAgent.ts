@@ -69,7 +69,6 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
     const reconnectAttempts = useRef(0);
     const maxReconnectAttempts = 5;
     const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
-    const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
     const detectGesture = useCallback((text: string): string | null => {
         const t = text.toLowerCase();
@@ -137,7 +136,6 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
 
         ws.onopen = () => {
             console.log('[useVoiceAgent] TTS WebSocket connected.');
-            setIsWebSocketConnected(true);
             reconnectAttempts.current = 0; // Reset reconnection attempts on successful connection
             if (reconnectTimeout.current) {
                 clearTimeout(reconnectTimeout.current);
@@ -147,7 +145,6 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
 
         ws.onclose = () => {
             console.log('[useVoiceAgent] TTS WebSocket disconnected.');
-            setIsWebSocketConnected(false);
             
             // Attempt to reconnect with exponential backoff
             if (reconnectAttempts.current < maxReconnectAttempts) {
