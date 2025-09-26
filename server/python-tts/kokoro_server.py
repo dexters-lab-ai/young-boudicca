@@ -212,11 +212,24 @@ async def startup_event():
             logger.info("Testing voice with sample text...")
             
             # Create a test stream and consume it to verify the voice works
+            # Try to extract language code from voice name (e.g., 'en-us' from 'en-us_ljspeech')
+            lang_code = 'en-us'  # Default fallback
+            if '_' in voice_to_use:
+                possible_lang = voice_to_use.split('_')[0]
+                # Check if it's a valid language code
+                if any(possible_lang.startswith(prefix) for prefix in ['en-', 'fr-', 'it', 'ja', 'cmn']):
+                    lang_code = possible_lang
+                # Handle special cases
+                elif possible_lang in ['en', 'fr', 'it', 'ja']:
+                    lang_code = f"{possible_lang}-{possible_lang}"  # e.g., 'en' -> 'en-en'
+            
+            logger.info(f"Using language code: {lang_code} for voice: {voice_to_use}")
+            
             test_stream = kokoro.create_stream(
                 text=test_text,
                 voice=voice_to_use,
                 speed=1.0,
-                lang='en',
+                lang=lang_code,
                 trim=False
             )
             
@@ -232,8 +245,30 @@ async def startup_event():
             logger.warning(f"Falling back to default voice: {voice_to_use}")
         logger.info(f"Using voice for warmup: {voice_to_use}")
 
-        async for _ in kokoro.create_stream(text=test_text, voice=voice_to_use):
-            break
+        # Second attempt with proper language code
+        try:
+            async for _ in kokoro.create_stream(
+                text=test_text, 
+                voice=voice_to_use,
+                lang=lang_code,
+                speed=1.0
+            ):
+                break
+        except Exception as e:
+            logger.error(f"Error during warmup: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Try one more time with default settings
+            try:
+                async for _ in kokoro.create_stream(
+                    text=test_text,
+                    voice=voice_to_use,
+                    lang='en-us',  # Force en-us as fallback
+                    speed=1.0
+                ):
+                    break
+            except Exception as e2:
+                logger.error(f"Final warmup attempt failed: {str(e2)}")
+                # Continue anyway, the service might still work
         warmup_time = time.time() - start_time
         
         logger.info(f"TTS engine ready in {warmup_time:.2f} seconds")

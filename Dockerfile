@@ -18,7 +18,7 @@ RUN npm run build
 # ============================================
 # Python dependencies stage
 # ============================================
-FROM python:3.11.7-slim as python-builder
+FROM python:3.11.7-slim-bookworm as python-builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     wget \
     curl \
+    llvm-11 \
+    llvm-11-dev \
+    llvm-11-runtime \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment and set environment variables
@@ -46,11 +49,10 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install dependencies with specific versions to avoid compatibility issues
 COPY server/python-tts/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir numpy==1.24.3 && \
-    pip install --no-cache-dir llvmlite==0.41.1 && \
-    pip install --no-cache-dir numba==0.60.0 && \
-    pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir -U pip==23.0.1 setuptools==68.0.0 wheel==0.40.0 && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    # Fix for librosa/numba cache issue
+    python -c "import librosa; librosa.cache.clear()"
 
 # Ensure python source is available in the python-builder image so runtime can copy from it
 COPY server/python-tts /app/server/python-tts
@@ -96,7 +98,18 @@ RUN npm run build:server
 # ============================================
 # Production stage
 # ============================================
-FROM python:3.11.7-slim as runtime
+FROM python:3.11.7-slim-bookworm as runtime
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    libportaudio2 \
+    portaudio19-dev \
+    espeak-ng \
+    libespeak-ng-dev \
+    libffi-dev \
+    llvm-11-runtime \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
