@@ -22,37 +22,21 @@ FROM python:3.11.7-slim-bookworm as python-builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3-dev \
     python3-pip \
     python3-venv \
-    python3-wheel \
     libsndfile1 \
-    libportaudio2 \
     portaudio19-dev \
     espeak-ng \
-    libespeak-ng-dev \
-    libffi-dev \
-    wget \
-    curl \
-    llvm \
-    llvm-runtime \
-    llvm-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment and set environment variables
-ENV VIRTUAL_ENV=/opt/venv \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# Create virtual environment
+ENV VIRTUAL_ENV=/opt/venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install dependencies with specific versions to avoid compatibility issues
-COPY server/python-tts/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -U pip==23.0.1 setuptools==68.0.0 wheel==0.40.0 && \
-    pip install --no-cache-dir -r /tmp/requirements.txt && \
-    # Fix for librosa/numba cache issue
-    python -c "import librosa; librosa.cache.clear()"
+# Install Kokoro TTS using the recommended method
+RUN pip install --no-cache-dir -U pip && \
+    pip install --no-cache-dir kokoro-tts
 
 # Ensure python source is available in the python-builder image so runtime can copy from it
 COPY server/python-tts /app/server/python-tts
