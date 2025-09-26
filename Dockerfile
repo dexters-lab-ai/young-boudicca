@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     wget \
     curl \
+    llvm-11 \
+    llvm-11-dev \
+    llvm-11-runtime \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment and set environment variables
@@ -44,10 +47,11 @@ ENV VIRTUAL_ENV=/opt/venv \
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install dependencies
+# Install dependencies with specific versions to avoid compatibility issues
 COPY server/python-tts/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir numpy>=2.0.2 && \
+    pip install --no-cache-dir numpy==1.24.3 && \
+    pip install --no-cache-dir numba==0.58.1 llvmlite==0.41.1 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Ensure python source is available in the python-builder image so runtime can copy from it

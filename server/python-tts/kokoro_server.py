@@ -174,31 +174,62 @@ async def startup_event():
         start_time = time.time()
         test_text = "Initializing TTS service. "
         
-        # List available voices using the list_voices method
-        default_voices = ["af_sarah", "am_echo", "af_nova"]  # Common voices that should be available
+        # List of default voices to use as fallback
+        default_voices = ["af_sarah", "am_echo", "af_nova", "af_heart", "am_adam"]
         
-        if hasattr(kokoro, 'list_voices'):
-            try:
-                available_voices = kokoro.list_voices()
-                # If it's a string, convert to a list
-                if isinstance(available_voices, str):
-                    available_voices = [available_voices]
-                
-                # If no voices found, use default voices
-                if not available_voices:
+        try:
+            # First try to get voices from the model
+            if hasattr(kokoro, 'list_voices'):
+                try:
+                    available_voices = kokoro.list_voices()
+                    # If it's a string, convert to a list
+                    if isinstance(available_voices, str):
+                        available_voices = [available_voices]
+                    
+                    # If no voices found, use default voices
+                    if not available_voices:
+                        logger.warning("No voices found via list_voices(), using default voices")
+                        available_voices = default_voices
+                    else:
+                        logger.info(f"Found {len(available_voices)} voices via list_voices()")
+                except Exception as e:
+                    logger.warning(f"Error calling list_voices(): {str(e)}")
                     available_voices = default_voices
-                    logger.warning("No voices found via list_voices(), using default voices")
-            except Exception as e:
-                logger.warning(f"Error getting voices via list_voices(): {e}, using default voices")
+            else:
+                logger.info("list_voices() not available, using default voices")
                 available_voices = default_voices
-        else:
-            available_voices = default_voices
-            logger.info("list_voices() not available, using default voices")
+                
+            logger.info(f"Available voices: {available_voices}")
             
-        logger.info(f"Available voices: {available_voices}")
-
-        # Use the first available voice for warmup
-        voice_to_use = available_voices[0]
+            # Select the first available voice
+            voice_to_use = available_voices[0] if available_voices else default_voices[0]
+            
+            # Log the selected voice
+            logger.info(f"Selected voice for warmup: {voice_to_use}")
+            
+            # Test if the voice is valid by trying to generate a short audio clip
+            test_text = "TTS service is initializing."
+            logger.info("Testing voice with sample text...")
+            
+            # Create a test stream and consume it to verify the voice works
+            test_stream = kokoro.create_stream(
+                text=test_text,
+                voice=voice_to_use,
+                speed=1.0,
+                lang='en',
+                trim=False
+            )
+            
+            # Consume the generator to verify it works
+            async for _ in test_stream:
+                break
+                
+        except Exception as e:
+            logger.error(f"Error during voice initialization: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Fall back to the first default voice if there's an error
+            voice_to_use = default_voices[0]
+            logger.warning(f"Falling back to default voice: {voice_to_use}")
         logger.info(f"Using voice for warmup: {voice_to_use}")
 
         async for _ in kokoro.create_stream(text=test_text, voice=voice_to_use):
