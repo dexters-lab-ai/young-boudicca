@@ -50,10 +50,12 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Create necessary directories with correct permissions
-RUN mkdir -p /app/server/python_ws && \
+# Create app user and set up directories
+RUN groupadd -r appuser && \
+    useradd -r -g appuser appuser && \
+    mkdir -p /app/server/python_ws && \
     mkdir -p /app/server/python-tts && \
-    chown -R appuser:appuser /app/server
+    chown -R appuser:appuser /app
 
 # Copy Python TTS server files
 COPY server/python-tts/*.py /app/server/python-tts/
