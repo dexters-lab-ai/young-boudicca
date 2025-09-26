@@ -149,7 +149,10 @@ start_services() {
 
     # Start the WebSocket server
     log "Starting WebSocket server..."
-    PYTHONPATH=/app/server/python-tts python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
+    # Add both /app and /app/server/python-tts to PYTHONPATH
+    export PYTHONPATH=/app/server/python-tts:/app
+    cd /app/server/python-tts
+    python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     
