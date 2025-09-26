@@ -20,7 +20,7 @@ RUN npm run build
 # ============================================
 FROM python:3.11.7-slim as python-builder
 
-# Install system dependencies and add LLVM repository
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
@@ -35,16 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     wget \
     curl \
-    gnupg \
-    ca-certificates \
-    && echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-11 main" > /etc/apt/sources.list.d/llvm.list \
-    && wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        llvm-11 \
-        llvm-11-tools \
-        llvm-11-dev \
-        libllvm11 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment and set environment variables
