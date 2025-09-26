@@ -50,24 +50,15 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Create app user and set up directories
-RUN groupadd -r appuser && \
-    useradd -r -g appuser appuser && \
-    mkdir -p /app/server/python_ws && \
-    mkdir -p /app/server/python-tts && \
-    chown -R appuser:appuser /app
+# Create directories
+RUN mkdir -p /app/server/python-tts
 
 # Copy Python TTS server files
 COPY server/python-tts/*.py /app/server/python-tts/
 
-# Copy WebSocket server files
-COPY server/python_ws/*.py /app/server/python_ws/
-
 # Verify files were copied
 RUN echo "=== Python TTS files ===" && \
-    ls -la /app/server/python-tts/ && \
-    echo "=== Python WS files ===" && \
-    ls -la /app/server/python_ws/
+    ls -la /app/server/python-tts/
 
 # Create and populate models directory
 RUN mkdir -p /app/models && \
@@ -134,9 +125,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH="/app:/app/server/python-tts:$PYTHONPATH"
 
-# Set proper permissions for app directory
-RUN chown -R appuser:appuser /app
-
 # Create necessary directories
 RUN mkdir -p /app/dist /app/server /app/models /app/public
 
@@ -182,14 +170,12 @@ RUN echo "=== Verifying files ===" && \
     echo "Model files:" && \
     ls -la /app/models/
 
-# Create non-root user (using system UID range)
-RUN useradd -r -u 999 -g root appuser && \
-    chown -R appuser:root /app && \
+# Set permissions
+RUN chown -R appuser:root /app && \
     chmod -R g=u /app
 
 # Verify files after copy
-RUN ls -la /app/server/python-tts/ && \
-    test -f /app/server/python-tts/kokoro_server.py || (echo "ERROR: kokoro_server.py not found!" && exit 1)
+RUN test -f /app/server/python-tts/kokoro_server.py || (echo "ERROR: kokoro_server.py not found!" && exit 1)
 
 USER appuser
 
