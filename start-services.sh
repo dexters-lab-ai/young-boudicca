@@ -130,28 +130,25 @@ start_services() {
     log "Models directory:"
     ls -la /app/models/
 
-    # Start Python TTS service with better error handling
-    cd /app/server/python-tts || {
-        log "ERROR: Failed to change to Python TTS directory"
+    # Change to server directory
+    cd /app/server || {
+        log "ERROR: Failed to change to server directory"
         exit 1
     }
 
-    # Remove su command and directly check file existence and readability
-    log "Checking kokoro_server.py as appuser..."
-    if [ -r /app/server/python-tts/kokoro_server.py ]; then
-        log "kokoro_server.py exists and is readable by appuser"
+    # Check if main.py exists and is readable
+    log "Checking main.py as appuser..."
+    if [ -r /app/server/main.py ]; then
+        log "main.py exists and is readable by appuser"
     else
-        log "ERROR: kokoro_server.py not found or not readable by appuser"
+        log "ERROR: main.py not found or not readable by appuser"
+        ls -la /app/server/
         exit 1
     fi
 
-    if [ ! -f "kokoro_server.py" ]; then
-        echo "FATAL: kokoro_server.py not found in $(pwd)"
-        ls -la
-        exit 1
-    fi
-
-    PYTHONPATH=/app/server/python-tts python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
+    # Start the WebSocket server
+    log "Starting WebSocket server..."
+    PYTHONPATH=/app/server python3 -m uvicorn main:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     
