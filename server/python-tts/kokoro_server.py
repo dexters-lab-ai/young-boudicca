@@ -163,18 +163,8 @@ async def startup_event():
         
         # Initialize Kokoro
         logger.info("Initializing Kokoro TTS engine...")
-        try:
-            # First try initializing without tokenizer
-            kokoro = Kokoro(model_path, voices_path)
-        except TypeError as e:
-            logger.warning(f"Standard initialization failed: {e}")
-            # If that fails, try with tokenizer as a positional argument
-            try:
-                tokenizer = Tokenizer()
-                kokoro = Kokoro(model_path, voices_path, tokenizer)
-            except Exception as e:
-                logger.error(f"Failed to initialize Kokoro with tokenizer: {e}")
-                raise
+        # Initialize Kokoro with just model and voices path
+        kokoro = Kokoro(model_path, voices_path)
         
         # Store in app globals
         app_globals['kokoro'] = kokoro
@@ -183,7 +173,19 @@ async def startup_event():
         logger.info("Warming up TTS engine...")
         start_time = time.time()
         test_text = "Initializing TTS service. "
-        async for _ in kokoro.create_stream(text=test_text, voice="en-us_ljspeech"):
+        
+        # List available voices
+        available_voices = list(kokoro.voices.keys())
+        logger.info(f"Available voices: {available_voices}")
+
+        if not available_voices:
+            raise RuntimeError("No voices available in the TTS engine")
+
+        # Use the first available voice for warmup
+        voice_to_use = available_voices[0]
+        logger.info(f"Using voice for warmup: {voice_to_use}")
+
+        async for _ in kokoro.create_stream(text=test_text, voice=voice_to_use):
             break
         warmup_time = time.time() - start_time
         
