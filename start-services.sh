@@ -152,34 +152,29 @@ start_services() {
     
     # Set up Python environment
     export PYTHONUNBUFFERED=1
-    export PYTHONPATH="/app:/app/server/python_ws:$PYTHONPATH"
+    export PYTHONPATH="/app:/app/server/python-tts:$PYTHONPATH"
     
-    # Create necessary directories
-    mkdir -p /app/server/python_ws
-    
-    # Change to the app directory
-    cd /app || {
-        log "ERROR: Failed to change to /app directory"
+    # Change to the python-tts directory
+    cd /app/server/python-tts || {
+        log "ERROR: Failed to change to /app/server/python-tts directory"
         exit 1
     }
     
-    # Verify main.py exists and is readable
-    if [ ! -f "/app/server/python_ws/main.py" ] || [ ! -r "/app/server/python_ws/main.py" ]; then
-        log "ERROR: main.py not found or not readable in /app/server/python_ws/"
+    # Verify kokoro_server.py exists and is readable
+    if [ ! -f "kokoro_server.py" ] || [ ! -r "kokoro_server.py" ]; then
+        log "ERROR: kokoro_server.py not found or not readable in $(pwd)"
         log "Current directory: $(pwd)"
-        log "Contents of /app/server:"
-        ls -la /app/server/
-        log "Contents of /app/server/python_ws/:"
-        ls -la /app/server/python_ws/ 2>/dev/null || echo "python_ws directory not found"
+        log "Directory contents:"
+        ls -la
         exit 1
     fi
     
     log "Starting WebSocket server with PYTHONPATH=$PYTHONPATH"
     log "Current directory: $(pwd)"
-    log "Starting server with: python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899 --log-level debug"
+    log "Starting server with: python -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug"
     
     # Start the server
-    python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899 --log-level debug &
+    python -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     
