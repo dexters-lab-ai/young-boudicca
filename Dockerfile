@@ -94,11 +94,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libespeak-ng-dev \
     libffi-dev \
     llvm-runtime \
-    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uvicorn for running the FastAPI server
-RUN pip3 install --no-cache-dir uvicorn[standard]
+# Copy the virtual environment from the builder stage
+COPY --from=python-builder /opt/venv /opt/venv
+
+# Set the PATH to use the virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Node.js and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
