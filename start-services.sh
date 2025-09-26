@@ -149,21 +149,65 @@ start_services() {
 
     # Start the WebSocket server
     log "Starting WebSocket server..."
-    # Add both /app and /app/server/python-tts to PYTHONPATH
-    export PYTHONPATH=/app/server/python-tts:/app
-    cd /app/server/python-tts
-    python3 -m uvicorn kokoro_server:app --host 0.0.0.0 --port 8899 --log-level debug &
+    
+    # Set up Python environment
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH="/app:/app/server/python_ws:$PYTHONPATH"
+    
+    # Create necessary directories
+    mkdir -p /app/server/python_ws
+    
+    # Change to the app directory
+    cd /app || {
+        log "ERROR: Failed to change to /app directory"
+        exit 1
+    }
+    
+    # Verify main.py exists and is readable
+    if [ ! -f "/app/server/python_ws/main.py" ] || [ ! -r "/app/server/python_ws/main.py" ]; then
+        log "ERROR: main.py not found or not readable in /app/server/python_ws/"
+        log "Current directory: $(pwd)"
+        log "Contents of /app/server:"
+        ls -la /app/server/
+        log "Contents of /app/server/python_ws/:"
+        ls -la /app/server/python_ws/ 2>/dev/null || echo "python_ws directory not found"
+        exit 1
+    fi
+    
+    log "Starting WebSocket server with PYTHONPATH=$PYTHONPATH"
+    log "Current directory: $(pwd)"
+    log "Starting server with: python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899 --log-level debug"
+    
+    # Start the server
+    python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899 --log-level debug &
 
     TTS_PID=$!
     
     # Wait for the service to start
-    sleep 5
+    local max_retries=30
+    local retry_count=0
+    local service_started=0
     
-    # Check if the service is running
-    if ! ps -p $TTS_PID > /dev/null; then
+    log "Waiting for WebSocket server to start..."
+    while [ $retry_count -lt $max_retries ]; do
+        if ps -p $TTS_PID > /dev/null; then
+            # Check if the health endpoint is responding
+            if curl -s http://localhost:8899/health | grep -q '"status":"ok"'; then
+                log "WebSocket server started successfully with PID $TTS_PID"
+                service_started=1
+                break
+            fi
+        fi
+        
+        retry_count=$((retry_count + 1))
+        log "Waiting for WebSocket server to be ready... (attempt $retry_count/$max_retries)"
+        sleep 2
+    done
+    
+    if [ $service_started -eq 0 ]; then
         log "Error: Failed to start Python TTS service"
-        log "TTS service log output:"
-        cat /app/tts-service.log
+        log "Process running: $(ps -p $TTS_PID >/dev/null && echo "Yes" || echo "No")"
+        log "Health check response: $(curl -s http://localhost:8899/health || echo 'Health check failed')"
         exit 1
     fi
     
@@ -253,8 +297,9 @@ kokoro_tts.list_voices()" 2>&1; then
     echo "Verifying Python environment..."
     python /app/server/python-tts/verify_env.py || exit 1
 
-    # Start the service
-    cd /app && python -m uvicorn server.python-ws.main:app --host 0.0.0.0 --port 8899 &
+    # Start the WebSocket server
+    log "Starting WebSocket server..."
+    cd /app && python -m uvicorn server.python_ws.main:app --host 0.0.0.0 --port 8899 --log-level debug &
     PYTHON_PID=$!
     check_service 8899 "Python TTS" "/docs" || { kill $PYTHON_PID 2>/dev/null; exit 1; }
 

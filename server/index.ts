@@ -488,14 +488,19 @@ function addRoute(method: string, path: string, handler: express.RequestHandler)
 const possibleDirs: readonly string[] = [
   // Production paths (Docker)
   '/app/dist',
+  // Root dist directory
+  '/dist',
   // Local development paths
   path.join(__dirname, '..', 'dist'),
+  path.join(__dirname, '..', '..', 'dist'),
   '/app/public',
   // Relative paths (development)
-  path.join(__dirname, '..', 'dist'),
-  path.join(__dirname, '..', 'public'),
   path.join(process.cwd(), 'dist'),
-  path.join(process.cwd(), 'public')
+  path.join(process.cwd(), '..', 'dist'),
+  path.join(process.cwd(), 'public'),
+  // Fallback paths
+  path.join(process.cwd(), '..', 'public'),
+  path.join(process.cwd(), '..', '..', 'dist')
 ] as const;
 
 // Log available directories for debugging
@@ -516,7 +521,7 @@ for (const dir of possibleDirs) {
   }
 }
 
-// Try to find// Serve static files from the first existing directory
+// Serve static files from the first existing directory
 let staticDirFound = false;
 let staticPath = '';
 
@@ -527,21 +532,34 @@ for (const dir of possibleDirs) {
       console.log(`[Server] Found static files at: ${fullPath}`);
       console.log(`[Server] Directory contents:`, fs.readdirSync(fullPath));
       
-      // Serve static files
+      // Serve static files with more aggressive caching
       app.use(express.static(fullPath, {
         etag: true,
         maxAge: '1y',
         immutable: true,
-        index: false,
+        index: ['index.html'],
         fallthrough: true,
+        extensions: ['html', 'js', 'css', 'json', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'woff', 'woff2', 'ttf', 'eot'],
+        setHeaders: (res: Response, path: string) => {
+          // Set CORS headers for all static files
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          
+          // Set cache control for assets
+          if (/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/.test(path)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        }
       }));
       
       // Special handling for SPA fallback - serve index.html for all other routes
       app.get('*', (req, res) => {
+        console.log(`[Server] SPA fallback for: ${req.path}`);
         const indexPath = path.join(fullPath, 'index.html');
         if (fs.existsSync(indexPath)) {
+          console.log(`[Server] Serving index.html from: ${indexPath}`);
           res.sendFile(indexPath);
         } else {
+          console.error(`[Server] index.html not found in: ${fullPath}`);
           res.status(404).send('Not Found');
         }
       });

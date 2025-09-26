@@ -50,11 +50,22 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir numpy>=2.0.2 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Ensure python source is available in the python-builder image so runtime can copy from it
-COPY server/python-tts /app/server/python-tts
+# Create necessary directories with correct permissions
+RUN mkdir -p /app/server/python_ws && \
+    mkdir -p /app/server/python-tts && \
+    chown -R appuser:appuser /app/server
 
-# Copy WebSocket server files to the python-tts directory
-COPY server/python-ws/* /app/server/python-tts/
+# Copy Python TTS server files
+COPY server/python-tts/*.py /app/server/python-tts/
+
+# Copy WebSocket server files
+COPY server/python_ws/*.py /app/server/python_ws/
+
+# Verify files were copied
+RUN echo "=== Python TTS files ===" && \
+    ls -la /app/server/python-tts/ && \
+    echo "=== Python WS files ===" && \
+    ls -la /app/server/python_ws/
 
 # Create and populate models directory
 RUN mkdir -p /app/models && \
@@ -114,20 +125,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /app/models /app/models
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH="/app:/app/server/python-tts:$PYTHONPATH"
 
-# Copy built frontend
+# Set proper permissions for app directory
+RUN chown -R appuser:appuser /app
+
+# Create necessary directories
+RUN mkdir -p /app/dist /app/server /app/models /app/public
+
+# Copy built frontend files - ensure they go to /app/dist
 COPY --from=frontend-builder /app/dist /app/dist
 
 # Copy built backend
 COPY --from=backend-builder /app/dist/server /app/dist/server
 
 # Copy application code
-COPY --from=backend-builder /app/dist/server /app/server
-COPY --from=python-builder /app/models /app/models
-COPY --from=python-builder /app/server/python-tts /app/server/python-tts
-# WebSocket server files are already in the main server directory
-
 COPY --from=backend-builder /app/package*.json /app/
+COPY --from=python-builder /app/models/* /app/models/
+COPY --from=python-builder /app/server/python-tts /app/server/python-tts
+
+# Create a symlink from /dist to /app/dist for backward compatibility
+RUN ln -sf /app/dist /dist
+
+# Verify the directory structure
+RUN echo "=== Directory Structure ===" && \
+    echo "/app/" && ls -la /app/ && \
+    echo "/app/dist/" && ls -la /app/dist/ && \
+    echo "/app/server/" && ls -la /app/server/
 
 # Copy startup script
 COPY start-services.sh /app/

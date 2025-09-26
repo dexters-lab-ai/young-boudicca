@@ -92,12 +92,37 @@ tts_engine = None
 @app.on_event("startup")
 async def startup_event():
     global tts_engine
-    # Resolve model path relative to the script's location
-    # Assumes this script is in server/python-ws and models are in server/python-tts
+    
+    # Resolve model paths - check multiple possible locations
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    model_dir = os.path.abspath(os.path.join(script_dir, '..', 'python-tts'))
+    possible_model_dirs = [
+        # Production path when running in Docker
+        '/app/server/python-tts',
+        # Development path when running locally
+        os.path.abspath(os.path.join(script_dir, '..', 'python-tts')),
+        # Fallback to current directory
+        os.path.abspath(script_dir)
+    ]
+    
+    model_dir = None
+    for dir_path in possible_model_dirs:
+        model_file = os.path.join(dir_path, 'kokoro-v1.0.onnx')
+        voices_file = os.path.join(dir_path, 'voices-v1.0.bin')
+        if os.path.exists(model_file) and os.path.exists(voices_file):
+            model_dir = dir_path
+            print(f"[TTS] Found model files in: {model_dir}")
+            break
+    
+    if model_dir is None:
+        print(f"[TTS] Error: Could not find model files in any of these locations:")
+        for dir_path in possible_model_dirs:
+            print(f"  - {dir_path}")
+        raise RuntimeError("Failed to locate TTS model files")
+    
+    print(f"[TTS] Initializing TTS engine with model from: {model_dir}")
     tts_engine = TTSEngine(model_dir)
     tts_engine.load()
+    print("[TTS] TTS engine initialized successfully")
 
 @app.websocket("/ws/tts")
 async def websocket_endpoint(websocket: WebSocket):
