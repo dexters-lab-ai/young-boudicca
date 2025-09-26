@@ -163,8 +163,18 @@ async def startup_event():
         
         # Initialize Kokoro
         logger.info("Initializing Kokoro TTS engine...")
-        tokenizer = Tokenizer()
-        kokoro = Kokoro(model_path, voices_path, tokenizer=tokenizer)
+        try:
+            # First try initializing without tokenizer
+            kokoro = Kokoro(model_path, voices_path)
+        except TypeError as e:
+            logger.warning(f"Standard initialization failed: {e}")
+            # If that fails, try with tokenizer as a positional argument
+            try:
+                tokenizer = Tokenizer()
+                kokoro = Kokoro(model_path, voices_path, tokenizer)
+            except Exception as e:
+                logger.error(f"Failed to initialize Kokoro with tokenizer: {e}")
+                raise
         
         # Store in app globals
         app_globals['kokoro'] = kokoro
