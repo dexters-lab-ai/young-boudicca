@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Add project root to path to allow imports from other directories
 try:
+    # Add the python_ws directory to the Python path
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from kokoro_onnx import Kokoro
     from kokoro_onnx.config import SAMPLE_RATE
     from kokoro_onnx.tokenizer import Tokenizer
