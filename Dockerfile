@@ -51,14 +51,17 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Create directories
-RUN mkdir -p /app/server/python-tts
+RUN mkdir -p /app/server/python-tts /app/server/python_ws
 
-# Copy Python TTS server files
+# Copy Python server files
 COPY server/python-tts/*.py /app/server/python-tts/
+COPY server/python_ws/*.py /app/server/python_ws/
 
 # Verify files were copied
 RUN echo "=== Python TTS files ===" && \
-    ls -la /app/server/python-tts/
+    ls -la /app/server/python-tts/ && \
+    echo "=== Python WS files ===" && \
+    ls -la /app/server/python_ws/
 
 # Create and populate models directory
 RUN mkdir -p /app/models && \
