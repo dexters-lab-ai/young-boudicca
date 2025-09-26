@@ -1,5 +1,6 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 // https://vite.config.js/config/
 export default defineConfig(({ mode }) => {
@@ -7,7 +8,22 @@ export default defineConfig(({ mode }) => {
     const isProduction = mode === 'production';
     
     return {
-      plugins: [react()],
+      plugins: [
+        react(),
+        // Copy static files to the dist directory
+        viteStaticCopy({
+          targets: [
+            {
+              src: 'public/*',
+              dest: './'
+            },
+            {
+              src: 'server/python-tts/models/*',
+              dest: 'models/'
+            }
+          ]
+        })
+      ],
       base: isProduction ? '/' : '/',
       build: {
         outDir: 'dist',
@@ -16,25 +32,38 @@ export default defineConfig(({ mode }) => {
         sourcemap: !isProduction,
         minify: isProduction ? 'esbuild' : false,
         chunkSizeWarningLimit: 1000,
+        // Ensure all assets are properly hashed for cache busting
+        manifest: true,
+        // Ensure static assets are properly copied
+        assetsInlineLimit: 0,
         rollupOptions: {
           output: {
+            // Ensure consistent chunk naming
+            entryFileNames: 'assets/[name]-[hash].js',
+            chunkFileNames: 'assets/[name]-[hash].js',
+            assetFileNames: 'assets/[name]-[hash][extname]',
             manualChunks: {
               vendor: [
                 'react',
                 'react-dom',
-                'react-router-dom'
+                'react-router-dom',
+                'zustand'
               ],
               three: [
                 'three',
                 '@react-three/fiber',
-                '@react-three/drei'
+                '@react-three/drei',
+                '@pixiv/three-vrm',
+                '@pixiv/three-vrm-animation'
               ],
               solana: [
                 '@solana/web3.js',
                 '@solana/wallet-adapter-base',
                 '@solana/wallet-adapter-react',
                 '@solana/wallet-adapter-react-ui',
-                '@solana/wallet-adapter-wallets'
+                '@solana/wallet-adapter-wallets',
+                'bs58',
+                'tweetnacl'
               ]
             }
           }

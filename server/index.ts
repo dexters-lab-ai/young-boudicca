@@ -216,6 +216,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- Configuration ---
+const TTS_CONFIG = {
+  serviceUrl: process.env.TTS_SERVICE_URL || 'http://localhost:8899',
+  cacheTtl: 24 * 60 * 60 * 1000, // 24 hours
+  requestTimeout: 10000, // 10 seconds
+};
+
 // --- Kokoro TTS API & Cache Preloading ---
 // Cache for Kokoro voices to avoid spawning the CLI on every request
 type KokoroVoice = { value: string; label: string };
@@ -223,6 +230,12 @@ let kokoroVoicesCache: KokoroVoice[] = [];
 let kokoroVoicesLastLoaded: number | null = null;
 const VOICES_CACHE_FILE = path.join(__dirname, 'voices-cache.json');
 const VOICES_LIST_TXT = path.join(__dirname, 'voices-list.txt');
+
+// Ensure cache directory exists
+const CACHE_DIR = path.join(__dirname, 'cache');
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
 
 // Normalize a voice value into a Kokoro-compatible id (e.g., "29. ef_dora" -> "ef_dora")
 function sanitizeVoice(raw?: string | null): string | undefined {
@@ -237,16 +250,34 @@ function sanitizeVoice(raw?: string | null): string | undefined {
 }
 
 function parseVoicesOutput(raw: string): KokoroVoice[] {
-  const lines = raw
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line && !line.startsWith('Languages') && !line.startsWith('Voices') && !line.startsWith('───'));
-  const out: KokoroVoice[] = [];
-  for (const label of lines) {
-    const value = sanitizeVoice(label) || label;
-    out.push({ value, label });
+  try {
+    // Try to parse as JSON first (for API responses)
+    if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.voices)) {
+        return data.voices.map((voice: string) => ({
+          value: voice,
+          label: voice
+        }));
+      }
+    }
+
+    // Fall back to line-based parsing
+    const lines = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('Languages') && !line.startsWith('Voices') && !line.startsWith('───'));
+    
+    const out: KokoroVoice[] = [];
+    for (const label of lines) {
+      const value = sanitizeVoice(label) || label;
+      out.push({ value, label });
+    }
+    return out;
+  } catch (error) {
+    console.error('[Server] Failed to parse voices:', error);
+    return [];
   }
-  return out;
 }
 
 function saveVoicesCacheToDisk() {
@@ -280,19 +311,23 @@ function loadVoicesCacheFromDisk() {
   }
 }
 
-async function preloadKokoroVoicesCache() {
-  // Skip if already loaded
-  if (kokoroVoicesCache.length > 0) return;
-  
-  // Try to load from disk cache first
-  loadVoicesCacheFromDisk();
-  if (kokoroVoicesCache.length > 0) return;
+async function fetchVoicesFromService(): Promise<KokoroVoice[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TTS_CONFIG.requestTimeout);
 
   try {
-    console.log('[Server] Fetching TTS voices from HTTP API...');
+    console.log(`[Server] Fetching TTS voices from ${TTS_CONFIG.serviceUrl}/voices...`);
     
-    // Make HTTP request to the TTS service
-    const response = await fetch('http://localhost:8899/voices');
+    const response = await fetch(`${TTS_CONFIG.serviceUrl}/voices`, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -300,21 +335,57 @@ async function preloadKokoroVoicesCache() {
     const data = await response.json();
     
     if (data.status === 'success' && Array.isArray(data.voices)) {
-      // Transform the response to match our expected format
-      kokoroVoicesCache = data.voices.map((voice: string) => ({
+      return data.voices.map((voice: string) => ({
         value: voice,
         label: voice
       }));
-      kokoroVoicesLastLoaded = Date.now();
-      saveVoicesCacheToDisk();
-      console.log(`[Server] Loaded ${kokoroVoicesCache.length} voices from TTS service.`);
     } else {
       throw new Error('Invalid response format from TTS service');
     }
   } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request to TTS service timed out after ${TTS_CONFIG.requestTimeout}ms`);
+    }
+    throw error;
+  }
+}
+
+async function preloadKokoroVoicesCache() {
+  // Skip if already loaded and cache is still fresh
+  const now = Date.now();
+  if (kokoroVoicesCache.length > 0 && 
+      kokoroVoicesLastLoaded && 
+      (now - kokoroVoicesLastLoaded) < TTS_CONFIG.cacheTtl) {
+    return;
+  }
+  
+  // Try to load from disk cache first if in-memory cache is empty
+  if (kokoroVoicesCache.length === 0) {
+    loadVoicesCacheFromDisk();
+    
+    // If disk cache is still fresh, use it
+    if (kokoroVoicesCache.length > 0 && 
+        kokoroVoicesLastLoaded && 
+        (now - kokoroVoicesLastLoaded) < TTS_CONFIG.cacheTtl) {
+      return;
+    }
+  }
+
+  try {
+    const voices = await fetchVoicesFromService();
+    if (voices.length > 0) {
+      kokoroVoicesCache = voices;
+      kokoroVoicesLastLoaded = now;
+      saveVoicesCacheToDisk();
+      console.log(`[Server] Loaded ${voices.length} voices from TTS service.`);
+    } else {
+      throw new Error('No voices returned from TTS service');
+    }
+  } catch (error) {
     console.error('[Server] Failed to load voices from TTS service:', error);
     
-    // Fallback to default voice if the service is not available
+    // Fallback to default voice if the service is not available and we have no cache
     if (kokoroVoicesCache.length === 0) {
       kokoroVoicesCache = [{ value: 'default', label: 'Default' }];
       console.log('[Server] Using default voice');
@@ -417,6 +488,8 @@ function addRoute(method: string, path: string, handler: express.RequestHandler)
 const possibleDirs: readonly string[] = [
   // Production paths (Docker)
   '/app/dist',
+  // Local development paths
+  path.join(__dirname, '..', 'dist'),
   '/app/public',
   // Relative paths (development)
   path.join(__dirname, '..', 'dist'),
@@ -443,68 +516,68 @@ for (const dir of possibleDirs) {
   }
 }
 
-// Try to find index.html in any of the found directories
-let staticDir: string | null = null;
-for (const dir of foundDirs) {
-  const indexPath = path.join(dir, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    staticDir = dir as string;
-    console.log(`Found index.html in: ${staticDir}`);
-    break;
-  } else {
-    console.log(`No index.html found in: ${dir}`);
+// Try to find// Serve static files from the first existing directory
+let staticDirFound = false;
+let staticPath = '';
+
+for (const dir of possibleDirs) {
+  try {
+    const fullPath = path.resolve(dir);
+    if (fs.existsSync(fullPath)) {
+      console.log(`[Server] Found static files at: ${fullPath}`);
+      console.log(`[Server] Directory contents:`, fs.readdirSync(fullPath));
+      
+      // Serve static files
+      app.use(express.static(fullPath, {
+        etag: true,
+        maxAge: '1y',
+        immutable: true,
+        index: false,
+        fallthrough: true,
+      }));
+      
+      // Special handling for SPA fallback - serve index.html for all other routes
+      app.get('*', (req, res) => {
+        const indexPath = path.join(fullPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send('Not Found');
+        }
+      });
+      
+      staticDirFound = true;
+      staticPath = fullPath;
+      
+      // SPA Fallback - must be the last route
+      app.get('*', (req, res, next) => {
+        // Skip API routes
+        if (req.path.startsWith('/api/') || req.path.startsWith('/tools/')) {
+          return next();
+        }
+        
+        const indexPath = path.join(fullPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send('Not Found');
+        }
+      });
+      
+      break;
+    }
+  } catch (error) {
+    console.error(`[Server] Error setting up static file serving for ${dir}:`, error);
+    continue; // Try the next directory
   }
 }
 
-if (!staticDir) {
-  console.warn('No static directory with index.html found. SPA serving is disabled.');
-  console.warn('Searched in:', foundDirs.join(', '));
-} else {
-  console.log(`[Server] Serving static files from: ${staticDir}`);
-  
-  // Serve static files with proper caching
-  app.use(express.static(staticDir, {
-    etag: true,
-    maxAge: process.env.NODE_ENV === 'production' ? '1y' : '0',
-    immutable: process.env.NODE_ENV === 'production',
-    fallthrough: false,
-    index: false // Disable automatic index.html serving, we'll handle it manually
-  }));
-
-  // SPA Fallback - must be the last route
-  app.get('*', (req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/') || req.path.startsWith('/tools/')) {
-      return next();
-    }
-    
-    const filePath = path.join(staticDir, req.path);
-    const indexPath = path.join(staticDir, 'index.html');
-    
-    // If the file exists, serve it, otherwise serve index.html for SPA routing
-    fs.access(filePath, fs.constants.F_OK, (err) => {
-      if (err) {
-        console.log(`[SPA] Route ${req.path} not found, serving index.html`);
-        res.sendFile(indexPath, (err) => {
-          if (err) {
-            console.error('Error serving index.html:', err);
-            if (!res.headersSent) {
-              res.status(500).send('Error loading the application');
-            }
-          }
-        });
-      } else {
-        res.sendFile(filePath, (err) => {
-          if (err) {
-            console.error(`Error serving ${filePath}:`, err);
-            if (!res.headersSent) {
-              res.status(500).send('Error loading resource');
-            }
-          }
-        });
-      }
-    });
-  });
+// If we've gone through all directories and didn't find any static files
+if (!staticDirFound) {
+  console.error('[Server] No static directory found to serve files from');
+  // We'll log an error but continue starting the server
+  // as some API routes might still work without static files
+  console.error('[Server] Tried the following directories:', possibleDirs.join(', '));
 }
 
 // --- Kokoro TTS API Routes ---
