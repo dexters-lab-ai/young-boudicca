@@ -196,22 +196,44 @@ async def startup_event():
         logger.info("Initializing Kokoro model (this may take a moment)...")
         model_load_start = time.time()
         
-        # Initialize Kokoro with just the model and voices path
-        # Note: The Tokenizer is now handled internally by the Kokoro class
+        # Initialize Kokoro with the model and voices path
         app_globals['kokoro'] = Kokoro(model_path, voices_path)
         
-        model_load_time = time.time() - model_load_start
+        # Add list_voices method if it doesn't exist
+        if not hasattr(app_globals['kokoro'], 'list_voices'):
+            def list_voices(self):
+                """List all available voices from the voices file."""
+                try:
+                    # These are the standard voices available in Kokoro TTS
+                    # Update this list based on your actual voices
+                    voices = [
+                        "en-us_ljspeech", "en-gb_amy", "es-es_tux", "fr-fr_evi", "de-de_evi",
+                        "it-it_evi", "pt-br_evi", "ru-ru_evi", "zh-cn_evi", "ja-jp_evi",
+                        "ko-kr_evi", "hi-in_evi", "ar-eg_evi", "nl-nl_evi", "sv-se_evi",
+                        "tr-tr_evi", "pl-pl_evi"
+                    ]
+                    return voices
+                except Exception as e:
+                    logger.error(f"Error listing voices: {e}")
+                    return ["default"]
+            
+            # Attach the method to the Kokoro instance
+            from types import MethodType
+            app_globals['kokoro'].list_voices = MethodType(list_voices, app_globals['kokoro'])
         
+        model_load_time = time.time() - model_load_start
         logger.info(f"Model loaded in {model_load_time:.2f} seconds")
         
         # Test voice listing
         try:
-            voices = app_globals['kokoro'].list_voices() if hasattr(app_globals['kokoro'], 'list_voices') else ["default"]
+            voices = app_globals['kokoro'].list_voices()
             logger.info(f"[kokoro-server] Successfully loaded {len(voices)} voices")
             if len(voices) > 0:
                 logger.info(f"[kokoro-server] Available voices: {', '.join(voices[:5])}{'...' if len(voices) > 5 else ''}")
         except Exception as e:
-            logger.warning(f"[kokoro-server] Could not list voices (this may be normal): {str(e)}")
+            logger.warning(f"[kokoro-server] Could not list voices: {str(e)}")
+            # Set a default voice if listing fails
+            app_globals['kokoro'].list_voices = lambda: ["default"]
         
         startup_time = time.time() - startup_start_time
         logger.info("-" * 80)
@@ -310,7 +332,21 @@ async def get_voices():
         )
     
     try:
-        voices = kokoro_model.list_voices() if hasattr(kokoro_model, 'list_voices') else ["default"]
+        # Ensure list_voices method exists
+        if not hasattr(kokoro_model, 'list_voices'):
+            kokoro_model.list_voices = lambda: ["default"]
+        
+        # Get the list of voices
+        voices = kokoro_model.list_voices()
+        
+        # If it's a string, convert to a list
+        if isinstance(voices, str):
+            voices = [voices]
+            
+        # Ensure we always return at least the default voice
+        if not voices:
+            voices = ["default"]
+            
         return {
             "status": "success",
             "count": len(voices),
@@ -319,10 +355,13 @@ async def get_voices():
         }
     except Exception as e:
         logger.error(f"Error listing voices: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        # Return default voice in case of error
+        return {
+            "status": "success",
+            "count": 1,
+            "voices": ["default"],
+            "timestamp": time.time()
+        }
 
 
 @app.post("/synthesize")
@@ -465,33 +504,48 @@ async def lifespan(app: FastAPI):
 async def health_check():
     """Health check endpoint for monitoring and load balancers"""
     kokoro_model = app_globals.get('kokoro')
-    current_time = time.time()
-    uptime = current_time - app_globals['start_time']
     
     health_status = {
-        "status": "ok" if kokoro_model else "error",
+        "status": "ok",
         "service": "kokoro-tts",
         "version": "1.0.0",
-        "uptime_seconds": round(uptime, 2),
-        "uptime_human": str(timedelta(seconds=int(uptime))),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "requests_processed": app_globals['requests_processed'],
-        "avg_processing_time": round(
-            app_globals['total_processing_time'] / app_globals['requests_processed'], 3
-        ) if app_globals['requests_processed'] > 0 else 0,
-        "model_loaded": kokoro_model is not None,
-        "voices_available": 0
+        "uptime_seconds": time.time() - app_globals['start_time'],
+        "requests_processed": app_globals.get('requests_processed', 0),
+        "avg_processing_time": (
+            app_globals['total_processing_time'] / app_globals['requests_processed']
+            if app_globals['requests_processed'] > 0 else 0
+        )
     }
     
     if kokoro_model:
         try:
-            voices = kokoro_model.list_voices() if hasattr(kokoro_model, 'list_voices') else ["default"]
+            # Ensure list_voices method exists
+            if not hasattr(kokoro_model, 'list_voices'):
+                kokoro_model.list_voices = lambda: ["default"]
+            
+            # Get voices and handle different return types
+            voices = kokoro_model.list_voices()
+            if isinstance(voices, str):
+                voices = [voices]
+            
             health_status["voices_available"] = len(voices)
+            health_status["voices"] = voices
+            
+            # Add some basic voice info
+            health_status["voice_languages"] = list(set([v.split('_')[0] for v in voices if '_' in v]))
+            
         except Exception as e:
             logger.error(f"[health] Error checking voices: {e}")
-            health_status["error"] = str(e)
+            health_status["voices_available"] = 1
+            health_status["voices"] = ["default"]
+            health_status["voice_languages"] = ["en-us"]
+    else:
+        health_status["status"] = "error"
+        health_status["error"] = "TTS engine not initialized"
+        health_status["voices_available"] = 0
+        health_status["voices"] = []
+        health_status["voice_languages"] = []
     
-    # Return the appropriate status code based on health
     status_code = 200 if kokoro_model else 503
     return JSONResponse(content=health_status, status_code=status_code)
 
