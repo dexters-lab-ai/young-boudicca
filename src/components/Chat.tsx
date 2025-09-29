@@ -2,16 +2,14 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import c from 'clsx';
-import { errorService } from '../lib/ErrorService';
 import modes from '../lib/modes';
 import { handleFilterClick, setCustomPrompt, toggleSettingsModal, toggleAboutModal, openTokenDetailModal } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
-import { useSpeechToText } from '../hooks/useSpeechToText';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 
 const capitalize = (s: string) => (s && s.length > 0) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -20,8 +18,6 @@ export default function Chat() {
   const chatHistory = useStore.use.chatHistory();
   const customPrompt = useStore.use.customPrompt();
   const apiKey = useStore.use.apiKey();
-  const addReaction = useStore.use.addReaction();
-  const addMessage = useStore.use.addMessage();
   const activeAgent = useStore.use.activeAgent();
   const activeCustomAgent = useStore.use.activeCustomAgent();
   const activeModelUrl = useStore.use.activeModelUrl();
@@ -34,45 +30,19 @@ export default function Chat() {
   const agentName = currentAgentDetails?.name || (activeAgent === 'boudicca' ? 'Young Boudicca' : 'Eliza');
   const agentIcon = activeCustomAgent ? '✨' : (activeAgent === 'boudicca' ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : '🤖');
 
-  const { isListening, toggleListening, isSpeechRecognitionSupported } = useSpeechToText({
-    onTranscript: () => {
-      // For live feedback if desired in the future
-    },
-    onFinalTranscript: (text) => {
-      // FIX: The setCustomPrompt action expects a string argument, not a function.
-      // Get the current prompt value from the store directly to avoid stale closures
-      // and append the new transcript.
-      setCustomPrompt((useStore.getState().customPrompt + ' ' + text).trim());
-    },
-    onError: (error) => {
-      console.error("Speech to text error:", error);
-      errorService.dispatchError(`Microphone error: ${error}`);
-    }
-  });
-
-  const handleFinalResult = useCallback(({ summary }: { summary: string }) => {
-    if (summary) {
-      addMessage(summary, 'assistant');
-    }
-  }, [addMessage]);
-
-  const handleAgentError = useCallback((error: string) => {
-    console.error(`Voice agent error: ${error}`);
-    errorService.dispatchError(`Live connection failed: ${error}. Please check microphone permissions and network settings, then refresh the page.`);
-  }, []);
-
   const { 
     streamingSummary,
     isProcessing,
+    isListening,
     sendText,
+    toggleListening,
+    isSpeechRecognitionSupported
   } = useVoiceAgent({
     apiKey,
     systemInstruction: systemInstruction || undefined,
-    onFinalResult: handleFinalResult,
-    onError: handleAgentError,
   });
 
-  const isAssistantThinkingOrSpeaking = isProcessing;
+  const isAssistantThinkingOrSpeaking = isProcessing || streamingSummary;
 
   // Auto-scroll chat
   useEffect(() => {
@@ -82,7 +52,6 @@ export default function Chat() {
   const handleSendMessage = async () => {
     const text = customPrompt.trim();
     if (text) {
-      addMessage(text, 'user');
       setCustomPrompt('');
       await sendText(text);
     }
@@ -130,8 +99,8 @@ export default function Chat() {
               )}
               {msg.role === 'assistant' && (
                 <div className="message-actions">
-                    <button onClick={() => addReaction(msg.id, '🔥')} title="Add Fire reaction">🔥</button>
-                    <button onClick={() => addReaction(msg.id, '🛡️')} title="Add Shield reaction">🛡️</button>
+                    <button onClick={() => useStore.getState().addReaction(msg.id, '🔥')} title="Add Fire reaction">🔥</button>
+                    <button onClick={() => useStore.getState().addReaction(msg.id, '🛡️')} title="Add Shield reaction">🛡️</button>
                 </div>
               )}
             </div>
@@ -155,7 +124,7 @@ export default function Chat() {
                   {streamingSummary}
                 </ReactMarkdown>
               )}
-              {!streamingSummary && (
+              {!streamingSummary && isProcessing && (
                 <div className="typing-indicator">
                   <span /><span /><span />
                 </div>

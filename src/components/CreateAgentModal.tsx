@@ -79,6 +79,14 @@ const YourAgentsTab: React.FC = () => {
     );
 };
 
+const animationFields = [
+    { name: 'greeting', label: 'Greeting Animation URL', placeholder: 'URL to greeting.vrma' },
+    { name: 'dance', label: 'Dance Animation URL', placeholder: 'URL to dance.vrma' },
+    { name: 'spin', label: 'Spin Animation URL', placeholder: 'URL to spin.vrma' },
+    { name: 'pose', label: 'Pose Animation URL', placeholder: 'URL to pose.vrma' },
+    { name: 'pumped', label: 'Pumped Animation URL', placeholder: 'URL to pumped.vrma' },
+];
+
 export default function CreateAgentModal() {
     const { publicKey, signMessage } = useWallet();
     const [activeTab, setActiveTab] = useState<'create' | 'your_agents'>('create');
@@ -88,12 +96,18 @@ export default function CreateAgentModal() {
     const [vrmFile, setVrmFile] = useState<File | null>(null);
     const [vrmUrl, setVrmUrl] = useState('');
     const [inputType, setInputType] = useState<'upload' | 'url'>('upload');
+    const [animationUrls, setAnimationUrls] = useState<Record<string, string>>({});
+    const [isAdvancedOpen, setAdvancedOpen] = useState(false);
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'signing' | 'uploading' | 'creating'>('idle');
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isSubmitting = submitStatus !== 'idle';
     const setCustomAgents = useStore.use.setCustomAgents();
+    
+    const handleAnimationUrlChange = (name: string, value: string) => {
+        setAnimationUrls(prev => ({ ...prev, [name]: value }));
+    };
 
     const getSubmitButtonText = () => {
         switch (submitStatus) {
@@ -137,6 +151,14 @@ export default function CreateAgentModal() {
             formData.append('creatorWalletAddress', publicKey.toBase58());
             formData.append('signature', signatureBase58);
             formData.append('message', "Sign this message to confirm ownership of your wallet for creating an AI Agent.");
+            
+            // Append animation URLs
+            if (animationUrls.greeting) formData.append('animationGreetingUrl', animationUrls.greeting);
+            if (animationUrls.dance) formData.append('animationDanceUrl', animationUrls.dance);
+            if (animationUrls.spin) formData.append('animationSpinUrl', animationUrls.spin);
+            if (animationUrls.pose) formData.append('animationPoseUrl', animationUrls.pose);
+            if (animationUrls.pumped) formData.append('animationPumpedUrl', animationUrls.pumped);
+
 
             if (inputType === 'upload' && vrmFile) {
                 formData.append('vrmFile', vrmFile);
@@ -225,6 +247,29 @@ export default function CreateAgentModal() {
                                     </>
                                 ) : (
                                     <input id="agent-vrm-url" type="url" value={vrmUrl} onChange={e => setVrmUrl(e.target.value)} required={inputType === 'url'} placeholder="https://example.com/model.vrm" />
+                                )}
+                            </div>
+                            <div className="form-group">
+                                <button type="button" className="advanced-options-toggle" onClick={() => setAdvancedOpen(v => !v)}>
+                                    Custom Animations (Optional)
+                                    <span className="icon">{isAdvancedOpen ? 'expand_less' : 'expand_more'}</span>
+                                </button>
+                                {isAdvancedOpen && (
+                                    <div className="advanced-options-content">
+                                        <p>Provide direct public URLs to <code>.vrma</code> files for custom gestures.</p>
+                                        {animationFields.map(field => (
+                                            <div key={field.name} className="form-group-small">
+                                                <label htmlFor={`anim-${field.name}`}>{field.label}</label>
+                                                <input
+                                                    id={`anim-${field.name}`}
+                                                    type="url"
+                                                    value={animationUrls[field.name] || ''}
+                                                    onChange={e => handleAnimationUrlChange(field.name, e.target.value)}
+                                                    placeholder={field.placeholder}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                             {error && <p style={{color: '#ff453a', textAlign: 'center', fontSize: '0.9rem'}}>{error}</p>}

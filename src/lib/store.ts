@@ -7,7 +7,7 @@ import {create} from 'zustand'
 import {immer} from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import {createSelectorFunctions} from 'auto-zustand-selectors-hook'
-import { Photo, ChatMessage, FavouriteToken, AgentName, Agent } from '../types'
+import { Photo, ChatMessage, FavouriteToken, AgentName, Agent, Environment } from '../types'
 import { BOUDICCA_SYSTEM_INSTRUCTION } from './constants';
 
 interface AppState {
@@ -38,12 +38,18 @@ interface AppState {
   favourites: FavouriteToken[];
   tempBackgroundUrl: string | null;
   error: string | null;
+  environments: Environment[];
+  activeEnvironmentUrl: string | null;
+  activeMusic: { name: string; url: string; } | null;
+  isMusicMuted: boolean;
   playAnimation: (animation: string) => void;
   setActiveAnimation: (animation: string) => void;
   activeExpression: string;
   setActiveExpression: (expression: string) => void;
   currentGesture: string | null;
   gestureNonce: number; // increments on each trigger to allow retriggering same gesture
+  isGesturePlaying: boolean;
+  isGestureActive: boolean;
   talkingNonce: number;
   setGesture: (gesture: string | null) => void;
   isAudioPlaying: boolean;
@@ -72,6 +78,10 @@ interface AppState {
   setActiveCustomAgent: (agent: Agent | null) => void;
   setKokoroVoices: (voices: { value: string; label: string }[]) => void;
   setActiveModelUrl: (payload: { url: string; name: string; agent: AgentName; systemInstruction: string | null }) => void;
+  setActiveEnvironment: (env: Environment) => void;
+  setActiveMusic: (music: { name: string; url: string } | null) => void;
+  setGesturePlaying: (isPlaying: boolean) => void;
+  toggleMusicMuted: () => void;
 }
 
 const useStore = create(
@@ -108,11 +118,25 @@ const useStore = create(
     favourites: [],
     tempBackgroundUrl: null,
     error: null,
+    environments: [
+        { name: 'Studio', icon: '🏢', url: '/images/environments/studio.jpg', musicPrompt: 'Lofi hip hop beats for studying or relaxing.' },
+        { name: 'Forest', icon: '🌲', url: '/images/environments/forest.jpg', musicPrompt: 'Calm, ambient forest sounds with gentle instrumental music.' },
+        { name: 'Space', icon: '🚀', url: '/images/environments/space.jpg', musicPrompt: 'Epic, ambient space music for exploration and discovery.' },
+    ],
+    activeEnvironmentUrl: null,
+    activeMusic: null,
+    isMusicMuted: false,
     playAnimation: (animation: string) => {
       set({ activeAnimation: animation });
     },
     setActiveAnimation: (animation: string) => {
         set(state => {
+          // Prevent TALKING animation when a gesture is active
+          if (animation === 'TALKING' && state.isGestureActive) {
+            console.log('[Store] Blocked TALKING animation - gesture is active');
+            return;
+          }
+          
           if (state.activeAnimation !== animation) {
             state.activeAnimation = animation;
           }
@@ -122,12 +146,16 @@ const useStore = create(
         });
     },
     activeExpression: 'neutral',
+    // FIX: Add missing setActiveExpression implementation.
+    setActiveExpression: (expression: string) => set({ activeExpression: expression }),
     currentGesture: null,
     gestureNonce: 0,
+    isGesturePlaying: false,
+  // Global flag to prevent talking animation during gestures
+  isGestureActive: false,
     talkingNonce: 0,
     isAudioPlaying: false,
     isTextStreaming: false,
-    setActiveExpression: (expression: string) => set({ activeExpression: expression }),
     setGesture: (gesture: string | null) => {
       set(state => {
         state.currentGesture = gesture;
@@ -216,6 +244,17 @@ const useStore = create(
           set({ activeModelToast: null });
       }, 3000);
     },
+    setActiveEnvironment: (env: Environment) => {
+      // Delegated to action
+    },
+    setActiveMusic: (music: { name: string; url: string; } | null) => set({ activeMusic: music }),
+    setGesturePlaying: (isPlaying: boolean) => {
+    set({ 
+      isGesturePlaying: isPlaying,
+      isGestureActive: isPlaying // Also update the global flag
+    });
+  },  
+    toggleMusicMuted: () => set(state => ({ isMusicMuted: !state.isMusicMuted })),
   })),
   {
     name: 'boudi-ai-storage', // name of the item in the storage (must be unique)
@@ -224,6 +263,7 @@ const useStore = create(
         preferredVoiceName: state.preferredVoiceName,
         preferredLanguage: state.preferredLanguage,
         favourites: state.favourites,
+        isMusicMuted: state.isMusicMuted,
     }),
   }
 )

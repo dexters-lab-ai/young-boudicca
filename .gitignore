@@ -12,17 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Ignore nginx config (no longer used)
-nginx.conf
-
-# TTS model files (downloaded at runtime)
-server/python-tts/*.onnx
-server/python-tts/*.bin
-!server/python-tts/__init__.py  # Keep this file
-
-# Python TTS module (will be installed during Docker build)
-server/python-tts/de/*
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

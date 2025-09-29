@@ -2,6 +2,34 @@ import { FunctionDeclaration, Type } from '@google/genai';
 
 export const availableTools: FunctionDeclaration[] = [
   {
+    name: 'setMood',
+    description: 'Sets the visual and auditory mood of the environment. This changes the background image and the background music.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        environment: {
+          type: Type.STRING,
+          description: 'The name of the environment to switch to. Available options are: Studio, Forest, Space.',
+        },
+      },
+      required: ['environment'],
+    },
+  },
+  {
+    name: 'triggerGesture',
+    description: 'Triggers a specific gesture animation for the 3D avatar.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        gesture: {
+          type: Type.STRING,
+          description: 'The name of the gesture to perform. Available options are: greeting, cute, elegant, pose, peacesign, dance, dance_meme, shoot, spin, squat, fight, powerful, pumped.',
+        },
+      },
+      required: ['gesture'],
+    },
+  },
+  {
     name: 'fetchTrendingTokens',
     description: 'Fetches the top trending tokens from Solscan.',
     parameters: {

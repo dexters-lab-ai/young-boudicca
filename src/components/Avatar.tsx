@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import useVrm from '../hooks/useVrm';
@@ -12,24 +12,57 @@ import useStore from '../lib/store';
 
 function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
     const { vrm, loading, error } = useVrm(vrmUrl);
+    const activeCustomAgent = useStore.use.activeCustomAgent();
+
+    const animationUrls = useMemo(() => {
+        const defaults = {
+            greeting: '/animations/gesture_greeting.vrma',
+            cute: '/animations/gesture_cute.vrma',
+            elegant: '/animations/gesture_elegant.vrma',
+            pose: '/animations/gesture_pose.vrma',
+            peacesign: '/animations/gesture_peacesign.vrma',
+            dance: '/animations/gesture_dance.vrma',
+            dance_meme: '/animations/dance_picatrix.vrma',
+            shoot: '/animations/gesture_shoot.vrma',
+            spin: '/animations/gesture_spin.vrma',
+            squat: '/animations/gesture_squat.vrma',
+            fight: '/animations/gesture_fight.vrma',
+            powerful: '/animations/gesture_powerful.vrma',
+            pumped: '/animations/gesture_ready.vrma',
+        };
+
+        if (activeCustomAgent) {
+            return {
+                ...defaults,
+                greeting: activeCustomAgent.animationGreetingUrl || defaults.greeting,
+                dance: activeCustomAgent.animationDanceUrl || defaults.dance,
+                spin: activeCustomAgent.animationSpinUrl || defaults.spin,
+                pose: activeCustomAgent.animationPoseUrl || defaults.pose,
+                pumped: activeCustomAgent.animationPumpedUrl || defaults.pumped,
+            };
+        }
+
+        return defaults;
+    }, [activeCustomAgent]);
+
     const idleClip = useVrmAnimation('/animations/idle_loop.vrma', vrm);
-    // Use idle2 as a subtle talking body motion overlay (optional)
     const talkingClip = useVrmAnimation('/animations/gesture_talk.vrma', vrm);
+    
     // Gesture clips
     const gestureClips = {
-        greeting: useVrmAnimation('/animations/gesture_greeting.vrma', vrm),
-        cute: useVrmAnimation('/animations/gesture_cute.vrma', vrm),
-        elegant: useVrmAnimation('/animations/gesture_elegant.vrma', vrm),
-        pose: useVrmAnimation('/animations/gesture_pose.vrma', vrm),
-        peacesign: useVrmAnimation('/animations/gesture_peacesign.vrma', vrm),
-        dance: useVrmAnimation('/animations/gesture_dance.vrma', vrm),
-        dance_meme: useVrmAnimation('/animations/dance_picatrix.vrma', vrm),
-        shoot: useVrmAnimation('/animations/gesture_shoot.vrma', vrm),
-        spin: useVrmAnimation('/animations/gesture_spin.vrma', vrm),
-        squat: useVrmAnimation('/animations/gesture_squat.vrma', vrm),
-        fight: useVrmAnimation('/animations/gesture_fight.vrma', vrm),
-        powerful: useVrmAnimation('/animations/gesture_powerful.vrma', vrm),
-        pumped: useVrmAnimation('/animations/gesture_ready.vrma', vrm),
+        greeting: useVrmAnimation(animationUrls.greeting, vrm),
+        cute: useVrmAnimation(animationUrls.cute, vrm),
+        elegant: useVrmAnimation(animationUrls.elegant, vrm),
+        pose: useVrmAnimation(animationUrls.pose, vrm),
+        peacesign: useVrmAnimation(animationUrls.peacesign, vrm),
+        dance: useVrmAnimation(animationUrls.dance, vrm),
+        dance_meme: useVrmAnimation(animationUrls.dance_meme, vrm),
+        shoot: useVrmAnimation(animationUrls.shoot, vrm),
+        spin: useVrmAnimation(animationUrls.spin, vrm),
+        squat: useVrmAnimation(animationUrls.squat, vrm),
+        fight: useVrmAnimation(animationUrls.fight, vrm),
+        powerful: useVrmAnimation(animationUrls.powerful, vrm),
+        pumped: useVrmAnimation(animationUrls.pumped, vrm),
     } as const;
 
     const mixerRef = useRef<THREE.AnimationMixer | null>(null);
@@ -47,16 +80,62 @@ function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
     // Initialize mixer
     useEffect(() => {
         if (vrm) {
+            console.log('[Mixer] Initializing new animation mixer');
             mixerRef.current = new THREE.AnimationMixer(vrm.scene);
              // Set up a listener for animation completion
-            const onFinished = (_e: any) => {
-                // No one-shots active in simplified mode
+            const onFinished = (e: any) => {
+                console.log('[Mixer] Animation finished event in root listener', e);
+                // Log the current state of all actions
+                const actionsState = Object.entries(actionsRef.current).map(([name, act]) => {
+                    if (!act) return { name, isRunning: false, isScheduled: false };
+                    const clip = act.getClip();
+                    return {
+                        name,
+                        isRunning: act.isRunning(),
+                        isScheduled: act.isScheduled(),
+                        time: act.time,
+                        duration: clip?.duration,
+                        loop: act.loop
+                    };
+                });
+                console.log('[Mixer] Current actions state:', actionsState);
             };
+            
             mixerRef.current.addEventListener('finished', onFinished);
+            
+            // Add a periodic check of animation states
+            const interval = setInterval(() => {
+                if (mixerRef.current) {
+                    const runningActions = Object.entries(actionsRef.current)
+                        .filter(([_, act]) => act?.isRunning())
+                        .map(([name, act]) => ({
+                            name,
+                            time: act?.time,
+                            duration: act?.getClip()?.duration,
+                            weight: act?.getEffectiveWeight()
+                        }));
+                    if (runningActions.length > 0) {
+                        console.log('[Mixer] Currently running actions:', runningActions);
+                    }
+                }
+            }, 1000);
+            
             return () => {
-                mixerRef.current?.removeEventListener('finished', onFinished);
+                console.log('[Mixer] Cleaning up mixer');
+                clearInterval(interval);
+                if (mixerRef.current) {
+                    mixerRef.current.removeEventListener('finished', onFinished);
+                    // Stop all actions before cleanup
+                    Object.values(actionsRef.current).forEach(action => {
+                        if (action?.isRunning()) {
+                            console.log(`[Mixer] Stopping action during cleanup`);
+                            action.stop();
+                        }
+                    });
+                }
             };
         } else {
+            console.log('[Mixer] No VRM model, setting mixer to null');
             mixerRef.current = null;
         }
     }, [vrm, setActiveAnimation]);
@@ -85,52 +164,248 @@ function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
         actionsRef.current.IDLE?.setLoop(THREE.LoopRepeat, Infinity).play();
         setActiveAnimation('IDLE');
 
-    }, [idleClip, talkingClip, setActiveAnimation, gestureClips.greeting, gestureClips.cute, gestureClips.elegant, gestureClips.pose, gestureClips.peacesign, gestureClips.dance, gestureClips.shoot, gestureClips.spin, gestureClips.squat]);
+    }, [idleClip, talkingClip, setActiveAnimation, gestureClips]);
 
     // Play gesture one-shot overlay when store triggers
     useEffect(() => {
+        // Skip if no gesture or no mixer
         const mixer = mixerRef.current;
-        if (!mixer || !currentGesture) return;
+        if (!mixer || !currentGesture) {
+            return;
+        }
+        
+        console.log('[Gesture] Effect triggered with gesture:', currentGesture, 'nonce:', gestureNonce);
+        
         const action = actionsRef.current[currentGesture];
-        if (!action) return;
-        // stop any running gesture actions
-        Object.entries(actionsRef.current).forEach(([name, act]) => {
-            if (name !== 'IDLE' && act && act.isRunning()) {
-                act.stop();
+        if (!action) {
+            console.log(`[Gesture] No action found for gesture: ${currentGesture}`);
+            return;
+        }
+
+        // Get clip duration
+        const clip = action.getClip();
+        const clipDuration = (clip?.duration || 0) * 1000; // Convert to ms
+        console.log(`[Gesture] ${currentGesture} clip duration: ${clipDuration}ms (${clip?.duration}s)`);
+
+        // Get current state
+        const store = useStore.getState();
+        
+        // Calculate durations - use full duration for all gestures
+        const minDuration = clipDuration * 0.9;  // Must play at least 90% of the clip
+        const maxDuration = clipDuration * 1.1;  // Will clean up after 110% of clip duration
+        
+        // Track animation state
+        let isCleanedUp = false;
+        let hasCompleted = false;
+        let timeout: NodeJS.Timeout;
+        
+        const cleanupGesture = () => {
+            if (isCleanedUp) return;
+            isCleanedUp = true;
+            
+            // Remove all listeners first to prevent race conditions
+            const mixer = action.getMixer();
+            if (mixer) {
+                mixer.removeEventListener('finished', onFinished);
             }
-        });
+            
+            // Fade out and stop the action
+            if (action.isRunning()) {
+                action.fadeOut(0.2);
+                setTimeout(() => {
+                    if (action.isRunning()) {
+                        action.stop();
+                    }
+                }, 200);
+            }
+            
+            // Clear timeout
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+            
+            console.log(`[Gesture] Cleanup complete for: ${currentGesture}`);
+        };
+        
+        const onFinished = (e: any) => {
+            // Ignore if we've already cleaned up or this isn't our action
+            if (isCleanedUp || hasCompleted || e.action !== action) {
+                return;
+            }
+            
+            const elapsed = Date.now() - gestureStartTime;
+            console.log(`[Gesture] ${currentGesture} finished after ${elapsed}ms`);
+            
+            if (elapsed >= minDuration) {
+                console.log(`[Gesture] ${currentGesture} finished naturally`);
+                hasCompleted = true;
+                store.setGesturePlaying(false);
+                cleanupGesture();
+            } else {
+                // If finished too quickly, restart it
+                console.log(`[Gesture] ${currentGesture} finished too quickly, restarting`);
+                action.reset().play();
+            }
+        };
+        
+        // Configure the animation
         action.reset();
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
-        action.fadeIn(0.15).play();
-        // allow it to fade out after finish
-        action.getMixer().addEventListener('finished', (_e: any) => {
-            action.fadeOut(0.2);
-        });
-    }, [currentGesture, gestureNonce]);
-
-    // Play talking overlay for ~5 seconds when triggered
-    useEffect(() => {
-        const mixer = mixerRef.current;
-        if (!mixer || !talkingClip) return;
-        const action = actionsRef.current['TALKING'];
-        if (!action) return;
-        // Give talking priority: stop any running gesture
+        action.setEffectiveWeight(1.0);
+        action.setEffectiveTimeScale(1.0);
+        
+        // Add finished listener before starting
+        const actionMixer = action.getMixer();
+        if (!actionMixer) {
+            console.error('[Gesture] No mixer available for action');
+            return;
+        }
+        
+        // Stop any currently running animations that might interfere
         Object.entries(actionsRef.current).forEach(([name, act]) => {
-            if (name !== 'IDLE' && name !== 'TALKING' && act && act.isRunning()) {
+            if (!act || !act.isRunning() || name === currentGesture) return;
+            
+            console.log(`[Gesture] Stopping potentially conflicting animation: ${name}`);
+            // Immediately stop the action without fade for TALKING animation
+            if (name === 'TALKING') {
                 act.stop();
+            } else {
+                act.fadeOut(0.1);
+                setTimeout(() => {
+                    if (act?.isRunning()) act.stop();
+                }, 100);
             }
         });
+        
+        // Set the gesture as playing in the store
+        store.setGesturePlaying(true);
+        
+        // Start the animation
+        action.play();
+        console.log(`[Gesture] Started playing: ${currentGesture}`);
+        
+        // Add the finished listener AFTER starting the animation
+        actionMixer.addEventListener('finished', onFinished);
+        const gestureStartTime = Date.now();
+        
+        // Set a safety timeout to ensure cleanup
+        timeout = setTimeout(() => {
+            if (!isCleanedUp) {
+                console.log(`[Gesture] Safety timeout reached for: ${currentGesture}`);
+                store.setGesturePlaying(false);
+                cleanupGesture();
+            }
+        }, maxDuration + 2000);
+        
+        // Cleanup function for the effect
+        return () => {
+            console.log(`[Gesture] Effect cleanup for gesture: ${currentGesture}`);
+            cleanupGesture();
+        };
+    }, [currentGesture, gestureNonce]);
+
+    // Play talking overlay for ~5 seconds when triggered, but NEVER during gestures
+    useEffect(() => {
+        console.log('[Talking] Talking effect triggered, nonce:', talkingNonce);
+        
+        // Get current store state
+        const store = useStore.getState();
+        
+        // Check global gesture active flag first (fast path)
+        if (store.isGestureActive) {
+            console.log('[Talking] Gesture is active (global flag), skipping talking animation');
+            return;
+        }
+        
+        // Double-check by looking at actual running animations
+        const isAnyGestureRunning = Object.entries(actionsRef.current).some(
+            ([name, act]) => name !== 'IDLE' && name !== 'TALKING' && act?.isRunning()
+        );
+            
+        if (isAnyGestureRunning) {
+            console.log('[Talking] Gesture animation detected, skipping talking animation');
+            // Update global flag if we detect a running gesture
+            store.setGesturePlaying(true);
+            return;
+        }
+        
+        const mixer = mixerRef.current;
+        if (!mixer) {
+            console.log('[Talking] No mixer available');
+            return;
+        }
+        
+        if (!talkingClip) {
+            console.log('[Talking] No talking clip available');
+            return;
+        }
+        
+        const action = actionsRef.current['TALKING'];
+        if (!action) {
+            console.log('[Talking] No talking action found');
+            return;
+        }
+        
+        // Don't start if already talking
+        if (action.isRunning()) {
+            console.log('[Talking] Already talking, skipping');
+            return;
+        }
+        
+        // Double-check for gestures right before starting
+        if (useStore.getState().isGesturePlaying) {
+            console.log('[Talking] Gesture started while waiting to talk, aborting');
+            return;
+        }
+        
+        console.log('[Talking] Starting talking animation');
+        
+        // Configure the talking animation
         action.reset();
         action.clampWhenFinished = false;
         action.setLoop(THREE.LoopRepeat, Infinity);
+        action.setEffectiveWeight(0.5); // Lower weight than gestures
         action.fadeIn(0.15).play();
-        const to = window.setTimeout(() => {
-            action.fadeOut(0.2);
-            // stop after fade to free channel
-            window.setTimeout(() => action.stop(), 250);
+        
+        // Set up cleanup
+        let isCleanedUp = false;
+        const cleanupTalking = () => {
+            if (isCleanedUp) return;
+            isCleanedUp = true;
+            
+            if (action.isRunning()) {
+                action.fadeOut(0.2);
+                setTimeout(() => {
+                    if (action.isRunning()) {
+                        action.stop();
+                    }
+                }, 200);
+            }
+            
+            clearTimeout(timeout);
+            console.log('[Talking] Cleanup complete');
+        };
+        
+        // Stop after 5 seconds
+        const timeout = setTimeout(() => {
+            console.log('[Talking] Timeout reached, stopping talking animation');
+            cleanupTalking();
         }, 5000);
-        return () => window.clearTimeout(to);
+        
+        // Check for gestures periodically
+        const gestureCheck = setInterval(() => {
+            if (useStore.getState().isGesturePlaying) {
+                console.log('[Talking] Gesture detected, stopping talking animation');
+                cleanupTalking();
+            }
+        }, 100);
+        
+        return () => {
+            console.log('[Talking] Cleaning up talking animation');
+            clearInterval(gestureCheck);
+            cleanupTalking();
+        };
     }, [talkingNonce, talkingClip]);
 
     // Remove animation switching; always keep idle playing. Lipsync handles speech.

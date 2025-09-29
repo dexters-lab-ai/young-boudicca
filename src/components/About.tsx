@@ -11,68 +11,81 @@ export default function About() {
                 <button className="close-button" onClick={() => toggleAboutModal(false)}>
                     <span className="icon">close</span>
                 </button>
-                <div style={{ textAlign: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
-                    <img src="/images/boudicca.png" alt="Boudi AI Icon" style={{ width: '80px', height: '80px', margin: '0 auto', borderRadius: '50%', border: '2px solid #333' }} />
-                    <h1 style={{ fontSize: '1.8rem', marginTop: '1rem', marginBottom: '0.25rem' }}>About Young Boudicca</h1>
-                    <p style={{ color: '#a0a0a0', fontSize: '0.9rem' }}>The Warrior Queen of the Digital Age</p>
+                <div className="about-header">
+                    <img src="/images/boudicca.png" alt="Boudi AI Icon" />
+                    <h1>About Boudi AI</h1>
+                    <p>The Warrior Queen of the Digital Age</p>
                 </div>
 
-                <div style={{ flex: '1', minHeight: 0, overflowY: 'auto', paddingRight: '1rem', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                    <h3 style={{ color: '#005EB8' }}>The Inspiration</h3>
-                    <p>
-                        Our story started with a viral video of Young Boudicca, the fierce Scottish warrior girl who defended her sister. We thought, what if you could actually talk to her? What if you could ally with that spirit of rebellion? That single idea sparked this project. We wanted to bring a character, a meme, to life.
-                        <a href="https://x.com/i/trending/1960387136936710397" target="_blank" rel="noopener noreferrer" style={{ color: '#005EB8', textDecoration: 'underline', marginLeft: '5px' }}>
-                            See the legend.
-                        </a>
-                    </p>
+                <div className="about-content-wrapper">
+                    <div className="about-grid">
+                        <div className="about-column">
+                            <h3>The Inspiration</h3>
+                            <p>
+                                Our story started with a viral video of Young Boudicca, the fierce Scottish warrior girl. That single idea sparked this project: What if you could ally with that spirit of rebellion? We wanted to bring a character, a meme, to life.
+                            </p>
 
-                    <h3 style={{ color: '#005EB8', marginTop: '1.5rem' }}>The New Meta: Virtual Beings</h3>
-                    <p>
-                        We are moving past the era of simple data agents and trading bots. The next frontier is the meta of virtual 3D agents and the worlds they inhabit. It's about creating AI with a face, a story, and a personality you can connect with. Why can't everyone bring their favorite character or meme to life?
-                    </p>
-                    <video
-                        className="about-video"
-                        src="/videos/model-demo-1.mp4"
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        controls
-                        width="100%"
-                    />
+                            <h3>The Vision: Personified AI</h3>
+                            <p>
+                                We are moving past simple data agents. The next frontier is the meta of virtual 3D agents and the worlds they inhabit. It's about creating AI with a face, a story, and a personality you can connect with.
+                            </p>
+                            <video
+                                className="about-video"
+                                src="/videos/model-demo-1.mp4"
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                            />
+                        </div>
+                        <div className="about-column">
+                            <h3>Key Features</h3>
+                            <ul className="key-features-list">
+                                <li className="feature-item">
+                                    <span className="icon">voice_chat</span>
+                                    <div>
+                                        <h5>Real-time Voice Chat</h5>
+                                        <p>Natural, low-latency conversations.</p>
+                                    </div>
+                                </li>
+                                <li className="feature-item">
+                                    <span className="icon">smart_toy</span>
+                                    <div>
+                                        <h5>Dynamic 3D Avatars</h5>
+                                        <p>Expressive models with lip-sync and gestures.</p>
+                                    </div>
+                                </li>
+                                <li className="feature-item">
+                                    <span className="icon">share</span>
+                                    <div>
+                                        <h5>Agent Creation & Sharing</h5>
+                                        <p>Design and share your own unique AI agents.</p>
+                                    </div>
+                                </li>
+                                <li className="feature-item">
+                                    <span className="icon">query_stats</span>
+                                    <div>
+                                        <h5>Live Crypto Toolkit</h5>
+                                        <p>On-chain Solana data via Function Calling.</p>
+                                    </div>
+                                </li>
+                            </ul>
 
-                    <h3 style={{ color: '#005EB8', marginTop: '1.5rem' }}>The Tech</h3>
-                    <p style={{ fontStyle: 'italic', color: '#ccc' }}>
-                        Our character architecture is inspired by the digital personality systems seen in platforms like VRChat and pioneering work like the 'Project Airi' repository. We've adapted that foundation, empowering our virtual beings with a suite of live, on-chain crypto tools and advanced conversational abilities through Google's Gemini. This isn't just a chatbot; it's an interactive ally, ready for the digital rebellion.
-                    </p>
-                    <video
-                        className="about-video"
-                        src="/videos/model-demo-2.mp4"
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        controls
-                        width="100%"
-                    />
+                            <h3>The Tech Stack</h3>
+                            <p>
+                            This app is built with React, Three.js, and Google's Gemini, using a Node.js server to securely orchestrate AI services like ElevenLabs for voice and Solscan for live blockchain data.
+                            </p>
+                            <video
+                                className="about-video"
+                                src="/videos/model-demo-2.mp4"
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                            />
+                        </div>
+                    </div>
                 </div>
-
-                <button
-                    onClick={() => toggleAboutModal(false)}
-                    style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        borderRadius: '8px',
-                        background: '#005EB8',
-                        color: 'white',
-                        fontSize: '1rem',
-                        fontWeight: 'bold',
-                        marginTop: '1.5rem',
-                        flexShrink: 0,
-                    }}
-                >
-                    Close
-                </button>
             </div>
         </div>
     );

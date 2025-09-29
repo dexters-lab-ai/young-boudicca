@@ -6,7 +6,7 @@ import useStore from './store'
 import imageData from './imageData'
 import { generateImage as genImageApi } from './llm'
 import modes from './modes'
-import { Photo, Agent } from '../types'
+import { Photo, Agent, Environment } from '../types'
 
 const get = useStore.getState
 const set = useStore.setState
@@ -31,6 +31,7 @@ export const init = () => {
       photos: [initialPhoto],
       activePhotoId: defaultImageId,
       activeModelUrl: state.models.find(m => m.agent === 'boudicca')?.url ?? null,
+      activeEnvironmentUrl: state.environments[0]?.url ?? null,
     };
     
     const welcomeMessage = "I’m Young Boudicca — a virtual being. I craft images, chat, and pull live info when asked. Upload or snap a photo to style it, or just tell me what you want.";
@@ -189,7 +190,9 @@ export const setApiKey = (apiKey: string) => {
 };
 
 export const setActiveModelUrl = ({ url, name, agent }: { url: string, name: string, agent: 'boudicca' | 'eliza' }) => {
+  const defaultEnv = get().environments[0];
   set({ activeModelUrl: url, activeModelToast: name, activeAgent: agent, activePhotoId: defaultImageId, activeCustomAgent: null });
+  setActiveEnvironment(defaultEnv);
   setTimeout(() => {
     set({ activeModelToast: null });
   }, 3000);
@@ -228,13 +231,16 @@ export const closeTokenDetailModal = () => {
 
 export const setActiveCustomAgent = (agent: Agent | null) => {
   if (agent) {
+    const defaultEnv = get().environments[0];
+    const agentEnv = get().environments.find(e => e.url === agent.environmentUrl) || defaultEnv;
     set({
       activeCustomAgent: agent,
       activeModelUrl: agent.vrmUrl,
       activeAgent: 'boudicca', // Custom agents are always Boudicca persona
       activeModelToast: agent.name,
-      activePhotoId: defaultImageId
+      activePhotoId: 'default-image',
     });
+    setActiveEnvironment(agentEnv);
      setTimeout(() => {
       set({ activeModelToast: null });
     }, 3000);
@@ -246,5 +252,42 @@ export const setActiveCustomAgent = (agent: Agent | null) => {
     }
   }
 }
+
+export const playBackgroundMusic = async (env: Environment) => {
+    if (!env.musicPrompt) {
+        get().setActiveMusic(null);
+        return;
+    }
+    try {
+        const response = await fetch('/api/music/compose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: env.musicPrompt }),
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to compose music: ${response.statusText}`);
+        }
+        const audioBlob = await response.blob();
+        const musicUrl = URL.createObjectURL(audioBlob);
+        get().setActiveMusic({ name: env.name, url: musicUrl });
+
+    } catch (error) {
+        console.error("Failed to play background music:", error);
+        get().setActiveMusic(null);
+    }
+}
+
+export const setActiveEnvironment = (env: Environment) => {
+    playBackgroundMusic(env);
+    set({ activeEnvironmentUrl: env.url });
+};
+
+export const setGesturePlaying = (isPlaying: boolean) => {
+    set({ isGesturePlaying: isPlaying });
+};
+
+export const toggleMusicMuted = () => {
+    set(state => ({ isMusicMuted: !state.isMusicMuted }));
+};
 
 init()

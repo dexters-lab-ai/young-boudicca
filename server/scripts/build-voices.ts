@@ -5,21 +5,9 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import process from 'process';
 
-// Get current file's directory in a way that works with both ES modules and CommonJS
-const getCurrentDir = (): string => {
-  try {
-    // Check if we're in a CommonJS context
-    // @ts-ignore - __dirname is defined in CommonJS
-    if (typeof __dirname !== 'undefined') return __dirname as string;
-  } catch (e) {
-    // Ignore error if __dirname is not defined
-  }
-  // In ESM context, use import.meta.url
-  return path.dirname(fileURLToPath(import.meta.url));
-};
-
-// Use type assertion to ensure TypeScript knows this is a string
-const __dirname: string = getCurrentDir();
+// FIX: Define __dirname for ES modules.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Build-time helper: fetch Kokoro voices and write to server/voices-list.txt
 // This reduces runtime latency and lets the server preload voices from disk.

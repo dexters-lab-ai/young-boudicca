@@ -6,7 +6,7 @@ import { useRef, useState, useEffect, Suspense } from 'react';
 import useStore from '../lib/store';
 import imageData from '../lib/imageData';
 import c from 'clsx';
-import { setInputSource, setActiveModelUrl, toggleCreateAgentModal } from '../lib/actions';
+import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveEnvironment, toggleMusicMuted } from '../lib/actions';
 import Avatar from './Avatar';
 import Filters from './Filters';
 import { Canvas } from '@react-three/fiber';
@@ -25,6 +25,10 @@ export default function Stage() {
   const activeModelUrl = useStore.use.activeModelUrl();
   const activeModelToast = useStore.use.activeModelToast();
   const activeCustomAgent = useStore.use.activeCustomAgent();
+  const environments = useStore.use.environments();
+  const activeEnvironmentUrl = useStore.use.activeEnvironmentUrl();
+  const activeMusic = useStore.use.activeMusic();
+  const isMusicMuted = useStore.use.isMusicMuted();
 
   const [inputSource, _setInputSource] = useState<'default' | 'upload' | 'webcam' | 'generator'>('default');
   const [videoActive, setVideoActive] = useState(false);
@@ -32,6 +36,72 @@ export default function Stage() {
   const [showFilters, setShowFilters] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (!audioRef.current) {
+        audioRef.current = new Audio();
+        audioRef.current.loop = true;
+    }
+    const audio = audioRef.current;
+    
+    // Function to fade out and change source
+    const fadeOutAndSwitch = (newSrc: string) => {
+        let currentVolume = audio.volume;
+        if (currentVolume > 0 && !audio.paused) {
+            const fadeOutInterval = setInterval(() => {
+                currentVolume -= 0.1;
+                if (currentVolume <= 0) {
+                    clearInterval(fadeOutInterval);
+                    audio.pause();
+                    if (newSrc) {
+                        audio.src = newSrc;
+                        fadeIn(audio);
+                    } else {
+                        audio.src = '';
+                    }
+                } else {
+                    audio.volume = currentVolume;
+                }
+            }, 50);
+        } else {
+            if (newSrc) {
+                audio.src = newSrc;
+                fadeIn(audio);
+            } else {
+                audio.pause();
+                audio.src = '';
+            }
+        }
+    };
+
+    // Function to fade in
+    const fadeIn = (el: HTMLAudioElement) => {
+        el.volume = 0;
+        el.play().catch(e => console.error("Audio playback failed:", e));
+        let newVolume = 0;
+        const fadeInInterval = setInterval(() => {
+            newVolume += 0.05;
+            if (newVolume >= 0.5) { // Fade to 50% volume
+                clearInterval(fadeInInterval);
+                el.volume = 0.5;
+            } else {
+                el.volume = newVolume;
+            }
+        }, 50);
+    };
+
+    if (activeMusic?.url && audio.src !== activeMusic.url) {
+        fadeOutAndSwitch(activeMusic.url);
+    } else if (!activeMusic?.url && !audio.paused) {
+        fadeOutAndSwitch('');
+    }
+
+    // Mute/unmute logic
+    audio.muted = isMusicMuted;
+
+  }, [activeMusic, isMusicMuted]);
+
 
   const activePhoto = photos.find(p => p.id === activePhotoId);
   const activePhotoSrc = activePhotoId ? (
@@ -120,7 +190,7 @@ export default function Stage() {
 
   return (
     <div className="stage">
-      <div className="media-container">
+      <div className="media-container" style={{ backgroundImage: `url(${activeEnvironmentUrl})` }}>
         {activeModelToast && <div className="model-info-toast">{activeModelToast} selected</div>}
         {didJustSnap && <div className="flash" />}
 
@@ -155,6 +225,25 @@ export default function Stage() {
                         <Avatar modelUrl={activeModelUrl} />
                     </Canvas>
                 </Suspense>
+                 <div className="environment-switcher">
+                    {environments.map(env => (
+                        <button 
+                          key={env.name} 
+                          onClick={() => setActiveEnvironment(env)} 
+                          title={env.name}
+                          className={c({ active: env.url === activeEnvironmentUrl })}
+                        >
+                            {env.icon}
+                        </button>
+                    ))}
+                    <button 
+                        onClick={() => toggleMusicMuted()} 
+                        title={isMusicMuted ? 'Unmute Music' : 'Mute Music'} 
+                        className="control-button"
+                    >
+                        <span className="icon">{isMusicMuted ? 'volume_off' : 'volume_up'}</span>
+                    </button>
+                </div>
             </div>
         )}
 

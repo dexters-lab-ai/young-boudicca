@@ -42,7 +42,7 @@ export interface ToolCall {
 }
 
 /** The lifecycle state of the live voice session. */
-export type SessionState = 'idle' | 'connecting' | 'connected' | 'listening' | 'thinking' | 'speaking' | 'disconnected' | 'error' | 'reconnecting';
+export type SessionState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'disconnected' | 'error' | 'reconnecting';
 
 export interface FavouriteToken {
     address: string;
@@ -71,4 +71,17 @@ export interface Agent {
   vrmUrl: string;
   creatorWalletAddress: string;
   createdAt: string;
+  animationGreetingUrl?: string;
+  animationDanceUrl?: string;
+  animationSpinUrl?: string;
+  animationPoseUrl?: string;
+  animationPumpedUrl?: string;
+  environmentUrl?: string;
+}
+
+export interface Environment {
+    name: string;
+    icon: string;
+    url: string;
+    musicPrompt: string;
 }

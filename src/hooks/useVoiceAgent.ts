@@ -1,338 +1,340 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { AudioPlayer } from '../lib/AudioPlayer';
 import { ChatMessage } from '../types';
 import useStore from '../lib/store';
 import { BOUDICCA_SYSTEM_INSTRUCTION, DEFAULT_MODEL } from '../lib/constants';
-import { Chat, GoogleGenAI, Content } from '@google/genai';
+import { Chat, GoogleGenAI, Content, FunctionDeclaration } from '@google/genai';
 import { availableTools } from '../lib/tools';
-import { getExpressionForText } from '../lib/expressionEngine';
+import { dispatchToolCall } from '../lib/toolDispatcher';
+import { errorService } from '../lib/ErrorService';
 
-// Use relative URL that works in both development and production
-const TTS_WEBSOCKET_URL = (() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/api/ws/tts`;
-})();
+// --- Interfaces for browser SpeechRecognition API ---
+interface SpeechRecognitionErrorEvent extends Event {
+    readonly error: string;
+}
+
+interface ISpeechRecognition extends EventTarget {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    start(): void;
+    stop(): void;
+    onresult: (event: any) => void;
+    onerror: (event: SpeechRecognitionErrorEvent) => void;
+    onend: () => void;
+}
+const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+const isSpeechRecognitionSupported = !!SpeechRecognition;
+// --- End SpeechRecognition interfaces ---
 
 interface UseVoiceAgentProps {
     apiKey: string | null;
-    onFinalResult: (result: { summary: string }) => void;
-    onError: (error: string) => void;
     systemInstruction?: string;
 }
 
 const formatHistoryForChat = (history: ChatMessage[]): Content[] => {
     return history
-        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.text))
+        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.text)) // Only include messages with text
         .map(m => ({
             role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: m.text }],
+            parts: [{ text: m.text! }],
         }));
 };
 
-// A map of keywords to trigger gestures from user's input
-const userGestureMap: { [key: string]: string } = {
-    'wave': 'greeting',
-    'dance': 'dance',
-    'spin': 'spin',
-    'twirl': 'spin',
-    'squat': 'squat',
-    'crouch': 'squat',
-    'peace': 'peacesign',
-    'pose': 'pose',
-    'fight': 'fight',
-    'shoot': 'shoot',
-    'fire': 'shoot',
-    'what a trick': 'dance_meme',
-    'show me a trick': 'dance_meme',
-    'do a trick': 'dance_meme',
-};
-
+/**
+ * A comprehensive voice agent hook that manages the entire conversation flow:
+ * 1. Speech-to-Text (STT) via the browser's SpeechRecognition API.
+ * 2. Language Model (LLM) interaction with Google Gemini for text responses and tool calls.
+ * 3. Text-to-Speech (TTS) via a secure backend endpoint for ElevenLabs, with high-precision scheduling.
+ */
 export function useVoiceAgent(props: UseVoiceAgentProps) {
-    const { apiKey, onFinalResult, onError, systemInstruction } = props;
-    const preferredVoiceName = useStore.use.preferredVoiceName();
-    const preferredLanguage = useStore.use.preferredLanguage();
-    const [streamingSummary, setStreamingSummary] = useState('');
-    const [isProcessing, setIsProcessing] = useState(false);
-    const chatHistory = useStore.use.chatHistory();
-    const setActiveAnimation = useStore.use.setActiveAnimation();
-    const setIsAudioPlaying = useStore.use.setIsAudioPlaying();
-    const setActiveExpression = useStore.use.setActiveExpression();
-    const setIsTextStreaming = useStore.use.setIsTextStreaming();
-    const setGesture = useStore.use.setGesture();
-    const addMessage = useStore.use.addMessage();
+    const { apiKey, systemInstruction } = props;
 
-    const audioPlayerRef = useRef<AudioPlayer | null>(null);
+    // --- Global State ---
+    const { addMessage, addToolMessage, chatHistory, preferredVoiceName: preferredVoiceId, setActiveAnimation, setIsTextStreaming, setGesture, activeModelUrl, activeCustomAgent } = useStore.getState();
+
+    // --- Local State and Refs ---
+    const [streamingSummary, setStreamingSummary] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false); // True when Gemini is thinking or TTS is happening
+    const [isListening, setIsListening] = useState(false);
+    
     const chatRef = useRef<Chat | null>(null);
     const aiRef = useRef<GoogleGenAI | null>(null);
-    const websocketRef = useRef<WebSocket | null>(null);
-    const gestureDebounceRef = useRef<number | null>(null);
-    const reconnectAttempts = useRef(0);
-    const maxReconnectAttempts = 5;
-    const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const recognitionRef = useRef<ISpeechRecognition | null>(null);
+    const listeningStateRef = useRef(false);
 
-    const detectGesture = useCallback((text: string): string | null => {
-        const t = text.toLowerCase();
-        if (/\b(wave|greet|hello|hi|hey)\b/.test(t)) return 'greeting';
-        if (/\b(shoot|fire)\b/.test(t)) return 'shoot';
-        if (/\b(squat|crouch)\b/.test(t)) return 'squat';
-        if (/\b(spin|twirl)\b/.test(t)) return 'spin';
-        if (/\b(peace)\b/.test(t)) return 'peacesign';
-        if (/\b(pose)\b/.test(t)) return 'pose';
-        if (/\b(cute|adorable)\b/.test(t)) return 'cute';
-        if (/\b(elegant|graceful)\b/.test(t)) return 'elegant';
-        if (/\b(fight|attack)\b/.test(t)) return 'fight';
-        if (/\b(powerful|strong)\b/.test(t)) return 'powerful';
-        if (/\b(ready|pumped)\b/.test(t)) return 'pumped';
-        if (t.includes('picatrix') && t.includes('dance')) return 'dance_meme';
-        if (/\b(dance)\b/.test(t)) return 'dance';
-        if (/\b(wow|amazing|wonderful|excellent|fantastic)\b/.test(t)) return 'powerful';
-        if (/\b(talk)\b/.test(t)) return 'talk';
-        return null;
+    // High-precision audio scheduling refs
+    const nextStartTime = useRef(0);
+    const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
+    const lastPlayedNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
+    // --- Helper Functions ---
+    const ensureAudioContextResumed = useCallback(async () => {
+        if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (audioContextRef.current.state === 'suspended') {
+            await audioContextRef.current.resume();
+        }
     }, []);
 
-    const speakSentence = useCallback((sentence: string) => {
-        const trimmedSentence = sentence.trim();
-        if (!trimmedSentence) return;
+    const speakSentence = useCallback(async (sentence: string) => {
+        const trimmed = sentence.trim();
+        if (!trimmed) return;
+        
+        await ensureAudioContextResumed();
+        const audioContext = audioContextRef.current;
+        if (!audioContext) return;
 
-        const ws = websocketRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            onError('TTS WebSocket is not connected. Please try again.');
-            // Attempt to reconnect if not already trying
-            if (reconnectAttempts.current < maxReconnectAttempts) {
-                console.log('[useVoiceAgent] Attempting to reconnect WebSocket...');
-                connectWebSocket();
-            }
-            return;
-        }
-
-        console.log(`[useVoiceAgent] Sending sentence to WebSocket: "${trimmedSentence}"`);
         try {
-            ws.send(JSON.stringify({
-                text: trimmedSentence,
-                voice: preferredVoiceName,
-                speed: 1.0, // Default speed, can be made configurable
-                language: preferredLanguage,
-            }));
-        } catch (error) {
-            console.error('[useVoiceAgent] Error sending message to WebSocket:', error);
-            onError('Failed to send message to TTS service');
-        }
-    }, [onError, preferredVoiceName, preferredLanguage]);
-
-    const connectWebSocket = useCallback(() => {
-        // Clean up any existing connection
-        if (websocketRef.current) {
-            websocketRef.current.close();
-        }
-
-        if (reconnectAttempts.current >= maxReconnectAttempts) {
-            console.warn('[useVoiceAgent] Max reconnection attempts reached');
-            return;
-        }
-
-        console.log(`[useVoiceAgent] Connecting to WebSocket: ${TTS_WEBSOCKET_URL}`);
-        const ws = new WebSocket(TTS_WEBSOCKET_URL);
-        websocketRef.current = ws;
-
-        ws.onopen = () => {
-            console.log('[useVoiceAgent] TTS WebSocket connected.');
-            reconnectAttempts.current = 0; // Reset reconnection attempts on successful connection
-            if (reconnectTimeout.current) {
-                clearTimeout(reconnectTimeout.current);
-                reconnectTimeout.current = null;
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('[useVoiceAgent] TTS WebSocket disconnected.');
-            
-            // Attempt to reconnect with exponential backoff
-            if (reconnectAttempts.current < maxReconnectAttempts) {
-                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-                console.log(`[useVoiceAgent] Attempting to reconnect in ${delay}ms...`);
-                
-                reconnectTimeout.current = setTimeout(() => {
-                    reconnectAttempts.current++;
-                    connectWebSocket();
-                }, delay);
-            } else {
-                onError('Failed to connect to TTS service after multiple attempts');
-            }
-        };
-
-        ws.onerror = (event) => {
-            console.error('[useVoiceAgent] TTS WebSocket error:', event);
-            onError('TTS WebSocket connection error');
-        };
-
-        ws.onmessage = async (event) => {
-            try {
-                if (typeof event.data === 'string') {
-                    const message = JSON.parse(event.data);
-                    console.log('[useVoiceAgent] Received message:', message);
-                    
-                    switch (message.type) {
-                        case 'audio_chunk':
-                            if (message.data) {
-                                // Convert hex string to ArrayBuffer
-                                const hexString = message.data;
-                                const bytes = new Uint8Array(hexString.length / 2);
-                                for (let i = 0; i < hexString.length; i += 2) {
-                                    bytes[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
-                                }
-                                audioPlayerRef.current?.enqueue(bytes.buffer);
-                            }
-                            break;
-                        case 'status':
-                            console.log(`[useVoiceAgent] Status: ${message.message}`);
-                            break;
-                        case 'error':
-                            console.error(`[useVoiceAgent] Error: ${message.message}`);
-                            onError(`TTS Error: ${message.message}`);
-                            break;
-                        case 'complete':
-                            console.log('[useVoiceAgent] TTS generation complete');
-                            break;
-                    }
-                }
-            } catch (e) {
-                console.error('[useVoiceAgent] Error processing WebSocket message:', e);
-            }
-        };
-    }, [onError]);
-
-
-    // Effect to initialize clients and WebSocket connection
-    useEffect(() => {
-        // Initialize AI Client
-        if (apiKey && !aiRef.current) {
-            aiRef.current = new GoogleGenAI({ apiKey });
-        }
-
-        if (!audioPlayerRef.current) {
-            audioPlayerRef.current = new AudioPlayer((isPlaying) => {
-                setIsAudioPlaying(isPlaying);
-                if (!isPlaying) {
-                    setActiveAnimation('IDLE');
-                    setActiveExpression('neutral');
-                }
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: trimmed, voiceId: preferredVoiceId || '21m00Tcm4TlvDq8ikWAM' }),
             });
-            audioPlayerRef.current.start();
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || 'TTS request failed');
+            }
+            
+            const audioData = await response.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(audioData);
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+
+            // Schedule playback seamlessly
+            const currentTime = audioContext.currentTime;
+            const startTime = nextStartTime.current > currentTime ? nextStartTime.current : currentTime;
+            source.start(startTime);
+            nextStartTime.current = startTime + audioBuffer.duration;
+
+            // Track audio nodes to know when speech is finished
+            audioQueueRef.current.push(source);
+            lastPlayedNodeRef.current = source;
+            source.onended = () => {
+                const index = audioQueueRef.current.indexOf(source);
+                if (index > -1) audioQueueRef.current.splice(index, 1);
+                
+                // If this was the last audio clip and we are not streaming more text, go idle.
+                if (lastPlayedNodeRef.current === source && !useStore.getState().isTextStreaming) {
+                    setActiveAnimation('IDLE');
+                }
+            };
+
+        } catch (error) {
+            console.error("TTS error:", error);
+            errorService.dispatchError("Failed to generate speech from ElevenLabs.");
         }
+    }, [preferredVoiceId, ensureAudioContextResumed, setActiveAnimation]);
 
-        // Initialize WebSocket
-        connectWebSocket();
 
-        // Cleanup function
-        return () => {
-            if (websocketRef.current) {
-                websocketRef.current.close();
-                websocketRef.current = null;
-            }
-            if (audioPlayerRef.current) {
-                audioPlayerRef.current.stop();
-            }
-            if (gestureDebounceRef.current) {
-                clearTimeout(gestureDebounceRef.current);
-            }
-            if (reconnectTimeout.current) {
-                clearTimeout(reconnectTimeout.current);
-                reconnectTimeout.current = null;
-            }
-        };
-    }, [apiKey, onError, setActiveAnimation, setActiveExpression, setIsAudioPlaying]);
-
+    // --- Core Logic ---
     const sendText = useCallback(async (text: string) => {
-        // Handle direct user gesture commands
-        const textLower = text.toLowerCase().trim();
-        const gesture = userGestureMap[textLower];
-        if (gesture) {
-            addMessage(text, 'user');
-            setGesture(gesture);
-            speakSentence("Sure, watch this!");
-            return;
-        }
-
-        // Ensure Gemini Chat is initialized
+        await ensureAudioContextResumed();
         if (!aiRef.current) {
-            onError('AI client not initialized. Please check your API key.');
+            errorService.dispatchError('AI client not initialized. Check API key.');
             return;
         }
+        addMessage(text, 'user');
 
-        // FIX: Re-create the chat session with the current history from the store.
-        // This is necessary because the Chat object's history is private and not
-        // publicly mutable, so we can't sync it if the global history changes
-        // (e.g., chat cleared). The last message in the history is the user's
-        // current prompt, which is passed to sendMessageStream, so we exclude it
-        // from the history to avoid duplication.
-        chatRef.current = aiRef.current.chats.create({
-            model: DEFAULT_MODEL,
-            config: {
-                systemInstruction: systemInstruction || BOUDICCA_SYSTEM_INSTRUCTION,
-                tools: [{ functionDeclarations: availableTools }],
-            },
-            history: formatHistoryForChat(chatHistory.slice(0, -1)),
-        });
-
+        if (!chatRef.current) {
+            chatRef.current = aiRef.current.chats.create({
+                model: DEFAULT_MODEL,
+                config: {
+                    systemInstruction: systemInstruction || BOUDICCA_SYSTEM_INSTRUCTION,
+                    tools: [{ functionDeclarations: availableTools as FunctionDeclaration[] }],
+                },
+                history: formatHistoryForChat(chatHistory),
+            });
+        }
+        
+        setIsProcessing(true);
+        setIsTextStreaming(true);
         setStreamingSummary('');
+        
+        // Reset audio scheduler for the new response
+        if (audioContextRef.current) {
+            nextStartTime.current = audioContextRef.current.currentTime;
+        }
+        audioQueueRef.current = [];
+        lastPlayedNodeRef.current = null;
+        
         let fullTextResponse = '';
         let sentenceBuffer = '';
-        const sentenceEndRegex = /([.!?])(?:\s|'|"|$)/;
-
+        const sentenceEndRegex = /[^.!?]+[.!?](?:\"|'|\s|$)/g;
+        
         try {
-            setIsProcessing(true);
-            setIsTextStreaming(true);
-            setActiveAnimation('TALKING');
-
             const result = await chatRef.current.sendMessageStream({ message: text });
-
             for await (const chunk of result) {
+                 // Handle tool calls first
+                if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+                    
+                    const toolCall = chunk.functionCalls[0]; // Process first tool call
+                    if (!toolCall.name) {
+                        console.error('Tool call missing name:', toolCall);
+                        continue;
+                    }
+                    
+                    addMessage(`Thinking... Using tool: \`${toolCall.name}\``, 'assistant');
+                    const apiResponse = await dispatchToolCall(toolCall.name, toolCall.args);
+
+                    if (apiResponse.error) {
+                       addMessage(`Tool \`${toolCall.name}\` failed: ${apiResponse.error}`, 'assistant');
+                    } else if (toolCall.name.startsWith('fetch')) {
+                        addToolMessage(toolCall.name, apiResponse);
+                    }
+                    
+                    const toolResult = await chatRef.current.sendMessageStream({
+                       message: [{ functionResponse: { name: toolCall.name, response: apiResponse } }]
+                    });
+
+                    // Process the model's summary of the tool result
+                    for await (const toolChunk of toolResult) {
+                         const chunkText = toolChunk.text;
+                         if(chunkText) {
+                            if (fullTextResponse.length === 0) setActiveAnimation('TALKING');
+                            fullTextResponse += chunkText;
+                            sentenceBuffer += chunkText;
+                            setStreamingSummary(fullTextResponse);
+                         }
+                    }
+                    // Since we've consumed the tool response stream, break the outer loop.
+                    break; 
+                }
+
+                // Handle regular text responses
                 const chunkText = chunk.text;
                 if (chunkText) {
+                    if (fullTextResponse.length === 0) {
+                        // Start talking animation on the very first text chunk.
+                        setActiveAnimation('TALKING');
+                    }
                     fullTextResponse += chunkText;
                     sentenceBuffer += chunkText;
                     setStreamingSummary(fullTextResponse);
-
-                    if (gestureDebounceRef.current) clearTimeout(gestureDebounceRef.current);
-                    gestureDebounceRef.current = window.setTimeout(() => {
-                        const gestureFromAI = detectGesture(fullTextResponse);
-                        if (gestureFromAI) {
-                            setGesture(gestureFromAI);
-                        }
-                        const expression = getExpressionForText(fullTextResponse);
-                        setActiveExpression(expression);
-                    }, 300); // Debounce to avoid triggering on partial words
                     
-                    let match;
-                    while ((match = sentenceBuffer.match(sentenceEndRegex)) !== null) {
-                        const sentenceEndIndex = (match.index || 0) + match[0].length;
-                        const sentence = sentenceBuffer.substring(0, sentenceEndIndex);
-                        speakSentence(sentence);
-                        sentenceBuffer = sentenceBuffer.substring(sentenceEndIndex);
+                    let sentences;
+                    while ((sentences = sentenceEndRegex.exec(sentenceBuffer)) !== null) {
+                        const sentence = sentences[0];
+                        await speakSentence(sentence);
+                        sentenceBuffer = sentenceBuffer.substring(sentences.index + sentence.length);
+                        sentenceEndRegex.lastIndex = 0;
                     }
                 }
             }
-
+            
+            // Process any remaining text in the buffer
             if (sentenceBuffer.trim()) {
-                speakSentence(sentenceBuffer);
+                await speakSentence(sentenceBuffer);
             }
 
-            onFinalResult({ summary: fullTextResponse });
-
+            if (fullTextResponse.trim()) {
+              addMessage(fullTextResponse, 'assistant');
+            }
+            
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during chat.';
-            console.error('Error sending text to chat session:', error);
-            onError(errorMessage);
+            const errorMessage = error instanceof Error ? error.message : 'Chat error';
+            console.error('Error during chat stream:', error);
+            errorService.dispatchError(errorMessage);
         } finally {
-            setIsProcessing(false);
             setIsTextStreaming(false);
-            // Animation and expression state is now handled by the AudioPlayer's onPlaybackStateChange callback
+            setStreamingSummary('');
+            // Crucially, wait for the *last* audio clip to finish before setting IDLE
+            if (audioQueueRef.current.length === 0) {
+                setActiveAnimation('IDLE');
+            }
+            setIsProcessing(false);
         }
-    }, [systemInstruction, chatHistory, onFinalResult, onError, preferredVoiceName, preferredLanguage, setActiveAnimation, setIsTextStreaming, detectGesture, setGesture, addMessage, speakSentence, setActiveExpression]);
+    }, [
+        systemInstruction, chatHistory, addMessage, addToolMessage,
+        setActiveAnimation, setIsTextStreaming, setGesture, speakSentence, ensureAudioContextResumed
+    ]);
+    
+    // --- Speech Recognition Logic ---
+    useEffect(() => {
+        listeningStateRef.current = isListening;
+    }, [isListening]);
+
+    useEffect(() => {
+        if (!isSpeechRecognitionSupported) {
+            console.warn('Speech recognition not supported in this browser.');
+            return;
+        }
+
+        const recognition: ISpeechRecognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                }
+            }
+            if (finalTranscript) {
+                sendText(finalTranscript.trim());
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            errorService.dispatchError(`Microphone error: ${event.error}`);
+            setIsListening(false);
+        };
+
+        recognition.onend = () => {
+            if (listeningStateRef.current) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.warn("Could not restart speech recognition automatically.");
+                    setIsListening(false);
+                }
+            }
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            listeningStateRef.current = false;
+            recognition.stop();
+        };
+    }, [sendText]);
+    
+    // --- Effects and Initializers ---
+
+    useEffect(() => {
+        chatRef.current = null;
+    }, [systemInstruction, activeModelUrl, activeCustomAgent]);
+
+    useEffect(() => {
+        if (apiKey && !aiRef.current) {
+            aiRef.current = new GoogleGenAI({ apiKey });
+        }
+    }, [apiKey]);
+    
+    const toggleListening = useCallback(async () => {
+        await ensureAudioContextResumed();
+        if (listeningStateRef.current) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+        } else {
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    }, [ensureAudioContextResumed]);
 
     return {
         streamingSummary,
         isProcessing,
+        isListening,
         sendText,
+        toggleListening,
+        isSpeechRecognitionSupported
     };
 }
