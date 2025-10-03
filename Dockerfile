@@ -13,6 +13,7 @@ RUN apk add --no-cache --update --virtual .gyp \
 ENV PYTHON=/usr/bin/python3
 ENV PYTHONPATH=/usr/lib/python3.11/site-packages
 ENV npm_config_python=/usr/bin/python3
+ENV npm_python=/usr/bin/python3
 
 WORKDIR /app
 COPY package.json package-lock.json tsconfig*.json ./
