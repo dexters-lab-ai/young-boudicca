@@ -28,12 +28,14 @@ RUN apk add --no-cache --update \
     eudev-dev \
     libusb-dev \
     e2fsprogs-extra \
-    # Required for node-gyp
+    # Required for node-gyp and other native modules
     libc6-compat \
     # Install node-gyp globally
     && npm install -g node-gyp \
     # Install dependencies with legacy peer deps and skip optional
     && npm ci --legacy-peer-deps --omit=optional \
+    # Fix for Rollup in Alpine Linux
+    && npm install -D @rollup/rollup-linux-x64-musl \
     # Clean up
     && npm cache clean --force \
     && rm -rf /var/cache/apk/* /tmp/*
