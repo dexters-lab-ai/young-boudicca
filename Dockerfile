@@ -18,8 +18,19 @@ ENV npm_python=/usr/bin/python3
 WORKDIR /app
 COPY package.json package-lock.json tsconfig*.json ./
 
-# Install all dependencies including devDependencies
-RUN npm ci --legacy-peer-deps
+# Install build dependencies
+RUN apk add --no-cache --virtual .build-deps \
+    python3 \
+    make \
+    g++ \
+    linux-headers \
+    udev \
+    eudev-dev \
+    libusb-dev \
+    e2fsprogs-extra \
+    && npm ci --legacy-peer-deps \
+    && apk del .build-deps \
+    && rm -rf /var/cache/apk/*
 
 COPY . .
 
@@ -30,7 +41,7 @@ RUN npm run build
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache --upgrade bash curl python3 make g++
+RUN apk add --no-cache --upgrade bash curl udev eudev libusb python3 make g++
 
 # Install PM2 globally
 RUN npm install -g pm2
