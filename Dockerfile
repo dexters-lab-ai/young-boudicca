@@ -32,11 +32,8 @@ RUN apk add --no-cache --update \
     libc6-compat \
     # Install node-gyp globally
     && npm install -g node-gyp \
-    # Configure npm to skip optional deps and use legacy peer deps
-    && npm config set optional false \
-    && npm config set legacy-peer-deps true \
-    # Install dependencies
-    && npm ci --legacy-peer-deps \
+    # Install dependencies with legacy peer deps and skip optional
+    && npm ci --legacy-peer-deps --omit=optional \
     # Clean up
     && npm cache clean --force \
     && rm -rf /var/cache/apk/* /tmp/*
