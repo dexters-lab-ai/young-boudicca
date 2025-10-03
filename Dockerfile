@@ -19,8 +19,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig*.json ./
 
 # Install all dependencies including devDependencies
-RUN npm config set python /usr/bin/python3 && \
-    npm ci --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
