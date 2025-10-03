@@ -28,9 +28,18 @@ RUN apk add --no-cache --virtual .build-deps \
     eudev-dev \
     libusb-dev \
     e2fsprogs-extra \
+    linux-api-headers \
+    # Install additional dependencies for node-gyp
+    && npm install -g node-gyp \
+    # Skip optional dependencies that might cause issues
+    && npm config set optional false \
+    # Install dependencies with legacy peer deps
     && npm ci --legacy-peer-deps \
+    # Clean up build dependencies
     && apk del .build-deps \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/cache/apk/* \
+    # Fix potential permission issues
+    && npm cache clean --force
 
 COPY . .
 
@@ -41,7 +50,19 @@ RUN npm run build
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache --upgrade bash curl udev eudev libusb python3 make g++
+RUN apk add --no-cache --upgrade \
+    bash \
+    curl \
+    udev \
+    eudev \
+    libusb \
+    python3 \
+    make \
+    g++ \
+    # Required for some native modules at runtime
+    libgcc \
+    libstdc++ \
+    && rm -rf /var/cache/apk/*
 
 # Install PM2 globally
 RUN npm install -g pm2
