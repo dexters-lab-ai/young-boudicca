@@ -3,6 +3,9 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Install build dependencies
+RUN apk add --no-cache --update --virtual .gyp python3 make g++
+
 # Copy package files first for better caching
 COPY package.json package-lock.json tsconfig*.json ./
 
@@ -29,8 +32,8 @@ RUN npm install -g pm2
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production --legacy-peer-deps
+# Install production dependencies only and skip optional dependencies
+RUN npm ci --only=production --no-optional --legacy-peer-deps
 
 # Copy built files from builder
 COPY --from=build /app/dist ./dist

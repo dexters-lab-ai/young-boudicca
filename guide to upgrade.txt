@@ -1,6 +1,6 @@
-Miko AI: 3D AI NFT Agent Creator - Technical Plan
+aiDreams: 3D AI NFT Agent Creator - Technical Plan
 Project Overview
-The "Miko AI" app will allow users to create unique 3D AI companions by combining custom VRM models (hosted via URL), custom VRMA animations (hosted via URL), and predefined behaviors (environment, look-at controls, gesture/mood triggers). Each created companion will be a unique NFT on the Solana blockchain. Users can subscribe to these agents using a Solana-based token (placeholder: USDC), with subscription fees split between the project and the creator.
+The "aiDreams" app will allow users to create unique 3D AI companions by combining custom VRM models (hosted via URL), custom VRMA animations (hosted via URL), and predefined behaviors (environment, look-at controls, gesture/mood triggers). Each created companion will be a unique NFT on the Solana blockchain. Users can subscribe to these agents using a Solana-based token (placeholder: USDC), with subscription fees split between the project and the creator.
 The core components and technologies required to achieve the project are as follows:
 
     Frontend (React App): This will include an agent creation modal/form, agent viewing/interaction interface, a creator dashboard/agent management panel, wallet integration (Solana), NFT display and management, and a subscription button/flow.
