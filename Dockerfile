@@ -6,18 +6,20 @@ RUN apk add --no-cache --update --virtual .gyp \
     python3 \
     make \
     g++ \
-    && ln -sf python3 /usr/bin/python
+    && ln -sf python3 /usr/bin/python \
+    && ln -sf /usr/bin/python3 /usr/bin/python3.11
 
 # Set Python environment variables
 ENV PYTHON=/usr/bin/python3
 ENV PYTHONPATH=/usr/lib/python3.11/site-packages
+ENV npm_config_python=/usr/bin/python3
 
-# Rest of your Dockerfile remains the same...
 WORKDIR /app
 COPY package.json package-lock.json tsconfig*.json ./
 
 # Install all dependencies including devDependencies
-RUN npm ci --legacy-peer-deps
+RUN npm config set python /usr/bin/python3 && \
+    npm ci --legacy-peer-deps
 
 COPY . .
 
@@ -28,7 +30,7 @@ RUN npm run build
 FROM node:20-alpine
 
 # Install runtime dependencies
-RUN apk add --no-cache --upgrade bash curl
+RUN apk add --no-cache --upgrade bash curl python3 make g++
 
 # Install PM2 globally
 RUN npm install -g pm2
@@ -50,6 +52,15 @@ COPY --from=build /app/ecosystem.config.js ./
 # Expose ports
 EXPOSE 3000
 EXPOSE 8787
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOST=0.0.0.0
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost:3000/ || exit 1
 
 # Start the application
 CMD ["pm2-runtime", "start", "ecosystem.config.js"]
