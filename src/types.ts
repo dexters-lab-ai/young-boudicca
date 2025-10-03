@@ -51,7 +51,7 @@ export interface FavouriteToken {
     logo?: string;
 }
 
-export type AgentName = 'boudicca' | 'eliza';
+export type AgentName = 'gemini' | 'eliza';
 
 export interface TickerToken {
   tokenAddress: string;
@@ -77,6 +77,13 @@ export interface Agent {
   animationPoseUrl?: string;
   animationPumpedUrl?: string;
   environmentUrl?: string;
+  isPublic: boolean;
+  subscriptionCount: number;
+  nftDetails?: {
+    mintAddress: string;
+    metadataUri: string;
+    tokenStandard: string;
+  };
 }
 
 export interface Environment {
@@ -84,4 +91,47 @@ export interface Environment {
     icon: string;
     url: string;
     musicPrompt: string;
+}
+
+// Monaco Protocol Types
+export interface MonacoMarket {
+  id: string; // Public Key as string
+  title: string;
+  marketOutcomes: string[];
+  marketStatus: object; // This is an enum-like object in the SDK
+  marketType: string;
+  marketLockTimestamp: string;
+  // ... other fields from the SDK's MarketAccount
+}
+
+export interface MonacoMarketOutcome {
+  id: number; // Index
+  title: string;
+  odds: number;
+}
+
+export interface MonacoOrder {
+  publicKey: string;
+  account: {
+    purchaser: string;
+    market: string;
+    marketOutcomeIndex: number;
+    forOutcome: boolean;
+    stake: number;
+    payout: number;
+    // ... other fields from the SDK's OrderAccount
+  };
+}
+// FIX: Standardizing on Monaco types and removing Pnp legacy types.
+export interface MonacoUserBet {
+  id: string;
+  marketTitle: string;
+  outcomeTitle: string;
+  stake: number;
+  payout: number;
+  status: string;
+  // Unix timestamp (seconds since epoch) when the bet was placed
+  creationTimestamp?: number;
+  // Unix timestamp (seconds since epoch) when the market locks/closes
+  marketLockTimestamp?: number;
 }

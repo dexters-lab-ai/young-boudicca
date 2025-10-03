@@ -1,0 +1,312 @@
+Miko AI: 3D AI NFT Agent Creator - Technical Plan
+Project Overview
+The "Miko AI" app will allow users to create unique 3D AI companions by combining custom VRM models (hosted via URL), custom VRMA animations (hosted via URL), and predefined behaviors (environment, look-at controls, gesture/mood triggers). Each created companion will be a unique NFT on the Solana blockchain. Users can subscribe to these agents using a Solana-based token (placeholder: USDC), with subscription fees split between the project and the creator.
+The core components and technologies required to achieve the project are as follows:
+
+    Frontend (React App): This will include an agent creation modal/form, agent viewing/interaction interface, a creator dashboard/agent management panel, wallet integration (Solana), NFT display and management, and a subscription button/flow.
+    Backend (Node.js/Express with Mongoose/MongoDB Atlas): This will handle API endpoints for agent creation, retrieval, and updates. It will also handle user authentication and authorization, database management (MongoDB Atlas) for agent metadata, creator wallets, subscription tracking, and payout data. In addition, it will include a webhook listener (for Solana transactions, if feasible) or scheduled job (for transaction polling), NFT metadata management, and payout tracking/recording.
+    Blockchain (Solana): This component will be responsible for NFT minting and management (using a third-party service or custom program), token gating for subscriptions (checking if a user's wallet has sent the required token), and payment handling (direct creator-to-user token transfer for subscriptions).
+    Cloud Storage: This will involve options such as echo3D (recommended), a DIY option using Google Drive with modified public links, and NFT asset storage via IPFS (Pinata or similar).
+    AI Integration (Conceptual): This will include LLM integration (OpenAI API, Google Gemini API) for conversational AI and Text-to-Speech (TTS) & Speech-to-Text (STT) for voice interaction.
+
+Detailed Technical Implementation Plan
+1. Database Schema (MongoDB Atlas - Mongoose)
+The database schema will include two main collections: User and Agent.
+User Schema:
+javascript
+
+const userSchema = new mongoose.Schema({
+    walletAddress: { type: String, required: true, unique: true, index: true }, // Solana wallet
+    creatorWalletAddress: { type: String, unique: true, sparse: true }, // Optional: If user is a creator, their payout wallet
+    username: { type: String, unique: true, sparse: true }, // Optional username
+    email: String, // Optional email
+    registeredAgents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Agent' }],
+    subscribedAgents: [{
+        agent: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
+        lastSubscriptionTx: String, // Last transaction hash for subscription
+        lastSubscriptionDate: Date,
+        status: { type: String, enum: ['active', 'inactive'], default: 'inactive' }
+    }]
+    // ... other user-related fields
+}, { timestamps: true });
+
+// Index for quick lookups
+userSchema.index({ walletAddress: 1 });
+
+Use code with caution.
+Agent Schema:
+javascript
+
+const agentSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    description: String,
+    creator: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    creatorWalletAddress: { type: String, required: true, index: true }, // Denormalized for easier lookup
+    vrmModelUrl: { type: String, required: true }, // URL to the custom .vrm model (echo3D or Google Drive)
+    defaultEnvironmentUrl: String, // URL to custom environment .glb model (echo3D or Google Drive)
+    lookAtEnabled: { type: Boolean, default: true }, // Always true as per requirements
+    // Gesture Triggers: Store URLs to .vrma files or default names
+    gestureTriggers: {
+        greeting: { type: String, default: 'default_greeting_url.vrma' }, // URL or identifier for default
+        dance: { type: String, default: 'default_dance_url.vrma' },
+        spin: { type: String, default: 'default_spin_url.vrma' },
+        pose: { type: String, default: 'default_pose_url.vrma' },
+        pumped: { type: String, default: 'default_pumped_url.vrma' },
+        // ... more gestures
+    },
+    // Keyword triggers for mood/facial expressions (e.g., map keyword to VRM blend shape)
+    moodTriggers: {
+        happy: String, // Blend shape name or animation ID
+        sad: String,
+        angry: String
+        // ... more moods
+    },
+    nftDetails: {
+        mintAddress: { type: String, unique: true, sparse: true, index: true }, // Solana NFT Mint Address
+        metadataUri: String, // Link to the NFT metadata on IPFS
+        transactionHash: String, // Mint transaction hash
+        tokenStandard: String // e.g., 'ERC721', 'Metaplex'
+    },
+    isPublic: { type: Boolean, default: false }, // Whether agent is available for subscription
+    subscriptionCount: { type: Number, default: 0 },
+    totalRevenueEarned: { type: Number, default: 0 }, // Track creator earnings
+    usageLogs: [{ // Simple usage tracking
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        timestamp: Date,
+        action: String // e.g., 'chat_start', 'animation_trigger'
+    }]
+}, { timestamps: true });
+
+// Indexes for common queries
+agentSchema.index({ creator: 1 });
+agentSchema.index({ creatorWalletAddress: 1 });
+agentSchema.index({ name: 'text', description: 'text' }); // For search functionality
+agentSchema.index({ 'nftDetails.mintAddress': 1 });
+
+Use code with caution.
+2. Agent Creation Modal (React Frontend)
+The agent creation modal requires clear instructions for non-technical users.
+Key Fields & Features:
+
+    Agent Name & Description: Text inputs.
+    Unique VRM Model File:
+        Input field for the .vrm URL.
+        Instructions: "To make your character unique, you need to create or find a VRM model file and host it online. It is recommended to use echo3D for easy sharing. Alternatively, use Google Drive (click here for instructions on creating a direct link) or any other cloud storage that provides a direct, publicly accessible URL. This model should be unique to your character!"
+        (Optional) A button to open echo3D/Google Drive upload interface if feasible.
+    Environment Model (Optional):
+        Input field for .glb environment URL.
+        Option to select from default environments provided by the app.
+    Custom Gesture Animations (Optional):
+        For each fixed gesture category (greeting, dance, spin, pose, pumped), offer:
+            Radio button for "Use Default" or "Use Custom URL".
+            If "Use Custom URL" is selected, an input field for the .vrma animation URL.
+        Instructions: "Want your character to dance uniquely? Upload your custom .vrma animation file to echo3D or Google Drive and paste the direct link here!"
+    Creator Payout Wallet Address: Input field for Solana wallet address. This is where subscription payouts will be sent.
+    "Create Agent" Button:
+        Triggers NFT minting process.
+        Saves agent data to the backend.
+
+3. NFT Agent Creation Workflow (Solana)
+This workflow is the core "unique point."
+Third-Party Solana NFT Service (Recommended):
+
+    Metaplex SDK / Umi: The standard way to create NFTs on Solana. Using the JS SDK can simplify interaction with Solana.
+    Key Steps:
+        Prepare Metadata:
+            Create a JSON file containing the NFT's metadata (following Metaplex standards).
+            This metadata will include: name (Agent's Name), symbol (e.g., 'MIKOAI'), description (Agent's Description), image (a static render or short video of the agent), properties (e.g., VRM_URL, Environment_URL, Gestures, Moods, Creator_Wallet).
+            Crucial for Uniqueness: Store the vrmModelUrl and vrma URLs directly within the NFT metadata's properties or attributes array. This proves its uniqueness and links directly to the assets.
+        Upload Metadata to IPFS: Use Pinata to upload the JSON metadata file to IPFS. This generates a unique IPFS hash (ipfs://...).
+        Upload Image/Video to IPFS: The image field in your metadata should point to an IPFS-hosted image or short video showcasing the agent.
+        Mint NFT: Use the Metaplex SDK to mint the NFT on Solana. The minting transaction will require the user's wallet (the creator's wallet) to sign and pay a small gas fee.
+            The minting process will involve creating the NFT's mint account, the associated token account for the creator, and updating the NFT's metadata with the IPFS URI.
+            The agent.creatorWalletAddress from the Agent schema will be the NFT's creator wallet.
+    Code Stub (Conceptual - using Umi/Metaplex JS SDK):
+
+javascript
+
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { irysUploader } from '@metaplex-foundation/umi-uploader-irys'; // Or use ipfsUploader
+import { createNft, TokenStandard, MPL_TOKEN_METADATA_PROGRAM_ID } from '@metaplex-foundation/mpl-token-metadata';
+import { publicKey, createSignerFromKeypair, signerIdentity } from '@metaplex-foundation/umi';
+
+// Assume creatorKeypair is loaded from the creator's wallet signature
+// Assume agentData contains name, description, vrmModelUrl, creatorWalletAddress, etc.
+
+const mintAgentNFT = async (agentData, creatorKeypair) => {
+    const umi = createUmi('YOUR_SOLANA_RPC_URL'); // e.g., 'https://api.devnet.solana.com'
+    const signer = createSignerFromKeypair(umi, creatorKeypair); // Or use wallet adapter for browser
+    umi.use(signerIdentity(signer));
+    umi.use(irysUploader()); // Or other uploader for IPFS
+
+    // 1. Upload image/video (e.g., a render of the VRM model)
+    const imageFile = new File(['...'], 'agent_render.png'); // Replace with actual file or dynamically generate
+    const [imageUrl] = await umi.uploader.upload([imageFile]);
+
+    // 2. Prepare metadata JSON
+    const metadata = {
+        name: agentData.name,
+        symbol: 'MIKOAI',
+        description: agentData.description,
+        image: imageUrl,
+        animation_url: agentData.vrmModelUrl, // Could also point to VRM model for viewing
+        properties: {
+            files: [
+                { uri: agentData.vrmModelUrl, type: 'model/vrm' },
+                // Potentially include VRMA URLs here as well
+            ],
+            category: 'virtual_companion_nft',
+            creatorWallet: agentData.creatorWalletAddress,
+            // Add gestureTrigger URLs and other unique properties
+            customGestures: agentData.gestureTriggers,
+            moodTriggers: agentData.moodTriggers,
+            environment: agentData.defaultEnvironmentUrl,
+            lookAtEnabled: agentData.lookAtEnabled,
+        },
+        attributes: [
+            { trait_type: 'Type', value: 'AI Companion' },
+            { trait_type: 'Uniqueness', value: 'One-of-a-Kind' },
+            // ... other attributes
+        ]
+    };
+
+    // 3. Upload metadata to IPFS
+    const [metadataUri] = await umi.uploader.upload([metadata]);
+    console.log("Metadata URI:", metadataUri);
+
+    // 4. Mint NFT
+    const { signature, mint } = await createNft(umi, {
+        mint: generateSigner(umi), // Umi generates new mint account
+        name: metadata.name,
+        symbol: metadata.symbol,
+        uri: metadataUri,
+        sellerFeeBasisPoints: 0, // No royalties on primary sale for simplicity, or set your percentage
+        creators: [{ address: publicKey(agentData.creatorWalletAddress), share: 100, verified: false }],
+        isMutable: true, // Allow metadata updates if needed later
+        tokenStandard: TokenStandard.NonFungible,
+        // ... other options
+    }).sendAndConfirm(umi);
+
+    console.log('Successfully minted NFT!', { mint: mint.publicKey, signature });
+
+    return { mintAddress: mint.publicKey.toString(), metadataUri, transactionHash: signature };
+};
+
+Use code with caution.
+4. Subscription Model & Payment (Solana)
+
+    Token Gating / Payment Check:
+        Subscription Token: Use a placeholder token like Solana USDC.
+        Mechanism: When a user clicks "Subscribe," the app will:
+            Present the creator's saved creatorWalletAddress and the required token amount (1 USDC).
+            Prompt the user to send 1 USDC to the creatorWalletAddress using their connected wallet (e.g., Phantom).
+            After the user signs and sends the transaction, the frontend captures the transaction hash.
+            Send the transaction hash and the agent ID to the backend for verification.
+        Backend Verification:
+            Solana Transaction Listener (Ideal but Complex): Set up a listener that monitors for incoming USDC transfers to the creator's wallet. When a transaction is detected, verify it matches the expected amount, sender (subscriber's wallet), and token.
+            Polling (Easier but Slower): Periodically check the transaction history for the creator's wallet on Solana. Look for recent transactions that meet the criteria.
+            Hybrid (Recommended for Simplicity): The user provides the transaction hash on the frontend. The backend then immediately verifies that specific transaction:
+                Fetch transaction details.
+                Verify sender, receiver, amount, and token address.
+                Verify timestamp.
+        Subscription Activation: If verification passes, update the User document's subscribedAgents array to activate the subscription for the given agent.
+        Reward Tracking: Record the subscription details, including the creatorWalletAddress, in a pending payout ledger on the backend. This ledger will track the 75% creator share and 25% project share.
+    Fee Split Logic (Backend):
+        The 1 USDC goes directly to the creator's wallet.
+        Project Buyback/Burn (25%):
+            Option A (Creator sends back): The creator would have to manually send 25% of their earnings to the project's wallet.
+            Option B (Separate token transfer): When a user subscribes, they send 1 USDC to the creator AND 0.33 USDC to the project's wallet. This means the total subscription fee is 1.33 USDC.
+            Option C (Using a Solana Program): A custom Solana program could handle the split directly. The user sends 1 USDC to the program, and the program then automatically distributes 0.75 USDC to the creator and 0.25 USDC to the project's wallet.
+        Payout Tracking: The backend will track the totalRevenueEarned for each agent and the amount due to each creator.
+
+5. Agent Management Panel (React Frontend & Backend)
+Creator's Agent Panel:
+
+    List of Owned Agents: Display created agents, linked by creatorWalletAddress.
+    Agent Details:
+        Agent Name, Description, VRM URL, Environment URL, Custom Gestures/Moods.
+        NFT Mint Address & Link to Solscan/Explorer.
+        Creator Earnings: "Total Revenue Earned."
+        Subscription Count: "Current Active Subscribers."
+        Payout Wallet: Display the creatorWalletAddress for payouts.
+    Payout Management:
+        Display "Amount Due."
+        (Manual) Request Payout Button: For manually triggered payouts.
+        Clear instructions on how payouts work.
+    Edit Agent Details: Allow creators to update agent name, description, gesture URLs.
+    Toggle Public Status: Button to make agent public or private (isPublic field).
+
+Admin Panel (Backend Access / Separate Frontend):
+
+    Agent List & Management: View all agents, their creators, details.
+    Subscription Management: View all subscriptions, their status, last transaction.
+    Payout Management:
+        View "Amount Due" to all creators.
+        Record manual payouts made.
+        Mark payouts as 'processed'.
+    Usage Tracking: Access to agent usage logs.
+
+6. User Interaction & Subscription Flow (React Frontend)
+
+    Agent Selection: If an agent is not subscribed to:
+        Display a prominent "Subscribe" button.
+        Sleek Popup: When hovering/clicking an agent, a lightweight popup (React component) could show: Agent Name, Creator Name/Wallet, Description, NFT Link, Usage stats, and the "Subscribe" button.
+    Subscription Flow (User View):
+        User clicks "Subscribe."
+        A modal opens: "Subscribe to [Agent Name] for 1 USDC."
+        Displays creator wallet address: [creatorWalletAddress]
+        Button: "Connect Wallet & Subscribe."
+        User's connected Solana wallet (e.g., Phantom) opens.
+        User approves the transaction to send 1 USDC to creatorWalletAddress.
+        Frontend captures the transaction hash.
+        Frontend sends tx hash and agent ID to backend.
+        Backend verifies transaction.
+        On success, frontend updates UI.
+
+7. Agent Usage Tracking (Backend)
+
+    Simple Logging: Every time a user initiates a chat, triggers an animation, or performs a significant interaction with an agent, send an API call to the backend.
+    Backend Endpoint: POST /api/agent/:agentId/log
+        Requires userId (from auth), action.
+    Store in usageLogs array: Push the userId, timestamp, and action into the Agent document's usageLogs array.
+
+8. Helper & Pitch
+Agent Creator Modal / Help Section:
+
+    Title: "Become a Miko AI Creator! Bring Anything to Life as a 3D AI NFT."
+    Pitch: "Unleash your creativity and design unique 3D AI Companions. Each companion you create is a one-of-a-kind NFT. Share your creations, and let others subscribe to them. You earn passive income by simply bringing amazing characters to life!"
+    How to Create Models: "Learn how to create 3D characters, including the VRM format: https://pandako.itch.io/with-threejs-extension-for-gdevelop/devlog/998994/what-is-vrm-and-how-to-make-it"
+    Hosting Your Files: "To make your character truly unique, you'll need to create or find a VRM model file (.vrm) and animation files (.vrma) and host them online. It is recommended to use echo3D for its ease of use. Just upload your file, get the direct link, and paste it here! If you prefer Google Drive, follow these steps to get a direct public link:
+        Upload your .vrm or .vrma file to Google Drive.
+        Right-click the file and select 'Share'.
+        Change 'Restricted' access to 'Anyone with the link'.
+        Copy the shareable link.
+        Important: You need to modify this link to be a direct download link for our app to use it. Find instructions here or use an online converter." (You'll need to create your-app-specific-google-drive-link-modification-guide page).
+    Passive Income Potential: "By creating captivating and engaging AI companions, you're building a unique experience for users. Each subscription earns you a 75% share of the subscription fee. Build a collection, gain subscribers, and create a passive income stream from your creations!"
+    Managing Your Agent: "Once created, you can manage your AI Companion through your Creator Panel. Track subscriptions, see earnings, and initiate payout requests."
+
+9. Frontend Display & Interaction (Sleek Popup)
+
+    Agent Card/Tile: Display a static image/gif/short video of the agent, Name, Creator.
+    Hover/Click Popup (React Component):
+        Agent Name: Large font.
+        Creator: Link to creator's profile/wallet address.
+        "Powered by Miko AI"
+        Description: From agent data.
+        NFT Details: "Unique NFT: [Mint Address link to Solscan]"
+        Usage Stats: "Subscribers: [count]", "Total Usage: [count]".
+        Subscription Status: "Subscribed" or "Not Subscribed."
+        Interaction Button: If subscribed, "Chat with [Agent Name]". If not subscribed, "Subscribe for 1 USDC".
+        3D Viewer (Optional): A small embeddable 3D viewer showing the VRM model from the vrmModelUrl. This would be powered by libraries like three.js or model-viewer.
+
+Key Challenges & Considerations
+
+    Google Drive Direct Links: Consider providing a very specific helper tool within your app that takes the Google Drive share link and attempts to convert it to a direct link. Or strongly encourage echo3D.
+    Solana Transaction Verification: A Solana Program (smart contract) is the most robust way to handle the payment split and subscription logic. Using a Transaction Listener (via WebSockets) is a good middle ground.
+    LLM Integration: Integrating an LLM (e.g., Google Gemini) and managing its state for each AI companion will be a separate, significant task. You'll need to store context for each agent to make conversations dynamic.
+    Security: Ensure proper sanitization of URLs and other user inputs. Protect creator payout wallets.
+    User Experience: Clear instructions, intuitive UI, and smooth wallet integration are critical for non-technical users.
+    Scalability: Consider backend service scaling.
+    NFT Metadata Updates: Implement a "update NFT metadata" flow, which requires the creator's wallet to sign another transaction. Make isMutable true when minting.
+
+This plan provides a framework for building the project. The next step is to build out the core components, starting with the Agent Creation Modal and backend API endpoints, then integrating with Solana for NFT minting and subscription logic.

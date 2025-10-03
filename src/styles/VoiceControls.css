@@ -1,0 +1,58 @@
+.voice-selector {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--background-darker);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 4px 24px 4px 10px;
+    font-size: 14px;
+    height: 32px;
+    border-radius: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%23a0a0a0'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 14px;
+    cursor: pointer;
+}
+.voice-selector:hover {
+    border-color: var(--primary-color);
+}
+.voice-selector option {
+    background: var(--background-dark);
+}
+
+.voice-activity-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.voice-activity-bar {
+  width: 3px;
+  height: 4px;
+  background-color: var(--text-secondary);
+  border-radius: 2px;
+  animation: quiet 1s ease-in-out infinite;
+  transition: background-color 0.3s ease-in-out;
+}
+.voice-activity-indicator.active .voice-activity-bar {
+  height: 12px;
+  background-color: #35c759;
+  animation-name: sound;
+}
+.voice-activity-bar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.voice-activity-bar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.mic-button.listening {
+  color: #35c759;
+  animation: pulse-red 1.5s infinite; /* Re-use red pulse for listening */
+}
+.mic-button.listening .icon {
+    color: #35c759;
+}

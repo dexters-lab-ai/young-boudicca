@@ -2,9 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
+import * as React from 'react';
 import { useState } from 'react'
 import useStore from '../lib/store'
 import { addMessage, setActiveAgent } from '../lib/actions'
+import '../styles/Filters.css';
 
 function mapToolToEndpoint(name: string): { url: string; body: (args: any) => any } | null {
   switch (name) {
@@ -41,8 +43,8 @@ export default function Filters() {
   const activeAgent = useStore.use.activeAgent()
 
   const handleCrypto = async (name: 'fetchTrendingTokens' | 'fetchLatestTokens' | 'fetchBondingTokens') => {
-    if (activeAgent !== 'boudicca') {
-      addMessage('Switch to Boudicca to use crypto tools.', 'assistant');
+    if (activeAgent !== 'gemini') {
+      addMessage('Switch to the Gemini agent to use the advanced crypto tools.', 'assistant');
       return;
     }
     const result = await callTool(name)

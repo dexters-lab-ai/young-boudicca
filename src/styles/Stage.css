@@ -1,0 +1,396 @@
+/* Stage (Left Panel) */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  /* Allow grid child to shrink within minmax(0, ...) column */
+  min-width: 0;
+}
+.media-container {
+  flex: 1;
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  background-color: var(--background-darker);
+  background-size: cover;
+  background-position: center;
+  transition: background-image 0.5s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  min-height: 0;
+}
+/* Frosted glass effect for the environment background */
+.media-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 0;
+}
+.media-container > * {
+    position: relative;
+    z-index: 1;
+}
+.media-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.media-container video,
+.media-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.media-container video {
+  transform: rotateY(180deg);
+}
+.default-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  position: relative;
+}
+.default-image:active {
+    cursor: grabbing;
+}
+.fallback-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 1;
+  animation: flash 0.3s ease-out forwards;
+}
+
+.media-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.3);
+  z-index: 10;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+.media-overlay.shimmer:before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+      transparent,
+      var(--primary-color-transparent),
+      transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite ease-in-out;
+}
+
+.media-container:hover .download-button {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+.download-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -40%);
+  opacity: 0;
+  padding: 10px 20px;
+  border-radius: 50px;
+  background: var(--primary-color);
+  color: white;
+  text-transform: uppercase;
+  font-weight: bold;
+  z-index: 5;
+}
+.input-controls {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  padding: 10px;
+  background: var(--background-light);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+.control-button {
+  padding: 10px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid transparent;
+}
+.control-button.active,
+.control-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-color-transparent);
+}
+.shutter {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 15px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+  z-index: 5;
+  border: 2px solid #fff;
+}
+.shutter:hover {
+  transform: translateX(-50%) scale(1.1);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.model-switcher {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+.model-button {
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+}
+.model-button.active,
+.model-button:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.model-info-toast {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    z-index: 11;
+    animation: fade-in-out 3s ease-in-out forwards;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* Meme Generator */
+.meme-generator-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+.meme-prompt-ui {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    gap: 1.5rem;
+    animation: fadeIn 0.5s ease-out;
+}
+.meme-prompt-ui h2 {
+    font-size: 1.8rem;
+}
+.meme-prompt-ui p {
+    color: var(--text-secondary);
+    max-width: 400px;
+    line-height: 1.6;
+}
+.meme-prompt-ui .chat-input-area {
+    width: 100%;
+    max-width: 500px;
+}
+.meme-generator-container:hover .download-button-container {
+    opacity: 1;
+}
+.download-button-container {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+}
+.download-button-container .download-button {
+    position: static;
+    transform: none;
+    opacity: 1;
+}
+
+/* Filters Tabs (Crypto / Games) */
+.filters.tabs {
+  margin-top: 8px;
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.filters.tabs .tab-headers {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+.filters.tabs .tab-headers.compact button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+}
+.filters.tabs .tab-headers.compact button.active,
+.filters.tabs .tab-headers.compact button:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background: var(--primary-color-transparent);
+}
+.filters.tabs .tab-body {
+  padding: 8px;
+}
+.filters.tabs .tab-panel .compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.filters.tabs .tab-panel .compact-grid button {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--background-darker);
+  font-size: 14px;
+}
+.filters.tabs .tab-panel .compact-grid button:hover {
+  background: var(--primary-color-transparent);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* Agent Selector Dropdown */
+.agent-selector {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 32px 8px 16px;
+  border-radius: 20px;
+  background-color: var(--background-light);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%23a0a0a0'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  cursor: pointer;
+}
+.agent-selector:hover {
+  border-color: var(--primary-color);
+}
+.agent-selector option {
+  background: var(--background-dark);
+  color: var(--text-primary);
+}
+
+/* Environment Switcher */
+.environment-switcher {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    z-index: 10;
+}
+.environment-switcher button {
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    line-height: 1;
+    background: transparent;
+    border: 2px solid transparent;
+    color: var(--text-secondary);
+}
+.environment-switcher button.active,
+.environment-switcher button:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: var(--primary-color-transparent);
+}
+.environment-switcher .control-button .icon {
+    font-size: 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .stage {
+    gap: 0.5rem;
+    height: auto;
+    flex-shrink: 0;
+  }
+  .media-container {
+    min-height: 25vh; /* smaller canvas */
+    max-height: 35vh;
+  }
+  /* Smaller input controls to give chat more space */
+  .input-controls {
+    padding: 6px;
+    gap: 8px;
+  }
+  .control-button {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stage {
+    padding: 0 0.5rem;
+  }
+  .model-button {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  .media-container {
+    min-height: 22vh;
+    max-height: 30vh;
+  }
+  .input-controls {
+    padding: 4px;
+    gap: 6px;
+  }
+  .control-button {
+    padding: 6px;
+  }
+}

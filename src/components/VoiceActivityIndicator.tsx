@@ -1,5 +1,6 @@
 import React from 'react';
 import c from 'clsx';
+import '../styles/VoiceControls.css';
 
 interface Props {
   isActive: boolean;

@@ -6,7 +6,7 @@
 GEMINI_API_KEY="YOUR_GOOGLE_GEMINI_API_KEY"
 
 # Required for Text-to-Speech voice synthesis
-VITE_ELEVENLABS_API_KEY="YOUR_ELEVENLABS_API_KEY"
+ELEVENLABS_API_KEY="YOUR_ELEVENLABS_API_KEY"
 
 # Optional: Required for all live crypto data tools and the token ticker
 SOLSCAN_API_KEY="YOUR_SOLSCAN_PRO_API_KEY"

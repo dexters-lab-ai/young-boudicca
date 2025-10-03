@@ -12,6 +12,14 @@ export interface IAgent extends Document {
   animationPoseUrl?: string;
   animationPumpedUrl?: string;
   environmentUrl?: string;
+  isPublic: boolean;
+  subscriptionPrice: number;
+  subscriptionCount: number;
+  nftDetails?: {
+    mintAddress: string;
+    metadataUri: string;
+    tokenStandard: string;
+  };
 }
 
 const AgentSchema: Schema = new Schema({
@@ -26,6 +34,14 @@ const AgentSchema: Schema = new Schema({
   animationPoseUrl: { type: String, required: false },
   animationPumpedUrl: { type: String, required: false },
   environmentUrl: { type: String, required: false },
+  isPublic: { type: Boolean, default: false },
+  subscriptionPrice: { type: Number, default: 1 },
+  subscriptionCount: { type: Number, default: 0 },
+  nftDetails: {
+    mintAddress: { type: String, unique: true, sparse: true, index: true },
+    metadataUri: { type: String },
+    tokenStandard: { type: String },
+  }
 }, { timestamps: true });
 
 export default mongoose.model<IAgent>('Agent', AgentSchema);

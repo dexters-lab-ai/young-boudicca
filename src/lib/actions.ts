@@ -6,7 +6,7 @@ import useStore from './store'
 import imageData from './imageData'
 import { generateImage as genImageApi } from './llm'
 import modes from './modes'
-import { Photo, Agent, Environment } from '../types'
+import { Photo, Agent, Environment, AgentName } from '../types'
 
 const get = useStore.getState
 const set = useStore.setState
@@ -30,11 +30,11 @@ export const init = () => {
       didInit: true,
       photos: [initialPhoto],
       activePhotoId: defaultImageId,
-      activeModelUrl: state.models.find(m => m.agent === 'boudicca')?.url ?? null,
+      activeModelUrl: state.models.find(m => m.agent === 'gemini')?.url ?? null,
       activeEnvironmentUrl: state.environments[0]?.url ?? null,
     };
     
-    const welcomeMessage = "I’m Young Boudicca — a virtual being. I craft images, chat, and pull live info when asked. Upload or snap a photo to style it, or just tell me what you want.";
+    const welcomeMessage = "I am Miss Gemini. I can generate imagery, converse with you, and furnish live info, moves or environments upon request. Chat away or simply articulate your desires.";
 
     // Avoid adding duplicate welcome messages on hot reloads
     if (state.chatHistory.some(m => m.text === welcomeMessage)) {
@@ -69,7 +69,7 @@ export const generateImage = async (prompt: string, mode: string) => {
     if (!sourceImage) {
         // Show a temporary placeholder image (favicon) for 5 seconds while waiting for user upload
         const tempId = crypto.randomUUID();
-        const placeholder = '/images/boudicca.png';
+        const placeholder = '/images/frankenstein-icon.png';
         imageData.inputs[tempId] = placeholder;
         const tempPhoto: Photo = { id: tempId, mode: 'placeholder', isBusy: false, isInitial: true };
         set(state => ({ photos: [...state.photos, tempPhoto], activePhotoId: tempId }));
@@ -189,7 +189,7 @@ export const setApiKey = (apiKey: string) => {
     set({ apiKey });
 };
 
-export const setActiveModelUrl = ({ url, name, agent }: { url: string, name: string, agent: 'boudicca' | 'eliza' }) => {
+export const setActiveModelUrl = ({ url, name, agent }: { url: string, name: string, agent: AgentName }) => {
   const defaultEnv = get().environments[0];
   set({ activeModelUrl: url, activeModelToast: name, activeAgent: agent, activePhotoId: defaultImageId, activeCustomAgent: null });
   setActiveEnvironment(defaultEnv);
@@ -198,7 +198,7 @@ export const setActiveModelUrl = ({ url, name, agent }: { url: string, name: str
   }, 3000);
 }
 
-export const setActiveAgent = (agent: 'boudicca' | 'eliza') => {
+export const setActiveAgent = (agent: AgentName) => {
     const newModel = get().models.find(m => m.agent === agent);
     if (newModel) {
         setActiveModelUrl(newModel);
@@ -221,6 +221,17 @@ export const toggleCreateAgentModal = (open?: boolean) => {
     set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen }));
 }
 
+export const toggleSubscriptionModal = (open?: boolean, agentId?: string) => {
+    set(state => ({ 
+        isSubscriptionModalOpen: open ?? !state.isSubscriptionModalOpen,
+        subscriptionModalAgentId: agentId || null,
+    }));
+};
+
+export const toggleBettingModal = (open?: boolean, marketId?: string) => {
+    get().toggleBettingModal(open, marketId);
+}
+
 export const openTokenDetailModal = (address: string) => {
     set({ isTokenDetailModalOpen: true, tokenDetailModalAddress: address });
 };
@@ -236,7 +247,7 @@ export const setActiveCustomAgent = (agent: Agent | null) => {
     set({
       activeCustomAgent: agent,
       activeModelUrl: agent.vrmUrl,
-      activeAgent: 'boudicca', // Custom agents are always Boudicca persona
+      activeAgent: 'gemini', // Custom agents use the Frankenstein pipeline
       activeModelToast: agent.name,
       activePhotoId: 'default-image',
     });
@@ -246,7 +257,7 @@ export const setActiveCustomAgent = (agent: Agent | null) => {
     }, 3000);
   } else {
     // Revert to a default model when deselecting a custom agent
-    const defaultModel = get().models.find(m => m.agent === 'boudicca');
+    const defaultModel = get().models.find(m => m.agent === 'gemini');
     if (defaultModel) {
       setActiveModelUrl(defaultModel);
     }

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import useStore from '../lib/store';
 import { closeTokenDetailModal } from '../lib/actions';
 import SparklineChart from './SparklineChart';
+import '../styles/TokenDetailModal.css';
 
 const capitalize = (s: string) => (s && s.length > 0) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 

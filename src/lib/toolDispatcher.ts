@@ -13,6 +13,10 @@ const serverTools = new Set([
     'getTokenMetadata',
     'getMarketInfo',
     'fetchCandles',
+    'listMonacoMarkets',
+    'getMonacoMarketDetails',
+    'listUserMonacoOrders',
+    'placeMonacoOrder'
 ]);
 
 function mapToolToEndpoint(name: string): { url: string; body: (args: any) => any } | null {
@@ -37,6 +41,14 @@ function mapToolToEndpoint(name: string): { url: string; body: (args: any) => an
                 url: `${baseUrl}/fetchCandles`,
                 body: (a) => ({ address: a?.address, time_from: a?.time_from, time_to: a?.time_to }),
             };
+        case 'listMonacoMarkets':
+            return { url: `${baseUrl}/listMonacoMarkets`, body: (a) => ({ marketStatus: a?.marketStatus }) };
+        case 'getMonacoMarketDetails':
+            return { url: `${baseUrl}/getMonacoMarketDetails`, body: (a) => ({ marketPk: a?.marketPk }) };
+        case 'listUserMonacoOrders':
+            return { url: `${baseUrl}/listUserMonacoOrders`, body: (a) => ({ walletAddress: a?.walletAddress }) };
+        case 'placeMonacoOrder':
+            return { url: `${baseUrl}/placeMonacoOrder`, body: (a) => a };
         default:
             return null;
     }
@@ -71,7 +83,7 @@ function dispatchClientTool(name: string, args: any): Promise<any> {
             const targetEnv = environments.find(e => e.name.toLowerCase() === envName);
             if (targetEnv) {
                 // FIX: Call the correct action with the full environment object.
-                setActiveEnvironment(targetEnv); // Assuming this is the correct action
+                setActiveEnvironment(targetEnv);
                 return Promise.resolve({ result: `Mood set to ${targetEnv.name}` });
             } else {
                 return Promise.resolve({ error: `Environment "${args.environment}" not found.` });

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import useStore from '../lib/store';
+import '../styles/VoiceControls.css';
 
 const VoiceSelector: React.FC = () => {
   const { kokoroVoices, setKokoroVoices, preferredVoiceName, setPreferredVoiceName } = useStore();

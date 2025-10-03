@@ -38,9 +38,9 @@ const AgentSelector: React.FC = () => {
   const handleAgentChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const agentId = event.target.value;
     if (agentId === "default") {
-        const defaultBoudicca = models.find(m => m.name === 'Boudicca');
-        if (defaultBoudicca) {
-            setActiveModelUrl(defaultBoudicca);
+        const defaultAgent = models.find(m => m.name === 'Frankenstein');
+        if (defaultAgent) {
+            setActiveModelUrl(defaultAgent);
         }
     } else {
       const selectedAgent = customAgents.find(agent => agent._id === agentId);

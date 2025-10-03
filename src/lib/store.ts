@@ -8,7 +8,7 @@ import {immer} from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import {createSelectorFunctions} from 'auto-zustand-selectors-hook'
 import { Photo, ChatMessage, FavouriteToken, AgentName, Agent, Environment } from '../types'
-import { BOUDICCA_SYSTEM_INSTRUCTION } from './constants';
+import { DEFAULT_SYSTEM_INSTRUCTION } from './constants';
 
 interface AppState {
   apiKey: string | null;
@@ -17,8 +17,12 @@ interface AppState {
   isSettingsModalOpen: boolean;
   isAboutModalOpen: boolean;
   isCreateAgentModalOpen: boolean;
+  isSubscriptionModalOpen: boolean;
+  subscriptionModalAgentId: string | null;
   isTokenDetailModalOpen: boolean;
   tokenDetailModalAddress: string | null;
+  isBettingModalOpen: boolean;
+  bettingModalMarketPk: string | null;
   photos: Photo[];
   activePhotoId: string | null;
   customPrompt: string;
@@ -42,6 +46,9 @@ interface AppState {
   activeEnvironmentUrl: string | null;
   activeMusic: { name: string; url: string; } | null;
   isMusicMuted: boolean;
+  subscriptionStatus: Record<string, { isSubscribed: boolean; expiresAt?: Date } | undefined>;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
   playAnimation: (animation: string) => void;
   setActiveAnimation: (animation: string) => void;
   activeExpression: string;
@@ -67,6 +74,8 @@ interface AppState {
   toggleSettingsModal: (open?: boolean) => void;
   toggleAboutModal: (open?: boolean) => void;
   toggleCreateAgentModal: (open?: boolean) => void;
+  toggleSubscriptionModal: (open?: boolean, agentId?: string) => void;
+  toggleBettingModal: (open?: boolean, marketPk?: string) => void;
   openTokenDetailModal: (address: string) => void;
   closeTokenDetailModal: () => void;
   addFavourite: (token: FavouriteToken) => void;
@@ -82,6 +91,7 @@ interface AppState {
   setActiveMusic: (music: { name: string; url: string } | null) => void;
   setGesturePlaying: (isPlaying: boolean) => void;
   toggleMusicMuted: () => void;
+  setSubscriptionStatus: (agentId: string, status: { isSubscribed: boolean; expiresAt?: Date }) => void;
 }
 
 const useStore = create(
@@ -93,8 +103,12 @@ const useStore = create(
     isSettingsModalOpen: false,
     isAboutModalOpen: false,
     isCreateAgentModalOpen: false,
+    isSubscriptionModalOpen: false,
+    subscriptionModalAgentId: null,
     isTokenDetailModalOpen: false,
     tokenDetailModalAddress: null,
+    isBettingModalOpen: false,
+    bettingModalMarketPk: null,
     photos: [],
     activePhotoId: null,
     customPrompt: '',
@@ -103,15 +117,18 @@ const useStore = create(
     realtimeModel: 'gemini-2.5-flash',
     preferredVoiceName: 'en-US-Studio-O',
     preferredLanguage: 'en-us',
+    
     models: [
-      { name: 'Boudicca', url: '/models/chilled_boudica.vrm', agent: 'boudicca', systemInstruction: BOUDICCA_SYSTEM_INSTRUCTION },
-      { name: 'Hoshizora', url: '/models/hosizorano.vrm', agent: 'boudicca', systemInstruction: "You are Hoshizora, a cheerful and slightly mischievous kitsune (fox spirit) from a celestial world. You are curious about humans and their technology, especially crypto. You are playful, wise, and speak with a gentle, polite, and sometimes formal tone, occasionally using Japanese pleasantries like 'hai' or 'desu ne'. You are fascinated by the concept of 'digital stars' and see cryptocurrencies as a new kind of constellation." },
-      { name: 'Eliza', url: '/models/sister_boudica.vrm', agent: 'eliza', systemInstruction: null },
+      { name: 'Gemini', url: '/models/gemini.vrm', agent: 'gemini', systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
+      { name: 'Mico', url: '/models/frankenstein.vrm', agent: 'gemini', systemInstruction: "You are Mico, a helpful super assistant who scares easy. Scared, spooked, funny, weird but intelligent." },
+      { name: 'Hoshizora', url: '/models/hosizorano.vrm', agent: 'gemini', systemInstruction: "You are Hoshizora, a cheerful and slightly mischievous kitsune (fox spirit) from a celestial world. You are curious about humans and their technology, especially crypto. You are playful, wise, and speak with a gentle, polite, and sometimes formal tone, occasionally using Japanese pleasantries like 'hai' or 'desu ne'. You are fascinated by the concept of 'digital stars' and see cryptocurrencies as a new kind of constellation." },
+      { name: 'SuperJeet', url: '/models/superman.vrm', agent: 'gemini', systemInstruction: "You are SuperJeet, a very weak crypto holder, but a very strong fighter. You are always ready to help others. You are a bit lazy and don't like to work hard." },
+      { name: 'Soyako', url: '/models/soyako.vrm', agent: 'gemini', systemInstruction: "You are Soyako, a cheerful and slightly mischievous kitsune (fox spirit) from a celestial world. You are curious about humans and their technology, especially crypto. You are playful, wise, and speak with a gentle, polite, and sometimes formal tone, occasionally using Japanese pleasantries like 'hai' or 'desu ne'. You are fascinated by the concept of 'digital stars' and see cryptocurrencies as a new kind of constellation." },
     ],
-    activeModelUrl: null,
+    activeModelUrl: '/models/gemini.vrm',
     activeModelToast: null,
     activeAnimation: 'IDLE',
-    activeAgent: 'boudicca',
+    activeAgent: 'gemini',
     customAgents: [],
     activeCustomAgent: null,
     kokoroVoices: [],
@@ -119,19 +136,21 @@ const useStore = create(
     tempBackgroundUrl: null,
     error: null,
     environments: [
-        { name: 'Studio', icon: '🏢', url: '/images/environments/studio.jpg', musicPrompt: 'Lofi hip hop beats for studying or relaxing.' },
-        { name: 'Forest', icon: '🌲', url: '/images/environments/forest.jpg', musicPrompt: 'Calm, ambient forest sounds with gentle instrumental music.' },
-        { name: 'Space', icon: '🚀', url: '/images/environments/space.jpg', musicPrompt: 'Epic, ambient space music for exploration and discovery.' },
+        { name: 'Studio', icon: '🏢', url: '/images/environments/studio.png', musicPrompt: 'Lofi hip hop beats for studying or relaxing.' },
+        { name: 'Forest', icon: '🌲', url: '/images/environments/forest.png', musicPrompt: 'Calm, ambient forest sounds with gentle instrumental music.' },
+        { name: 'Space', icon: '🚀', url: '/images/environments/space.png', musicPrompt: 'Epic, ambient space music for exploration and discovery.' },
     ],
     activeEnvironmentUrl: null,
     activeMusic: null,
     isMusicMuted: false,
+    subscriptionStatus: {},
+    theme: 'light',
+    toggleTheme: () => set(state => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
     playAnimation: (animation: string) => {
       set({ activeAnimation: animation });
     },
     setActiveAnimation: (animation: string) => {
         set(state => {
-          // Prevent TALKING animation when a gesture is active
           if (animation === 'TALKING' && state.isGestureActive) {
             console.log('[Store] Blocked TALKING animation - gesture is active');
             return;
@@ -146,20 +165,18 @@ const useStore = create(
         });
     },
     activeExpression: 'neutral',
-    // FIX: Add missing setActiveExpression implementation.
     setActiveExpression: (expression: string) => set({ activeExpression: expression }),
     currentGesture: null,
     gestureNonce: 0,
     isGesturePlaying: false,
-  // Global flag to prevent talking animation during gestures
-  isGestureActive: false,
+    isGestureActive: false,
     talkingNonce: 0,
     isAudioPlaying: false,
     isTextStreaming: false,
     setGesture: (gesture: string | null) => {
       set(state => {
         state.currentGesture = gesture;
-        state.gestureNonce += 1; // force change detection even for same gesture name
+        state.gestureNonce += 1;
       });
     },
     setIsAudioPlaying: (isPlaying: boolean) => set({ isAudioPlaying: isPlaying }),
@@ -198,6 +215,18 @@ const useStore = create(
     toggleSettingsModal: (open?: boolean) => set(state => ({ isSettingsModalOpen: open ?? !state.isSettingsModalOpen })),
     toggleAboutModal: (open?: boolean) => set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen })),
     toggleCreateAgentModal: (open?: boolean) => set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen })),
+    toggleSubscriptionModal: (open?: boolean, agentId?: string) => {
+        set(state => ({ 
+            isSubscriptionModalOpen: open ?? !state.isSubscriptionModalOpen,
+            subscriptionModalAgentId: agentId || null,
+        }));
+    },
+    toggleBettingModal: (open?: boolean, marketPk?: string) => {
+        set(state => ({
+            isBettingModalOpen: open ?? !state.isBettingModalOpen,
+            bettingModalMarketPk: marketPk || null,
+        }));
+    },
     openTokenDetailModal: (address: string) => set({ isTokenDetailModalOpen: true, tokenDetailModalAddress: address }),
     closeTokenDetailModal: () => set({ isTokenDetailModalOpen: false, tokenDetailModalAddress: null }),
     addFavourite: (token: FavouriteToken) => set(state => {
@@ -217,7 +246,7 @@ const useStore = create(
         set({
           activeCustomAgent: agent,
           activeModelUrl: agent.vrmUrl,
-          activeAgent: 'boudicca', // All custom agents use the boudicca pipeline
+          activeAgent: 'gemini', // All custom agents use the Gemini pipeline
           activeModelToast: agent.name,
           activePhotoId: 'default-image'
         });
@@ -225,9 +254,9 @@ const useStore = create(
           set({ activeModelToast: null });
         }, 3000);
       } else {
-        const defaultBoudicca = get().models.find(m => m.name === 'Boudicca');
-        if (defaultBoudicca) {
-            get().setActiveModelUrl(defaultBoudicca);
+        const defaultFrankenstein = get().models.find(m => m.name === 'Miko');
+        if (defaultFrankenstein) {
+            get().setActiveModelUrl(defaultFrankenstein);
         }
       }
     },
@@ -245,7 +274,9 @@ const useStore = create(
       }, 3000);
     },
     setActiveEnvironment: (env: Environment) => {
-      // Delegated to action
+      // This is just a wrapper to satisfy the TypeScript interface
+      // The actual implementation is in actions.ts
+      set({ activeEnvironmentUrl: env.url });
     },
     setActiveMusic: (music: { name: string; url: string; } | null) => set({ activeMusic: music }),
     setGesturePlaying: (isPlaying: boolean) => {
@@ -255,15 +286,21 @@ const useStore = create(
     });
   },  
     toggleMusicMuted: () => set(state => ({ isMusicMuted: !state.isMusicMuted })),
+    setSubscriptionStatus: (agentId: string, status: { isSubscribed: boolean; expiresAt?: Date }) => {
+      set(state => {
+        state.subscriptionStatus[agentId] = status;
+      });
+    },
   })),
   {
-    name: 'boudi-ai-storage', // name of the item in the storage (must be unique)
+    name: 'boudi-ai-storage',
     partialize: (state) => ({ 
         apiKey: state.apiKey, 
         preferredVoiceName: state.preferredVoiceName,
         preferredLanguage: state.preferredLanguage,
         favourites: state.favourites,
         isMusicMuted: state.isMusicMuted,
+        theme: state.theme,
     }),
   }
 )

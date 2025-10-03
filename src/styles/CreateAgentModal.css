@@ -1,0 +1,316 @@
+.create-agent-modal .modal-content {
+    max-width: 600px;
+}
+.create-agent-modal .modal-content form {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 1rem;
+}
+.create-agent-modal .modal-content form fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.create-agent-modal .tab-headers {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+    flex-shrink: 0;
+}
+.create-agent-modal .tab-headers button {
+    flex: 1;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+}
+
+.create-agent-modal .tab-headers button.active,
+.create-agent-modal .tab-headers button:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.wallet-connect-prompt {
+    text-align: center;
+    padding: 1rem;
+    background: var(--background-dark);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+.wallet-connect-prompt p {
+    margin: 0 0 1rem 0;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.form-instructions {
+    margin-bottom: 1.5rem;
+    background: var(--background-dark);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.form-instructions h3 {
+    text-align: center;
+    color: var(--primary-color);
+    margin: 0 0 0.5rem 0;
+}
+.form-instructions p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-align: left;
+    margin: 0.5rem 0;
+    line-height: 1.5;
+}
+.form-instructions a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.form-instructions a:hover {
+    text-decoration: underline;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.form-group label {
+    display: block;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+.form-group input, .form-group textarea {
+    width: 100%;
+    background: var(--background-dark);
+    border: 1px solid var(--border-color);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+.form-group textarea {
+    min-height: 120px;
+}
+.form-group input:focus, .form-group textarea:focus {
+    border-color: var(--primary-color);
+}
+
+.input-type-switch {
+  display: flex;
+  background-color: var(--background-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+.input-type-switch button {
+  flex: 1;
+  padding: 0.5rem;
+  background-color: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.input-type-switch button.active {
+  background-color: var(--primary-color);
+  color: white;
+  font-weight: bold;
+}
+
+.advanced-options-toggle {
+    width: 100%;
+    text-align: left;
+    padding: 0.75rem;
+    background: var(--background-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    justify-content: space-between;
+}
+.advanced-options-toggle:hover {
+    border-color: var(--primary-color);
+}
+.advanced-options-content {
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 1rem;
+    background: var(--background-dark);
+    margin-top: -8px;
+}
+.advanced-options-content p {
+    font-size: 0.8rem;
+    text-align: left;
+    margin-bottom: 1rem;
+}
+.form-group-small {
+    margin-bottom: 0.75rem;
+}
+.form-group-small label {
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+}
+.form-group-small input {
+    padding: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.error-message {
+    color: #ff453a;
+    text-align: center;
+    font-size: 0.9rem;
+    margin: 1rem 0 0 0 !important;
+}
+
+form button[type="submit"] {
+    margin-top: 1rem;
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: 8px;
+    background: var(--primary-color);
+    color: white;
+    font-weight: bold;
+}
+
+/* Your Agents List */
+.your-agents-list {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.tab-message {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem;
+}
+
+.agent-list-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: var(--background-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.agent-list-item-info {
+    flex: 1;
+    min-width: 0;
+}
+.agent-list-item-info h5 {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.agent-list-item-info .nft-link {
+    font-size: 0.8rem;
+    color: var(--primary-color);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.agent-list-item-info .nft-link:hover {
+    text-decoration: underline;
+}
+.nft-link .icon.small {
+    font-size: 1rem;
+}
+
+.agent-list-metrics {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-secondary);
+}
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+.metric-item .icon.small {
+    font-size: 1rem;
+}
+
+.agent-list-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.agent-list-actions button {
+  padding: 8px;
+  border-radius: 50%;
+}
+.select-agent-btn {
+    background: var(--primary-color-transparent);
+    color: var(--primary-color);
+}
+.select-agent-btn:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* Visibility Toggle Switch */
+.visibility-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.visibility-toggle label {
+    font-size: 0.9rem;
+}
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--background-darker);
+  transition: .4s;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+}
+input:checked + .slider {
+  background-color: var(--primary-color);
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+.slider.round {
+  border-radius: 24px;
+}
+.slider.round:before {
+  border-radius: 50%;
+}

@@ -1,0 +1,129 @@
+/* Main Layout */
+.app-header {
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+}
+main {
+  width: 100vw;
+  height: calc(100dvh - 41px); /* Account for ticker height */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+.container {
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  max-height: 900px;
+  display: grid;
+  /* Use minmax(0, ...) so intrinsic sizes from Canvas don't force column shrink */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 2rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 2rem;
+  box-shadow: 0 4px 20px var(--glass-shadow);
+}
+
+.temp-background {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  z-index: 10;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.error-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.error-modal-content {
+  background: var(--background-light);
+  border: 1px solid #ff453a;
+  border-radius: 15px;
+  padding: 1.5rem;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: 0 0 20px rgba(255, 69, 58, 0.5);
+  text-align: center;
+}
+
+.error-modal-content .icon {
+    font-size: 2.5rem;
+    color: #ff453a;
+    margin-bottom: 1rem;
+}
+
+.theme-toggle-button {
+  background: var(--background-darker);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  margin-right: 1rem;
+  flex-shrink: 0;
+}
+.theme-toggle-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-color-transparent);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  main {
+    padding: 1rem;
+  }
+  .container {
+    grid-template-columns: 1fr 0.8fr;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 900px) {
+  main {
+    padding: 0;
+    height: 100dvh;
+    align-items: flex-start;
+  }
+  .container {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    gap: 1rem;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    overflow: hidden;
+  }
+}
+@media (max-width: 480px) {
+  .container {
+    padding: 0.5rem;
+  }
+}

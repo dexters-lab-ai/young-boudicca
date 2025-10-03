@@ -1,0 +1,45 @@
+/* Filters Tabs (Crypto / Games) */
+.filters.tabs {
+  margin-top: 8px;
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.filters.tabs .tab-headers {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+.filters.tabs .tab-headers.compact button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+}
+.filters.tabs .tab-headers.compact button.active,
+.filters.tabs .tab-headers.compact button:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background: var(--primary-color-transparent);
+}
+.filters.tabs .tab-body {
+  padding: 8px;
+}
+.filters.tabs .tab-panel .compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.filters.tabs .tab-panel .compact-grid button {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--background-darker);
+  font-size: 14px;
+}
+.filters.tabs .tab-panel .compact-grid button:hover {
+  background: var(--primary-color-transparent);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}

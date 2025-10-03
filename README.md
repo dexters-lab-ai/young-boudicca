@@ -2,26 +2,25 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Boudi AI - The Warrior Queen of the Digital Age
+# Miko AI - Your 3D AI Companion Platform
 
-Boudi AI is a next-generation, multimodal AI companion application that brings a 3D virtual character to life. Inspired by the trending "Young Boudicca" meme, the application provides a dynamic and engaging way to interact with an AI that can see, hear, and speak, while also providing powerful, live data from the crypto world.
+**Miko AI** is a next-generation, multimodal AI platform that empowers creators to bring unique 3D virtual companions to life as one-of-a-kind NFTs on the Solana blockchain. Go beyond static JPEGs and build interactive AI agents with distinct personalities, voices, and animations that others can subscribe to and interact with.
 
-This project serves as a cutting-edge demonstration of **Personified AI Agents**, showcasing how combining a compelling narrative with powerful AI tools can create an experience that is more than just a utility—it's an alliance.
+This project pioneers the concept of **Personified AI Agents**, creating a new digital economy where creativity, AI, and blockchain technology intersect. It's more than an app—it's a launchpad for your digital creations.
 
 ## ✨ Core Features
 
--   **Real-time Voice Conversation:** Chat with your 3D agent via text or voice. The app uses the browser's built-in Speech-to-Text, Google's Gemini for lightning-fast responses, and ElevenLabs for high-quality, low-latency voice synthesis.
--   **Dynamic 3D Avatars:** Interact with fully animated 3D character models (VRM) that feature realistic lip-syncing, dynamic facial expressions, and gesture animations, bringing the agent's personality to life.
--   **Custom Agent Creation & Sharing:** Go beyond the defaults! Users can create, customize, and share their own AI agents. Define a personality, upload a unique 3D model, and even set custom animations and environments.
--   **Live Crypto Toolkit:** Boudicca is empowered with Gemini Function Calling to access a suite of on-chain tools. Get live market data for trending, bonding, and new Solana tokens, fetched securely via the Solscan API.
--   **AI-Powered Meme Generator:** Create witty, shareable memes with custom captions generated on the fly by the Gemini model.
--   **Dual-Agent System:** Seamlessly switch between the fiery, voice-driven **Boudicca** and her analytical, text-only sister agent, **Eliza**, for different interaction styles.
--   **Customizable Environments:** Set the scene for your conversation. Users can select from default backgrounds or assign a unique environment to their custom-created agents.
+-   **AI Companion NFT Creator:** Design and mint unique 3D AI agents as NFTs on the Solana blockchain. Each NFT's metadata links directly to the unique assets (VRM model, animations), ensuring verifiable ownership and rarity.
+-   **Creator Economy & Subscriptions:** Monetize your creations! Other users can subscribe to your public agents by paying a small fee in Solana-based tokens (like USDC), sent directly to your wallet. You earn 75% of all subscription revenue.
+-   **Real-time Voice Conversation:** Chat with agents via text or voice. The app uses the browser's built-in Speech-to-Text, Google's Gemini for lightning-fast responses, and ElevenLabs for high-quality, low-latency voice synthesis.
+-   **Dynamic 3D Avatars:** Interact with fully animated 3D character models (VRM) that feature realistic lip-syncing, dynamic facial expressions, and custom gesture animations.
+-   **Live Crypto & Betting Toolkit:** Agents are empowered with Gemini Function Calling to access a suite of on-chain tools. Get live market data for Solana tokens or browse and place bets on the PNP Prediction Market Exchange.
+-   **Creator Dashboard:** Manage your created agents, view subscriber counts, track earnings, and toggle their public visibility all from a simple interface.
 
-## 🤖 The Personas
+## 🤖 Meet Miko
 
--   **Young Boudicca:** A fierce, 16-year-old Scottish warrior from Glasgow. She's a crypto-anarchist who sees decentralization as the ultimate rebellion against the "fiat Romans." She's sassy, protective, and armed with a sharp wit.
--   **Eliza:** Boudicca's sister. An analytical, data-driven AI agent who communicates exclusively through text. She provides concise, professional insights for crypto traders, acting as a calm counterpart to Boudicca's fiery personality.
+-   **Default Agent:** The platform's default agent is **Miko**, a cheerful, knowledgeable, and helpful AI guide ready to assist you with on-chain data, creative tasks, or a friendly chat.
+-   **User-Created Agents:** The true magic comes from the community. Create anyone or anything—from historical figures like Einstein to entirely new fictional characters—each with its own look, personality, and on-chain identity.
 
 ## 🛠️ Technology & Architecture
 
@@ -30,13 +29,16 @@ The application is built with a modern, secure, and performant tech stack.
 -   **Frontend:** React, TypeScript, Vite, Zustand (for state management).
 -   **3D Rendering:** Three.js & React Three Fiber power the 3D stage, with `@pixiv/three-vrm` for avatar and animation handling.
 -   **Backend:** A lightweight Node.js server using Express and `tsx`. It acts as a secure proxy for all external API services and handles database interactions.
--   **Database:** MongoDB (via Mongoose) for storing user-created AI agents.
+-   **Database:** MongoDB (via Mongoose) for storing user and agent metadata, including NFT details and subscription information.
 -   **AI & Generative Services:**
     -   **Google Gemini (`gemini-2.5-flash`):** The core language model for chat, reasoning, and function calling.
     -   **Browser `SpeechRecognition` API:** Provides fast, free, and efficient Speech-to-Text.
     -   **ElevenLabs API:** Used for high-quality, real-time Text-to-Speech, proxied through our secure backend.
--   **Blockchain Data:** Solscan API for all live crypto market data.
--   **Wallet Integration:** Solana Wallet Adapter for connecting user wallets to sign and verify ownership for agent creation.
+-   **Blockchain & NFTs:**
+    -   **Solana:** The high-performance blockchain for all NFT and token-based interactions.
+    -   **Metaplex Umi:** The conceptual framework for minting and managing NFTs via the backend.
+    -   **Solana Wallet Adapter:** For connecting user wallets to sign transactions and verify ownership.
+-   **Asset Hosting:** Users can host their VRM and VRMA files on any service with a direct public URL, such as **echo3D** or a properly configured **Google Drive** link.
 
 ## 🚀 Running Locally
 
@@ -44,8 +46,8 @@ The application is built with a modern, secure, and performant tech stack.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/boudi-ai.git
-    cd boudi-ai
+    git clone https://github.com/your-username/miko-ai.git
+    cd miko-ai
     ```
 
 2.  **Install dependencies:**
@@ -55,9 +57,9 @@ The application is built with a modern, secure, and performant tech stack.
 
 3.  **Set up Environment Variables:**
     -   Create a file named `.env` in the root of the project.
-    -   Add your API keys to this file. See `.env.example` for the required format. You will need keys for:
+    -   Add your API keys to this file. See `INSTRUCTIONS.md` for the required keys. You will need:
         -   **Google Gemini:** `GEMINI_API_KEY`
-        -   **ElevenLabs:** `VITE_ELEVENLABS_API_KEY`
+        -   **ElevenLabs:** `ELEVENLABS_API_KEY`
         -   **Solscan:** `SOLSCAN_API_KEY` (For crypto tools)
         -   **MongoDB:** `MONGODB_URI` (For custom agent creation)
 

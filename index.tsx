@@ -1,9 +1,11 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
-import {createRoot} from 'react-dom/client'
-import App from './src/components/App.tsx'
+ */
+import { createRoot } from 'react-dom/client';
+import React from 'react';
+import App from './src/components/App';
+import './index.css';
 
 // --- Setup for background glitch effect ---
 // This script runs once to create the elements for the CSS animation.
@@ -27,4 +29,9 @@ const container = document.getElementById('root') as HTMLElement | null;
 if (!container) {
   throw new Error('Root container #root not found');
 }
-createRoot(container).render(<App />)
+const root = createRoot(container);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);

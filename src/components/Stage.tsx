@@ -2,11 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { useRef, useState, useEffect, Suspense } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import useStore from '../lib/store';
 import imageData from '../lib/imageData';
 import c from 'clsx';
-import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveEnvironment, toggleMusicMuted } from '../lib/actions';
+import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveEnvironment, toggleMusicMuted, toggleBettingModal } from '../lib/actions';
 import Avatar from './Avatar';
 import Filters from './Filters';
 import { Canvas } from '@react-three/fiber';
@@ -14,6 +14,8 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import MemeGenerator from './MemeGenerator';
 import AgentSelector from './AgentSelector';
+
+import '../styles/Stage.css';
 
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
@@ -274,6 +276,9 @@ export default function Stage() {
       <div className="input-controls">
         <button className="control-button" onClick={() => toggleCreateAgentModal(true)} title="Create a new AI Agent">
           <span className="icon">add_circle</span>
+        </button>
+        <button className="control-button" onClick={() => toggleBettingModal(true)} title="Monaco Protocol">
+          <span className="icon">paid</span>
         </button>
         <button className={c("control-button", { active: inputSource === 'generator' })} onClick={() => setSource('generator')} title="Meme Generator">
           <span className="icon">auto_awesome</span>

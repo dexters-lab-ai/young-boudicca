@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useMemo } from 'react';
-import { TickerToken } from '../types';
-import { openTokenDetailModal } from '../lib/actions';
+import { TickerToken, MonacoMarket } from '../types';
+import { openTokenDetailModal, toggleBettingModal } from '../lib/actions';
+import '../styles/TokenTicker.css';
 
 const formatPrice = (price?: number) => {
   if (price === undefined || price === null) return 'N/A';
@@ -40,28 +41,63 @@ const BONDING_PLATFORMS = {
     raydium: 'Raydium'
 };
 
+const TickerItem: React.FC<{ item: TickerToken | MonacoMarket }> = ({ item }) => {
+    if ('tokenAddress' in item) { // It's a TickerToken
+        return (
+            <button
+                onClick={() => openTokenDetailModal(item.tokenAddress)}
+                className="token-item"
+                title={`${item.name} (${item.symbol})`}
+            >
+                <img src={item.logo} alt={item.symbol} className="w-5 h-5 rounded-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <span className="symbol">{item.symbol}</span>
+                <span className="price">{formatPrice(item.priceUsd)}</span>
+                {formatPercent(item.priceChange24h)}
+            </button>
+        );
+    } else { // It's a MonacoMarket
+        return (
+             <button
+                onClick={() => toggleBettingModal(true, item.id)}
+                className="token-item"
+                title={item.title}
+            >
+                <span className="icon" style={{ fontSize: '16px', color: 'var(--primary-color)' }}>paid</span>
+                <span className="symbol market-title">{item.title}</span>
+            </button>
+        );
+    }
+};
+
+
 const TokenTicker: React.FC = () => {
-  const [tokens, setTokens] = useState<TickerToken[]>([]);
+  const [items, setItems] = useState<(TickerToken | MonacoMarket)[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [listType, setListType] = useState<'trending' | 'bonding'>('trending');
+  const [listType, setListType] = useState<'trending' | 'bonding' | 'markets'>('trending');
   const [platform, setPlatform] = useState<string>('pumpfun');
 
   useEffect(() => {
     const fetchTickerData = async () => {
         setIsLoading(true);
         try {
-            const response = await fetch('/tools/fetchTokenList', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: listType, platform: listType === 'bonding' ? platform : undefined })
-            });
+            let response: Response;
+            if (listType === 'markets') {
+                response = await fetch('/api/monaco/markets');
+            } else {
+                response = await fetch('/tools/fetchTokenList', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: listType, platform: listType === 'bonding' ? platform : undefined })
+                });
+            }
+            
             if (response.ok) {
                 const result = await response.json();
-                setTokens(result.data || []);
+                setItems(result.data || result.markets || []);
             }
         } catch (err) {
-            console.error("Failed to fetch ticker tokens:", err);
-            setTokens([]);
+            console.error("Failed to fetch ticker items:", err);
+            setItems([]);
         } finally {
             setIsLoading(false);
         }
@@ -72,39 +108,29 @@ const TokenTicker: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [listType, platform]);
 
-  const marqueeTokens = useMemo(() => {
-    if (!tokens || tokens.length === 0) return [];
-    return [...tokens, ...tokens];
-  }, [tokens]);
+  const marqueeItems = useMemo(() => {
+    if (!items || items.length === 0) return [];
+    return [...items, ...items];
+  }, [items]);
 
   const animationDuration = useMemo(() => {
     // Each token takes about 0.4 seconds to scroll past.
     // A lower number means faster scrolling.
-    const secondsPerToken = 0.4; 
-    return tokens.length * secondsPerToken;
-  }, [tokens]);
+    const secondsPerItem = 0.4; 
+    return items.length * secondsPerItem;
+  }, [items]);
 
   const TickerContent = () => {
     if (isLoading) {
-        return <span className="token-item">Loading tokens...</span>;
+        return <span className="token-item">Loading...</span>;
     }
-    if (!tokens || tokens.length === 0) {
-        return <span className="token-item">No tokens found.</span>;
+    if (!items || items.length === 0) {
+        return <span className="token-item">No data found.</span>;
     }
     return (
         <div className="marquee" style={animationDuration > 0 ? { animationDuration: `${animationDuration}s` } : {}}>
-            {marqueeTokens.map((token, index) => (
-                <button
-                    key={`${token.tokenAddress}-${index}`}
-                    onClick={() => openTokenDetailModal(token.tokenAddress)}
-                    className="token-item"
-                    title={`${token.name} (${token.symbol})`}
-                >
-                    <img src={token.logo} alt={token.symbol} className="w-5 h-5 rounded-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                    <span className="symbol">{token.symbol}</span>
-                    <span className="price">{formatPrice(token.priceUsd)}</span>
-                    {formatPercent(token.priceChange24h)}
-                </button>
+            {marqueeItems.map((item, index) => (
+                <TickerItem key={'tokenAddress' in item ? item.tokenAddress + index : item.id + index} item={item} />
             ))}
         </div>
     );
@@ -113,9 +139,10 @@ const TokenTicker: React.FC = () => {
   return (
     <>
       <div className="token-ticker-controls">
-        <select value={listType} onChange={e => setListType(e.target.value as any)} title="Select token list">
+        <select value={listType} onChange={e => setListType(e.target.value as any)} title="Select list type">
             <option value="trending">Trending</option>
             <option value="bonding">Bonding</option>
+            <option value="markets">Markets</option>
         </select>
         {listType === 'bonding' && (
              <select value={platform} onChange={e => setPlatform(e.target.value)} title="Select launchpad platform">

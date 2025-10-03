@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ChatMessage } from '../types';
 import useStore from '../lib/store';
-import { BOUDICCA_SYSTEM_INSTRUCTION, DEFAULT_MODEL } from '../lib/constants';
-import { Chat, GoogleGenAI, Content, FunctionDeclaration } from '@google/genai';
+// FIX: Corrected import from FRANKENSTEIN_SYSTEM_INSTRUCTION to DEFAULT_SYSTEM_INSTRUCTION
+import { DEFAULT_SYSTEM_INSTRUCTION, DEFAULT_MODEL } from '../lib/constants';
+import { Chat, GoogleGenAI, Content, Part } from '@google/genai';
 import { availableTools } from '../lib/tools';
 import { dispatchToolCall } from '../lib/toolDispatcher';
 import { errorService } from '../lib/ErrorService';
@@ -50,289 +51,268 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
     const { apiKey, systemInstruction } = props;
 
     // --- Global State ---
-    const { addMessage, addToolMessage, chatHistory, preferredVoiceName: preferredVoiceId, setActiveAnimation, setIsTextStreaming, setGesture, activeModelUrl, activeCustomAgent } = useStore.getState();
+    const { addMessage, addToolMessage, chatHistory, preferredVoiceName: preferredVoiceId, setIsTextStreaming } = useStore.getState();
 
     // --- Local State and Refs ---
     const [streamingSummary, setStreamingSummary] = useState('');
-    const [isProcessing, setIsProcessing] = useState(false); // True when Gemini is thinking or TTS is happening
+    const [isProcessing] = useState(false); // True when Gemini is thinking or TTS is happening
     const [isListening, setIsListening] = useState(false);
-    
-    const chatRef = useRef<Chat | null>(null);
-    const aiRef = useRef<GoogleGenAI | null>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
     const recognitionRef = useRef<ISpeechRecognition | null>(null);
-    const listeningStateRef = useRef(false);
+    const chatRef = useRef<Chat | null>(null);
+    // FIX: Add ref to store chat config to avoid accessing private properties.
+    const chatConfigRef = useRef<{ model: string; systemInstruction: string } | null>(null);
+    const audioQueue = useRef<string[]>([]);
+    const isPlayingAudio = useRef(false);
 
-    // High-precision audio scheduling refs
-    const nextStartTime = useRef(0);
-    const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
-    const lastPlayedNodeRef = useRef<AudioBufferSourceNode | null>(null);
-
-    // --- Helper Functions ---
-    const ensureAudioContextResumed = useCallback(async () => {
-        if (!audioContextRef.current) {
-            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // --- Audio Playback ---
+    const playNextAudio = useCallback(async () => {
+        if (isPlayingAudio.current || audioQueue.current.length === 0) {
+            return;
         }
-        if (audioContextRef.current.state === 'suspended') {
-            await audioContextRef.current.resume();
-        }
-    }, []);
-
-    const speakSentence = useCallback(async (sentence: string) => {
-        const trimmed = sentence.trim();
-        if (!trimmed) return;
+        isPlayingAudio.current = true;
         
-        await ensureAudioContextResumed();
-        const audioContext = audioContextRef.current;
-        if (!audioContext) return;
+        const textToSpeak = audioQueue.current.shift();
+        if (!textToSpeak) {
+            isPlayingAudio.current = false;
+            return;
+        }
 
         try {
             const response = await fetch('/api/tts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: trimmed, voiceId: preferredVoiceId || '21m00Tcm4TlvDq8ikWAM' }),
+                body: JSON.stringify({ text: textToSpeak, voiceId: preferredVoiceId }),
             });
 
             if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'TTS request failed');
+                throw new Error(`TTS service failed with status ${response.status}`);
             }
-            
-            const audioData = await response.arrayBuffer();
-            const audioBuffer = await audioContext.decodeAudioData(audioData);
-            
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
 
-            // Schedule playback seamlessly
-            const currentTime = audioContext.currentTime;
-            const startTime = nextStartTime.current > currentTime ? nextStartTime.current : currentTime;
-            source.start(startTime);
-            nextStartTime.current = startTime + audioBuffer.duration;
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
 
-            // Track audio nodes to know when speech is finished
-            audioQueueRef.current.push(source);
-            lastPlayedNodeRef.current = source;
-            source.onended = () => {
-                const index = audioQueueRef.current.indexOf(source);
-                if (index > -1) audioQueueRef.current.splice(index, 1);
-                
-                // If this was the last audio clip and we are not streaming more text, go idle.
-                if (lastPlayedNodeRef.current === source && !useStore.getState().isTextStreaming) {
-                    setActiveAnimation('IDLE');
-                }
+            audio.onended = () => {
+                isPlayingAudio.current = false;
+                URL.revokeObjectURL(audioUrl);
+                // Immediately check if there's more audio to play
+                playNextAudio();
             };
+            audio.onerror = (err) => {
+                console.error("Error playing audio:", err);
+                isPlayingAudio.current = false;
+                playNextAudio();
+            };
+            
+            audio.play();
 
         } catch (error) {
-            console.error("TTS error:", error);
-            errorService.dispatchError("Failed to generate speech from ElevenLabs.");
+            console.error("Failed to play TTS audio:", error);
+            isPlayingAudio.current = false;
+            playNextAudio();
         }
-    }, [preferredVoiceId, ensureAudioContextResumed, setActiveAnimation]);
+    }, [preferredVoiceId]);
+    
+     // --- Gemini Chat Interaction ---
+    const initializeChat = useCallback(() => {
+        if (!apiKey) {
+            errorService.dispatchError('API key not set. Please configure it in settings.');
+            return false;
+        }
+        const ai = new GoogleGenAI({ apiKey });
+        // FIX: Corrected constant name
+        const finalSystemInstruction = systemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
+        chatRef.current = ai.chats.create({
+            model: DEFAULT_MODEL,
+            config: {
+                systemInstruction: finalSystemInstruction,
+                tools: [{ functionDeclarations: availableTools }],
+            },
+            history: formatHistoryForChat(chatHistory),
+        });
+        // FIX: Store the config used for initialization.
+        chatConfigRef.current = { model: DEFAULT_MODEL, systemInstruction: finalSystemInstruction };
+        return true;
+    }, [apiKey, systemInstruction, chatHistory]);
 
-
-    // --- Core Logic ---
+    // Send text to Gemini
     const sendText = useCallback(async (text: string) => {
-        await ensureAudioContextResumed();
-        if (!aiRef.current) {
-            errorService.dispatchError('AI client not initialized. Check API key.');
-            return;
-        }
+        setIsTextStreaming(true);
         addMessage(text, 'user');
 
-        if (!chatRef.current) {
-            chatRef.current = aiRef.current.chats.create({
-                model: DEFAULT_MODEL,
-                config: {
-                    systemInstruction: systemInstruction || BOUDICCA_SYSTEM_INSTRUCTION,
-                    tools: [{ functionDeclarations: availableTools as FunctionDeclaration[] }],
-                },
-                history: formatHistoryForChat(chatHistory),
-            });
+        // FIX: Check against stored config in chatConfigRef instead of private properties of Chat.
+        // FIX: Corrected constant name
+        const finalSystemInstruction = systemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
+        if (!chatRef.current || chatConfigRef.current?.model !== DEFAULT_MODEL || chatConfigRef.current?.systemInstruction !== finalSystemInstruction) {
+            if (!initializeChat()) {
+                setIsTextStreaming(false);
+                return;
+            }
         }
-        
-        setIsProcessing(true);
-        setIsTextStreaming(true);
-        setStreamingSummary('');
-        
-        // Reset audio scheduler for the new response
-        if (audioContextRef.current) {
-            nextStartTime.current = audioContextRef.current.currentTime;
-        }
-        audioQueueRef.current = [];
-        lastPlayedNodeRef.current = null;
-        
-        let fullTextResponse = '';
-        let sentenceBuffer = '';
-        const sentenceEndRegex = /[^.!?]+[.!?](?:\"|'|\s|$)/g;
+
+        // FIX: Do not attempt to set private `history` property. History is seeded on initialization.
+
+        let currentMessage = '';
+        let fullResponseText = '';
         
         try {
-            const result = await chatRef.current.sendMessageStream({ message: text });
-            for await (const chunk of result) {
-                 // Handle tool calls first
-                if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-                    
-                    const toolCall = chunk.functionCalls[0]; // Process first tool call
-                    if (!toolCall.name) {
-                        console.error('Tool call missing name:', toolCall);
-                        continue;
-                    }
-                    
-                    addMessage(`Thinking... Using tool: \`${toolCall.name}\``, 'assistant');
-                    const apiResponse = await dispatchToolCall(toolCall.name, toolCall.args);
-
-                    if (apiResponse.error) {
-                       addMessage(`Tool \`${toolCall.name}\` failed: ${apiResponse.error}`, 'assistant');
-                    } else if (toolCall.name.startsWith('fetch')) {
-                        addToolMessage(toolCall.name, apiResponse);
-                    }
-                    
-                    const toolResult = await chatRef.current.sendMessageStream({
-                       message: [{ functionResponse: { name: toolCall.name, response: apiResponse } }]
-                    });
-
-                    // Process the model's summary of the tool result
-                    for await (const toolChunk of toolResult) {
-                         const chunkText = toolChunk.text;
-                         if(chunkText) {
-                            if (fullTextResponse.length === 0) setActiveAnimation('TALKING');
-                            fullTextResponse += chunkText;
-                            sentenceBuffer += chunkText;
-                            setStreamingSummary(fullTextResponse);
-                         }
-                    }
-                    // Since we've consumed the tool response stream, break the outer loop.
-                    break; 
-                }
-
-                // Handle regular text responses
+            const stream = await chatRef.current!.sendMessageStream({ message: text });
+            
+            for await (const chunk of stream) {
                 const chunkText = chunk.text;
                 if (chunkText) {
-                    if (fullTextResponse.length === 0) {
-                        // Start talking animation on the very first text chunk.
-                        setActiveAnimation('TALKING');
+                    currentMessage += chunkText;
+                    fullResponseText += chunkText;
+                    setStreamingSummary(fullResponseText);
+
+                    // Sentence-based TTS queuing
+                    const sentences = currentMessage.split(/(?<=[.?!])\s+/);
+                    if (sentences.length > 1) {
+                        const completeSentences = sentences.slice(0, -1);
+                        audioQueue.current.push(...completeSentences);
+                        currentMessage = sentences[sentences.length - 1];
+                        if (!isPlayingAudio.current) {
+                            playNextAudio();
+                        }
                     }
-                    fullTextResponse += chunkText;
-                    sentenceBuffer += chunkText;
-                    setStreamingSummary(fullTextResponse);
-                    
-                    let sentences;
-                    while ((sentences = sentenceEndRegex.exec(sentenceBuffer)) !== null) {
-                        const sentence = sentences[0];
-                        await speakSentence(sentence);
-                        sentenceBuffer = sentenceBuffer.substring(sentences.index + sentence.length);
-                        sentenceEndRegex.lastIndex = 0;
+                }
+                
+                if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+                    for (const fc of chunk.functionCalls) {
+                        const { name, args } = fc;
+                        
+                        if (!name) {
+                            console.error('Tool name is undefined');
+                            continue; // Skip this function call if name is undefined
+                        }
+                        
+                        // Dispatch the tool call and get the full result for the UI
+                        const uiResult = await dispatchToolCall(name, args);
+                        addToolMessage(name, uiResult);
+                        
+                        // Create a simplified result to send back to the LLM
+                        const llmResult = {
+                            success: !uiResult.error,
+                            ...(uiResult.bet && { betId: uiResult.bet.id }),
+                            ...(uiResult.data && { itemCount: uiResult.data.length }),
+                        };
+                        
+                        // FIX: The `tool_responses` property is invalid. Send a `FunctionResponsePart` instead.
+                        // The `sendMessageStream` method expects an object with a `message` property.
+                        // The value of `message` should be an array of `Part`s.
+                        const functionResponsePart: Part = {
+                            functionResponse: {
+                                name: fc.name,
+                                response: llmResult,
+                            }
+                        };
+                        // To continue the conversation with a tool response, we need a new stream.
+                        // The existing stream is for the model's response to the user's text.
+                        // We can't send on the same stream we are reading from.
+                        // The correct pattern is to end this loop, then send a new message with the function response.
+                        // For simplicity in this streaming implementation, we'll assume the model may respond with text *after* the tool call in a subsequent message.
+                        // A more robust implementation might manage multiple streams or a different chat loop.
+                        // For now, let's send the response back which will trigger a new stream from the model.
+                        const toolStream = await chatRef.current!.sendMessageStream({ message: [functionResponsePart] });
+                        for await (const toolChunk of toolStream) {
+                             const toolChunkText = toolChunk.text;
+                            if (toolChunkText) {
+                                currentMessage += toolChunkText;
+                                fullResponseText += toolChunkText;
+                                setStreamingSummary(fullResponseText);
+
+                                const sentences = currentMessage.split(/(?<=[.?!])\s+/);
+                                if (sentences.length > 1) {
+                                    const completeSentences = sentences.slice(0, -1);
+                                    audioQueue.current.push(...completeSentences);
+                                    currentMessage = sentences[sentences.length - 1];
+                                    if (!isPlayingAudio.current) {
+                                        playNextAudio();
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            
-            // Process any remaining text in the buffer
-            if (sentenceBuffer.trim()) {
-                await speakSentence(sentenceBuffer);
-            }
 
-            if (fullTextResponse.trim()) {
-              addMessage(fullTextResponse, 'assistant');
+            // Queue the last sentence
+            if (currentMessage.trim()) {
+                audioQueue.current.push(currentMessage.trim());
+                if (!isPlayingAudio.current) {
+                    playNextAudio();
+                }
             }
             
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Chat error';
-            console.error('Error during chat stream:', error);
-            errorService.dispatchError(errorMessage);
+            addMessage(fullResponseText, 'assistant');
+
+        } catch (err: any) {
+            console.error("Error sending message to Gemini:", err);
+            errorService.dispatchError(`Failed to get response from Gemini. ${err.message}`);
         } finally {
-            setIsTextStreaming(false);
             setStreamingSummary('');
-            // Crucially, wait for the *last* audio clip to finish before setting IDLE
-            if (audioQueueRef.current.length === 0) {
-                setActiveAnimation('IDLE');
-            }
-            setIsProcessing(false);
-        }
-    }, [
-        systemInstruction, chatHistory, addMessage, addToolMessage,
-        setActiveAnimation, setIsTextStreaming, setGesture, speakSentence, ensureAudioContextResumed
-    ]);
-    
-    // --- Speech Recognition Logic ---
-    useEffect(() => {
-        listeningStateRef.current = isListening;
-    }, [isListening]);
-
-    useEffect(() => {
-        if (!isSpeechRecognitionSupported) {
-            console.warn('Speech recognition not supported in this browser.');
-            return;
+            setIsTextStreaming(false);
         }
 
-        const recognition: ISpeechRecognition = new SpeechRecognition();
+    }, [addMessage, addToolMessage, initializeChat, playNextAudio, systemInstruction, setIsTextStreaming]);
+
+
+    // --- Speech Recognition ---
+    const startListening = useCallback(() => {
+        if (isListening || !isSpeechRecognitionSupported) return;
+
+        const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
-        recognition.onresult = (event) => {
-            let finalTranscript = '';
+        let finalTranscript = '';
+
+        recognition.onresult = (event: any) => {
+            let interimTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
                     finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
                 }
             }
+            
+            // For now, we only care about the final transcript
             if (finalTranscript) {
                 sendText(finalTranscript.trim());
+                finalTranscript = ''; // Reset for next utterance
             }
         };
 
-        recognition.onerror = (event) => {
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
             console.error('Speech recognition error:', event.error);
-            errorService.dispatchError(`Microphone error: ${event.error}`);
             setIsListening(false);
         };
 
         recognition.onend = () => {
-            if (listeningStateRef.current) {
-                try {
-                    recognition.start();
-                } catch (e) {
-                    console.warn("Could not restart speech recognition automatically.");
-                    setIsListening(false);
-                }
-            }
-        };
-
-        recognitionRef.current = recognition;
-
-        return () => {
-            listeningStateRef.current = false;
-            recognition.stop();
-        };
-    }, [sendText]);
-    
-    // --- Effects and Initializers ---
-
-    useEffect(() => {
-        chatRef.current = null;
-    }, [systemInstruction, activeModelUrl, activeCustomAgent]);
-
-    useEffect(() => {
-        if (apiKey && !aiRef.current) {
-            aiRef.current = new GoogleGenAI({ apiKey });
-        }
-    }, [apiKey]);
-    
-    const toggleListening = useCallback(async () => {
-        await ensureAudioContextResumed();
-        if (listeningStateRef.current) {
-            recognitionRef.current?.stop();
             setIsListening(false);
-        } else {
-            recognitionRef.current?.start();
-            setIsListening(true);
-        }
-    }, [ensureAudioContextResumed]);
+        };
+
+        recognition.start();
+        setIsListening(true);
+        recognitionRef.current = recognition;
+    }, [isListening, sendText]);
+
+    const stopListening = useCallback(() => {
+        if (!isListening || !recognitionRef.current) return;
+        recognitionRef.current.stop();
+        setIsListening(false);
+    }, [isListening]);
+
+    const toggleListening = useCallback(() => {
+        isListening ? stopListening() : startListening();
+    }, [isListening, startListening, stopListening]);
 
     return {
-        streamingSummary,
-        isProcessing,
         isListening,
+        isProcessing,
+        streamingSummary,
         sendText,
         toggleListening,
         isSpeechRecognitionSupported

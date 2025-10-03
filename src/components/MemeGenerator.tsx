@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { generateMeme } from '../lib/llm';
 import { addMessage } from '../lib/actions';
 import useStore from '../lib/store';
+import '../styles/MemeGenerator.css';
 
 type Props = { onClose?: () => void };
 

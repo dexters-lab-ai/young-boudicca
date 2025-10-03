@@ -1,6 +1,6 @@
 {
-  "name": "Boudi AI",
-  "description": "Young Boudicca Virtual Simulator and Meme Generator - inspirational trending girl from Scotland turned meme. ",
+  "name": "Miko AI",
+  "description": "Bring anything to life as a 3D AI NFT companion. Create, own, and monetize unique virtual agents on the Solana blockchain.",
   "requestFramePermissions": [
     "camera",
     "microphone"

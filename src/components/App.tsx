@@ -1,12 +1,14 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
-import Stage from './Stage'
-import Chat from './Chat'
-import Welcome from './Welcome'
-import Settings from './Settings'
-import About from './About'
+ */
+import * as React from 'react';
+import { useEffect } from 'react';
+import Stage from './Stage';
+import Chat from './Chat';
+import Welcome from './Welcome';
+import Settings from './Settings';
+import About from './About';
 import useStore from '../lib/store';
 import ElizaChat from './ElizaChat';
 import ErrorModal from './ErrorModal';
@@ -16,6 +18,12 @@ import WalletContextProvider from './WalletProvider';
 import TokenDetailModal from './TokenDetailModal';
 import VoiceSelector from './VoiceSelector';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import SubscriptionModal from './SubscriptionModal';
+import { BettingModal } from './BettingModal';
+
+import '../styles/App.css';
+import '../styles/Modals.css';
+import '../styles/BettingModal.css';
 
 function AppContent() {
   const isWelcomeModalOpen = useStore.use.isWelcomeModalOpen();
@@ -23,13 +31,23 @@ function AppContent() {
   const isAboutModalOpen = useStore.use.isAboutModalOpen();
   const isCreateAgentModalOpen = useStore.use.isCreateAgentModalOpen();
   const isTokenDetailModalOpen = useStore.use.isTokenDetailModalOpen();
+  const isSubscriptionModalOpen = useStore.use.isSubscriptionModalOpen();
+  const isBettingModalOpen = useStore.use.isBettingModalOpen();
   const activeAgent = useStore.use.activeAgent();
   const tempBackgroundUrl = useStore.use.tempBackgroundUrl();
   const error = useStore.use.error();
   const setError = useStore.use.setError();
+  const activeEnvironmentUrl = useStore.use.activeEnvironmentUrl();
+  const theme = useStore.use.theme();
+  const toggleTheme = useStore.use.toggleTheme();
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   return (
     <>
+      <div className="main-background" style={{ backgroundImage: activeEnvironmentUrl ? `url(${activeEnvironmentUrl})` : 'none' }} />
       {tempBackgroundUrl && (
         <div 
           className="temp-background" 
@@ -41,6 +59,9 @@ function AppContent() {
             <TokenTicker />
             <WalletMultiButton />
             <VoiceSelector />
+            <button onClick={toggleTheme} className="theme-toggle-button" title="Toggle theme">
+              <span className="icon">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
+            </button>
         </div>
       </div>
       {isWelcomeModalOpen && <Welcome />}
@@ -48,11 +69,13 @@ function AppContent() {
       {isAboutModalOpen && <About />}
       {isCreateAgentModalOpen && <CreateAgentModal />}
       {isTokenDetailModalOpen && <TokenDetailModal />}
+      {isSubscriptionModalOpen && <SubscriptionModal />}
+      {isBettingModalOpen && <BettingModal />}
       {error && <ErrorModal message={error} onClose={() => setError(null)} />}
       <main>
         <div className="container">
           <Stage />
-          {activeAgent === 'boudicca' ? <Chat /> : <ElizaChat />}
+          {activeAgent === 'gemini' ? <Chat /> : <ElizaChat />}
         </div>
       </main>
     </>

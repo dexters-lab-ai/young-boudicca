@@ -10,24 +10,24 @@ interface SparklineChartProps {
   height?: number;
 }
 
-const SparklineChart: React.FC<SparklineChartProps> = ({ data, width = 300, height = 100 }) => {
-  if (!data || data.length < 2) {
+const SparklineChart: React.FC<SparklineChartProps> = ({ data: chartData, width = 300, height = 100 }) => {
+  if (!chartData || chartData.length < 2) {
     return <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)'}}>Not enough price data</div>;
   }
 
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const min = Math.min(...chartData);
+  const max = Math.max(...chartData);
   const range = max - min;
 
-  const points = data
+  const points = chartData
     .map((point, i) => {
-      const x = (i / (data.length - 1)) * width;
+      const x = (i / (chartData.length - 1)) * width;
       const y = height - ((point - min) / (range || 1)) * height;
       return `${x},${y}`;
     })
     .join(' ');
 
-  const isUp = data[data.length - 1] >= data[0];
+  const isUp = chartData[chartData.length - 1] >= chartData[0];
   const className = isUp ? 'sparkline-path-up' : 'sparkline-path-down';
 
   return (

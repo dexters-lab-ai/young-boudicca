@@ -2,14 +2,13 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
-import { useEffect, useRef, useMemo } from 'react';
+import * as React from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import useVrm from '../hooks/useVrm';
 import useVrmAnimation from '../hooks/useVrmAnimation';
 import useStore from '../lib/store';
-
 function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
     const { vrm, loading, error } = useVrm(vrmUrl);
     const activeCustomAgent = useStore.use.activeCustomAgent();
@@ -197,7 +196,8 @@ function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
         // Track animation state
         let isCleanedUp = false;
         let hasCompleted = false;
-        let timeout: NodeJS.Timeout;
+        // FIX: Use ReturnType<typeof setTimeout> for browser compatibility instead of NodeJS.Timeout.
+        let timeout: ReturnType<typeof setTimeout>;
         
         const cleanupGesture = () => {
             if (isCleanedUp) return;
@@ -427,7 +427,7 @@ function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
         const yaw = vrm.scene.rotation.y;
         vrm.scene.rotation.set(0, yaw, 0);
 
-        if (!vrmUrl.toLowerCase().includes('war_boudica')) {
+        if (!vrmUrl.toLowerCase().endsWith('frankenstein.vrm')) {
             vrm.scene.rotation.y += Math.PI;
         }
 
@@ -541,10 +541,12 @@ function LoadedAvatar({ vrmUrl }: { vrmUrl: string }) {
         return null;
     }
 
-    // @ts-ignore
+        // @ts-ignore - vrm.scene is valid but TypeScript doesn't know about it
     return vrm ? <primitive object={vrm.scene} /> : null;
 }
 
-export default function Avatar({ modelUrl }: { modelUrl: string }) {
+const Avatar: React.FC<{ modelUrl: string }> = ({ modelUrl }) => {
     return <LoadedAvatar vrmUrl={modelUrl} />;
-}
+};
+
+export default Avatar;
