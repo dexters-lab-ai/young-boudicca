@@ -1,6 +1,6 @@
 
-# ---- Base Stage - Install build dependencies ----
-FROM node:22-slim AS base
+# ---- Build Stage - Build the application ----
+FROM node:22-slim AS build
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,14 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Build Stage - Build the application ----
-FROM base AS build
 WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install all dependencies including devDependencies
+# Install all dependencies including devDependencies for building
 RUN npm ci --legacy-peer-deps
 
 # Copy the rest of the source code
@@ -50,11 +48,12 @@ RUN npm install -g pm2
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies
+# Install production dependencies and required devDependencies
+# We need to keep vite and typescript for building
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Install tsx for TypeScript execution
-RUN npm install -g tsx
+# Install required global packages
+RUN npm install -g tsx vite
 
 # Copy built files from build stage
 COPY --from=build /app/dist ./dist
