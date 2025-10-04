@@ -68,6 +68,17 @@ interface Voice {
   label: string;
 }
 
+// Health check endpoint
+app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
+
 // Simple TTS voices endpoint that returns a fixed set of voices
 app.get('/api/tts-voices', (req: ExpressRequest, res: ExpressResponse) => {
   const voices: Voice[] = [
