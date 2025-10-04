@@ -1,5 +1,4 @@
-/// <reference types="vite/client" />
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath } from 'url';
@@ -10,7 +9,6 @@ const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
   const isProduction = mode === 'production';
 
   return {
@@ -46,7 +44,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     define: {
-      'process.env': { ...process.env, ...env },
+      'process.env': { ...process.env },
     },
     resolve: {
       alias: {

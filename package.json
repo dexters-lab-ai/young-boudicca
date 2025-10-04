@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.node.json && vite build",
-    "build:type-check": "tsc -p tsconfig.node.json --noEmit",
-    "build:prod": "tsc -p tsconfig.node.json && vite build --mode production",
+    "build": "vite build --config tsconfig.node.json",
+    "build:type-check": "tsc --noEmit --skipLibCheck",
+    "build:prod": "vite build --mode production --config tsconfig.node.json",
     "preview": "vite preview --port 3000",
     "start": "node --import tsx server/index.ts",
     "start:pm2": "pm2-runtime start ecosystem.config.js",
