@@ -24,11 +24,14 @@ module.exports = {
     {
       name: "frontend",
       cwd: __dirname,
-      script: "./node_modules/.bin/vite",
-      args: "preview --host 0.0.0.0 --port 3000",
+      script: "npx",
+      args: "vite preview --host 0.0.0.0 --port 3000",
+      interpreter: "none",
       watch: false,
       env: {
-        NODE_ENV: "production"
+        NODE_ENV: "production",
+        HOST: "0.0.0.0",
+        PORT: 3000
       },
       error_file: "/var/log/frontend-error.log",
       out_file: "/var/log/frontend-out.log",
@@ -36,7 +39,9 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
       instance_var: 'INSTANCE_ID',
-      autorestart: true
+      autorestart: true,
+      wait_ready: true,
+      listen_timeout: 10000
     }
   ]
 };
