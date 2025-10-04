@@ -17,7 +17,11 @@ WORKDIR /app
 # Copy package files first to leverage Docker's layer caching
 COPY package*.json ./
 
-# Install dependencies.
+# CRITICAL FIX 1: Explicitly install the native Rollup binary for Alpine Linux (musl).
+# This is required by Vite and solves the "Cannot find module @rollup/rollup-linux-x64-musl" error.
+RUN npm install --no-save @rollup/rollup-linux-x64-musl
+
+# CRITICAL FIX 2 & 3: Install all other dependencies.
 # --legacy-peer-deps: Resolves the ERESOLVE conflict with @coral-xyz/anchor.
 # --ignore-scripts: Prevents the "prepare" script from running `npm run build` prematurely.
 RUN npm install --legacy-peer-deps --ignore-scripts
@@ -27,13 +31,13 @@ COPY . .
 
 
 # ---- Build Stage ----
-# This stage builds the frontend assets.
+# This stage builds the frontend assets. It inherits everything from the 'deps' stage.
 FROM deps AS build
 
 WORKDIR /app
 
-# Run the production build script from your package.json
-# The NODE_ENV=production is included in the script in your package.json
+# Run the production build script from your package.json.
+# This will now succeed because the required Rollup binary was installed in the previous stage.
 RUN npm run build:prod
 
 
@@ -51,7 +55,7 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Copy package files and install only production dependencies for a smaller image size.
+# Copy package files and install only PRODUCTION dependencies for a smaller image size.
 COPY --from=deps /app/package*.json ./
 RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
 
@@ -59,16 +63,14 @@ RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
 COPY --from=build /app/dist ./dist
 
 # Copy the server, public folder, and other necessary config files from the 'deps' stage
+# Assuming ecosystem.config.js exists based on your original Dockerfile. If not, remove that line.
 COPY --from=deps /app/server ./server
 COPY --from=deps /app/public ./public
-# Assuming these files exist based on your original Dockerfile attempt
 COPY --from=deps /app/ecosystem.config.js .
 COPY --from=deps /app/tsconfig.json .
 
 # Expose the port your application will run on
 EXPOSE 3000
 
-# Start the application using pm2.
-# We install pm2 via npm ci from your package.json, so no global install is needed.
-# The command uses the local pm2 executable from node_modules.
+# Start the application using the local pm2 executable from your node_modules.
 CMD ["npx", "pm2-runtime", "ecosystem.config.js"]
