@@ -862,6 +862,20 @@ app.post('/tools/listUserMonacoOrders', async (req: ExpressRequest, res: Express
     }
 });
 
+// Serve static files from the 'dist' directory (Vite's default output directory)
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  // Serve static files
+  app.use(express.static(distPath));
+  
+  // Handle SPA routing - return index.html for all other routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');
+}
+
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
 
