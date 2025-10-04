@@ -1,91 +1,78 @@
-# Build stage
-FROM node:20-slim AS build
 
-# Install build dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+# ---- Build Stage ----
+# Use Node.js 22 as recommended by dependency warnings in your logs.
+FROM node:22-slim AS build
+
+# Install build-time native dependencies for packages like 'usb'.
+# This avoids bloating the final production image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    python3-venv \
     make \
     g++ \
-    build-essential \
-    linux-headers-generic \
+    pkg-config \
     libudev-dev \
     libusb-1.0-0-dev \
-    pkg-config \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python environment variables
-ENV npm_config_python=python3
-ENV npm_config_build_from_source=true
-
-# Create and activate virtual environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install node-gyp and required Python packages
-RUN npm install -g node-gyp && \
-    pip install --upgrade pip setuptools wheel
-
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json tsconfig*.json ./
-
-# Install all dependencies including devDependencies for build
+# Copy package files and install all dependencies (including devDependencies) for the build.
+COPY package.json package-lock.json ./
+# Using --legacy-peer-deps as it was in the original setup
 RUN npm ci --legacy-peer-deps
 
-# Copy source code
+# Copy the rest of the source code
 COPY . .
 
-# Build the application
+# Build the Vite frontend. The output will be in the /app/dist directory.
 RUN npm run build
 
-# Production stage
-FROM node:20-slim
 
-# Install runtime dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+# ---- Production Stage ----
+# Final, smaller image for deployment.
+FROM node:22-slim AS production
+
+ENV NODE_ENV=production
+
+# Install only the runtime native dependencies required by your packages.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0 \
     udev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up udev rules if needed for USB devices
+# This rule may be required for hardware wallet (e.g., Trezor) access if run in a privileged container.
 RUN echo 'SUBSYSTEM=="usb", MODE="0666"' > /etc/udev/rules.d/50-usb-permissions.rules
 
-# Install PM2 globally
-RUN npm install -g pm2
-
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Install PM2 to manage the processes.
+RUN npm install -g pm2
+
+# Copy package files.
 COPY package.json package-lock.json ./
 
-# Install production dependencies (including Vite as a production dependency)
-RUN npm ci --only=production --legacy-peer-deps
+# Install only production dependencies.
+# The --ignore-scripts flag is crucial to prevent the "prepare" script from running `vite build` again.
+RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
 
-# Copy built application from build stage
+# Since `vite` is a devDependency but used by `ecosystem.config.js` to serve the frontend,
+# we install it separately here. A better long-term solution would be to use a dedicated static file server.
+RUN npm install vite
+
+# Copy necessary application files from the build stage and the local context.
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
+COPY --from=build /app/server ./server
 COPY --from=build /app/ecosystem.config.js ./
 
-# Expose ports
+# Expose the ports for the frontend preview server and the backend server.
 EXPOSE 3000
 EXPOSE 8787
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOST=0.0.0.0
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s \
+# Healthcheck to ensure the frontend is responsive.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
   CMD curl -f http://localhost:3000/ || exit 1
 
-# Start the application
+# Start both backend and frontend using PM2.
 CMD ["pm2-runtime", "start", "ecosystem.config.js"]
