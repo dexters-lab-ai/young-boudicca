@@ -66,7 +66,7 @@ COPY --from=build /app/dist ./dist
 # Copy the server, public folder, and other necessary config files from the 'deps' stage.
 COPY --from=deps /app/server ./server
 COPY --from=deps /app/public ./public
-COPY --from=deps /app/ecosystem.config.js .
+COPY --from=deps /app/ecosystem.config.cjs .
 COPY --from=deps /app/tsconfig.json .
 
 # Expose the port your application will run on.
