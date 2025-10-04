@@ -3,9 +3,9 @@ module.exports = {
     {
       name: "backend",
       cwd: __dirname,
-      script: "./server/index.js",  // This will be built by the build process
+      script: "./node_modules/tsx/dist/cli.js",
+      args: "server/index.ts",
       interpreter: "node",
-      interpreter_args: "--require tsx/register",
       instances: 1,
       exec_mode: "fork",
       env: {
