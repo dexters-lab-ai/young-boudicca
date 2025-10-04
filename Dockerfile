@@ -1,23 +1,29 @@
 # ---- Dependencies Stage ----
-FROM node:22-slim AS deps
+FROM node:20-alpine AS deps
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    pkg-config \
-    libudev-dev \
-    libusb-1.0-0-dev \
-    && rm -rf /var/lib/apt/lists/*
+    pkgconfig \
+    udev \
+    eudev-dev \
+    libusb-dev \
+    && rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
+# Clean npm cache and remove package-lock.json if exists
+RUN npm cache clean --force && \
+    rm -f package-lock.json && \
+    rm -rf node_modules
+
 # Install all dependencies including devDependencies for building
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Install Vite as a dev dependency
 RUN npm install --save-dev vite@latest
@@ -38,15 +44,15 @@ COPY . .
 RUN npx vite build
 
 # ---- Production Stage - Final image ----
-FROM node:22-slim AS production
+FROM node:20-alpine AS production
 ENV NODE_ENV=production
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libusb-1.0-0 \
+RUN apk add --no-cache \
+    libusb \
     udev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apk/*
 
 # Set up USB permissions
 RUN echo 'SUBSYSTEM=="usb", MODE="0666"' > /etc/udev/rules.d/50-usb-permissions.rules
@@ -56,11 +62,11 @@ WORKDIR /app
 # Install PM2 globally
 RUN npm install -g pm2
 
-# Copy package files and install production dependencies including Vite
+# Copy package files and install production dependencies
 COPY --from=build /app/package*.json ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Ensure Vite is available in the final image
+# Install Vite as a production dependency
 RUN npm install vite@latest
 
 # Copy built files from build stage
