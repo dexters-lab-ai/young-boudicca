@@ -28,6 +28,9 @@
   # Install all dependencies including devDependencies for building
   RUN npm install --legacy-peer-deps
   
+  # Install platform-specific Rollup for Alpine Linux
+  RUN npm install -D @rollup/rollup-linux-x64-musl
+  
   # ---- Build Stage ----
   FROM deps AS build
   WORKDIR /app
