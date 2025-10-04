@@ -8,17 +8,18 @@ export default {
   apps: [
     {
       name: "backend",
-      cwd: path.join(__dirname, 'dist'),
-      script: "server/index.js",
-      instances: "max",
-      exec_mode: "cluster",
+      cwd: __dirname,
+      script: "./dist/server/index.js",  // Updated path
+      instances: 1,                      // Changed from "max" to 1 for debugging
+      exec_mode: "fork",                 // Changed from "cluster" to "fork"
       env: {
         NODE_ENV: "production",
-        PORT: 8787
+        PORT: 3000
       },
-      error_file: "/var/log/backend-error.log",
-      out_file: "/var/log/backend-out.log",
-      time: true
+      error_file: "./logs/error.log",
+      out_file: "./logs/out.log",
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss"
     }
   ]
 };
