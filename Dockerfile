@@ -1,20 +1,22 @@
 # Build stage
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
 
 # Install build dependencies
-RUN apk add --no-cache --update \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
-    linux-headers \
-    udev \
-    eudev-dev \
-    libusb-dev \
-    e2fsprogs-extra \
-    libc6-compat \
-    linux-lts-headers \
-    util-linux-dev \
-    && ln -sf python3 /usr/bin/python
+    build-essential \
+    linux-headers-generic \
+    libudev-dev \
+    libusb-1.0-0-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python environment variables
+ENV npm_config_python=python3
+ENV npm_config_build_from_source=true
 
 # Set working directory
 WORKDIR /app
@@ -33,7 +35,7 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Production stage - Using node:20-slim for better compatibility
+# Production stage
 FROM node:20-slim
 
 # Install runtime dependencies
@@ -43,6 +45,9 @@ RUN apt-get update && \
     udev \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Set up udev rules if needed for USB devices
+RUN echo 'SUBSYSTEM=="usb", MODE="0666"' > /etc/udev/rules.d/50-usb-permissions.rules
 
 # Install PM2 globally
 RUN npm install -g pm2
