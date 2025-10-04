@@ -28,12 +28,16 @@
   # Install all dependencies including devDependencies for building
   RUN npm install --legacy-peer-deps
   
-  # Install platform-specific Rollup for Alpine Linux
-  RUN npm install -D @rollup/rollup-linux-x64-musl
+  # Install Rollup globally and the specific platform version
+  RUN npm install -g rollup @rollup/rollup-linux-x64-musl
   
   # ---- Build Stage ----
   FROM deps AS build
   WORKDIR /app
+  
+  # Copy node_modules from deps stage
+  COPY --from=deps /usr/local/lib/node_modules /usr/local/lib/node_modules
+  COPY --from=deps /app/node_modules ./node_modules
   
   # Set the Vite base URL
   ENV VITE_BASE_URL=/
