@@ -1,8 +1,8 @@
 # ---- Base Stage for Dependencies ----
-# Use Node.js 22 to match dependency requirements (Vite 7+)
+# Use Node.js 22, which is compatible with your dependencies.
 FROM node:22-alpine AS deps
 
-# Install OS-level dependencies needed for native modules (like libusb)
+# Install OS-level dependencies needed for native modules.
 RUN apk add --no-cache \
     python3 \
     make \
@@ -14,19 +14,20 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Copy package files first to leverage Docker's layer caching
+# Copy package files first to leverage Docker's layer caching.
 COPY package*.json ./
 
-# CRITICAL FIX 1: Explicitly install the native Rollup binary for Alpine Linux.
-# Add --legacy-peer-deps HERE to bypass the ERESOLVE error that was blocking this command.
-RUN npm install --no-save --legacy-peer-deps @rollup/rollup-linux-x64-musl
-
-# CRITICAL FIX 2 & 3: Install all other dependencies.
-# --legacy-peer-deps: Resolves the ERESOLVE conflict again for the main install.
-# --ignore-scripts: Prevents the "prepare" script from running `npm run build` prematurely.
+# RUN the main installation first.
+# --legacy-peer-deps: Solves the ERESOLVE conflict with @coral-xyz/anchor.
+# --ignore-scripts: Prevents the "prepare" script from running the build prematurely.
 RUN npm install --legacy-peer-deps --ignore-scripts
 
-# Copy the rest of the application source code
+# CRITICAL FIX: Force-install the problematic native binary AFTER the main install.
+# This ensures it is present and correctly linked just before the build stage.
+# This is the key change that addresses the persistent "Cannot find module" error.
+RUN npm install --legacy-peer-deps @rollup/rollup-linux-x64-musl
+
+# Copy the rest of the application source code.
 COPY . .
 
 
@@ -36,8 +37,7 @@ FROM deps AS build
 
 WORKDIR /app
 
-# Run the production build script from your package.json.
-# This will now succeed because the required Rollup binary was successfully installed.
+# Run the production build script. This will now finally succeed.
 RUN npm run build:prod
 
 
@@ -47,7 +47,7 @@ FROM node:22-alpine AS production
 
 ENV NODE_ENV=production
 
-# Install only the necessary runtime OS dependencies
+# Install only the necessary runtime OS dependencies.
 RUN apk add --no-cache \
     libusb \
     udev \
@@ -56,21 +56,21 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy package files and install only PRODUCTION dependencies for a smaller image size.
+# Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
 COPY --from=deps /app/package*.json ./
-RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts
 
-# Copy the built frontend assets from the 'build' stage
+# Copy the built frontend assets from the 'build' stage.
 COPY --from=build /app/dist ./dist
 
-# Copy the server, public folder, and other necessary config files from the 'deps' stage
+# Copy the server, public folder, and other necessary config files from the 'deps' stage.
 COPY --from=deps /app/server ./server
 COPY --from=deps /app/public ./public
-# Assuming ecosystem.config.js exists based on your original Dockerfile. If not, remove that line.
 COPY --from=deps /app/ecosystem.config.js .
 COPY --from=deps /app/tsconfig.json .
 
-# Expose the port your application will run on
+# Expose the port your application will run on.
 EXPOSE 3000
 
-# Start the application using the local pm2 executable from your node_modules.
+# Start the application using the local pm2 executable.
 CMD ["npx", "pm2-runtime", "ecosystem.config.js"]
