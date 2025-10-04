@@ -5,7 +5,7 @@ FROM node:20-slim AS build
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
-    python3-pip \
+    python3-venv \
     make \
     g++ \
     build-essential \
@@ -20,9 +20,13 @@ RUN apt-get update && \
 ENV npm_config_python=python3
 ENV npm_config_build_from_source=true
 
+# Create and activate virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Install node-gyp and required Python packages
 RUN npm install -g node-gyp && \
-    python3 -m pip install --upgrade pip setuptools wheel
+    pip install --upgrade pip setuptools wheel
 
 # Set working directory
 WORKDIR /app
