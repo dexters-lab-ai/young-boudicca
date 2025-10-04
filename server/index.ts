@@ -863,18 +863,29 @@ app.post('/tools/listUserMonacoOrders', async (req: ExpressRequest, res: Express
 });
 
 // Serve static files from the 'dist' directory (Vite's default output directory)
+// Serve static files from the 'dist' directory (Vite's default output directory)
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {
-  // Serve static files
-  app.use(express.static(distPath));
-  
-  // Handle SPA routing - return index.html for all other routes
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+  try {
+    // Serve static files
+    app.use(express.static(distPath));
+    
+    // Handle SPA routing - return index.html for all other routes
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+        if (err) {
+          console.error('Error sending file:', err);
+          res.status(500).send('Error loading the application');
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error setting up static file serving:', error);
+    // Don't exit, let the server continue running
+  }
 } else {
   console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');
-}
+}  
 
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
@@ -885,3 +896,21 @@ server.listen(PORT, () => {
     console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
     console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
 });
+
+// Add error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+  });
+  
+  // Add error handling for unhandled promise rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+  });
+  
+  // Add error handling for the server
+  server.on('error', (error) => {
+    console.error('Server error:', error);
+    process.exit(1);
+  });
