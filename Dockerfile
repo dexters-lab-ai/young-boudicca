@@ -1,10 +1,8 @@
 
-# ---- Build Stage ----
-# Use Node.js 22 as recommended by dependency warnings in your logs.
-FROM node:22-slim AS build
+# ---- Base Stage - Install build dependencies ----
+FROM node:22-slim AS base
 
-# Install build-time native dependencies for packages like 'usb'.
-# This avoids bloating the final production image.
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
@@ -14,65 +12,63 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# ---- Build Stage - Build the application ----
+FROM base AS build
 WORKDIR /app
 
-# Copy package files and install all dependencies (including devDependencies) for the build.
-COPY package.json package-lock.json ./
-# Using --legacy-peer-deps as it was in the original setup
+# Copy package files first for better layer caching
+COPY package*.json ./
+
+# Install all dependencies including devDependencies
 RUN npm ci --legacy-peer-deps
 
 # Copy the rest of the source code
 COPY . .
 
-# Build the Vite frontend. The output will be in the /app/dist directory.
+# Build the Vite frontend
 RUN npm run build
 
-
-# ---- Production Stage ----
-# Final, smaller image for deployment.
+# ---- Production Stage - Final image ----
 FROM node:22-slim AS production
-
 ENV NODE_ENV=production
 
-# Install only the runtime native dependencies required by your packages.
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0 \
     udev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# This rule may be required for hardware wallet (e.g., Trezor) access if run in a privileged container.
+# Set up USB permissions
 RUN echo 'SUBSYSTEM=="usb", MODE="0666"' > /etc/udev/rules.d/50-usb-permissions.rules
 
 WORKDIR /app
 
-# Install PM2 to manage the processes.
+# Install PM2 globally
 RUN npm install -g pm2
 
-# Copy package files.
-COPY package.json package-lock.json ./
+# Copy package files
+COPY package*.json ./
 
-# Install only production dependencies.
-# The --ignore-scripts flag is crucial to prevent the "prepare" script from running `vite build` again.
-RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+# Install production dependencies
+RUN npm ci --omit=dev --legacy-peer-deps
 
-# Since `vite` is a devDependency but used by `ecosystem.config.js` to serve the frontend,
-# we install it separately here. A better long-term solution would be to use a dedicated static file server.
-RUN npm install vite
+# Install tsx for TypeScript execution
+RUN npm install -g tsx
 
-# Copy necessary application files from the build stage and the local context.
+# Copy built files from build stage
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 COPY --from=build /app/server ./server
-COPY --from=build /app/ecosystem.config.js ./
+COPY --from=build /app/ecosystem.config.js .
+COPY --from=build /app/tsconfig.json .
 
-# Expose the ports for the frontend preview server and the backend server.
-EXPOSE 3000
-EXPOSE 8787
+# Expose the ports for the frontend and backend
+EXPOSE 3000 8787
 
-# Healthcheck to ensure the frontend is responsive.
+# Healthcheck to ensure the frontend is responsive
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
   CMD curl -f http://localhost:3000/ || exit 1
 
-# Start both backend and frontend using PM2.
+# Start both backend and frontend using PM2
 CMD ["pm2-runtime", "start", "ecosystem.config.js"]
