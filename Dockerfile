@@ -1,46 +1,3 @@
-# ---- Base Stage for Dependencies ----
-# Use Node.js 22, which is compatible with your dependencies.
-FROM node:22-alpine AS deps
-
-# Install OS-level dependencies needed for native modules.
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    pkgconfig \
-    udev \
-    eudev-dev \
-    libusb-dev
-
-WORKDIR /app
-
-# Copy package files first to leverage Docker's layer caching.
-COPY package*.json ./
-
-# RUN the main installation first.
-# --legacy-peer-deps: Solves the ERESOLVE conflict with @coral-xyz/anchor.
-# --ignore-scripts: Prevents the "prepare" script from running the build prematurely.
-RUN npm install --legacy-peer-deps --ignore-scripts
-
-# CRITICAL FIX: Force-install the problematic native binary AFTER the main install.
-# This ensures it is present and correctly linked just before the build stage.
-# This is the key change that addresses the persistent "Cannot find module" error.
-RUN npm install --legacy-peer-deps @rollup/rollup-linux-x64-musl
-
-# Copy the rest of the application source code.
-COPY . .
-
-
-# ---- Build Stage ----
-# This stage builds the frontend assets. It inherits everything from the 'deps' stage.
-FROM deps AS build
-
-WORKDIR /app
-
-# Run the production build script. This will now finally succeed.
-RUN npm run build:prod
-
-
 # ---- Production Stage ----
 # This is the final, lean image that will run the application.
 FROM node:22-alpine AS production
@@ -58,7 +15,8 @@ WORKDIR /app
 # Copy package files and install only PRODUCTION dependencies for a smaller image size.
 # Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
 COPY --from=deps /app/package*.json ./
-RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts
+# Install tsx as a production dependency since we need it to run TypeScript files
+RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx
 
 # Copy the built frontend assets from the 'build' stage.
 COPY --from=build /app/dist ./dist
