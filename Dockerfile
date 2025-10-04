@@ -1,23 +1,6 @@
 # Build stage
 FROM node:20-alpine AS build
 
-# Install build dependencies including Python and build tools
-RUN apk add --no-cache --update --virtual .gyp \
-    python3 \
-    make \
-    g++ \
-    && ln -sf python3 /usr/bin/python \
-    && ln -sf /usr/bin/python3 /usr/bin/python3.11
-
-# Set Python environment variables
-ENV PYTHON=/usr/bin/python3
-ENV PYTHONPATH=/usr/lib/python3.11/site-packages
-ENV npm_config_python=/usr/bin/python3
-ENV npm_python=/usr/bin/python3
-
-WORKDIR /app
-COPY package.json package-lock.json tsconfig*.json ./
-
 # Install build dependencies
 RUN apk add --no-cache --update \
     python3 \
@@ -28,40 +11,38 @@ RUN apk add --no-cache --update \
     eudev-dev \
     libusb-dev \
     e2fsprogs-extra \
-    # Required for node-gyp and other native modules
     libc6-compat \
-    # Install node-gyp globally
-    && npm install -g node-gyp \
-    # Install dependencies with legacy peer deps and skip optional
-    && npm ci --legacy-peer-deps --omit=optional \
-    # Fix for Rollup in Alpine Linux
-    && npm install -D @rollup/rollup-linux-x64-musl \
-    # Clean up
-    && npm cache clean --force \
-    && rm -rf /var/cache/apk/* /tmp/*
+    linux-lts-headers \
+    util-linux-dev \
+    && ln -sf python3 /usr/bin/python
 
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json tsconfig*.json ./
+
+# Install dependencies
+RUN npm install -g node-gyp && \
+    npm ci --legacy-peer-deps --omit=optional && \
+    npm install -D @rollup/rollup-linux-x64-musl
+
+# Copy source code
 COPY . .
 
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+# Production stage - Using node:20-slim for better compatibility
+FROM node:20-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache --upgrade \
-    bash \
-    curl \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libusb-1.0-0 \
     udev \
-    eudev \
-    libusb \
-    python3 \
-    make \
-    g++ \
-    # Required for some native modules at runtime
-    libgcc \
-    libstdc++ \
-    && rm -rf /var/cache/apk/*
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install PM2 globally
 RUN npm install -g pm2
@@ -72,10 +53,10 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install production dependencies only
+# Install production dependencies (excluding optional deps)
 RUN npm ci --only=production --no-optional --legacy-peer-deps
 
-# Copy built files from build stage
+# Copy built application from build stage
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 COPY --from=build /app/ecosystem.config.js ./
