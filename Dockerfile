@@ -34,9 +34,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json tsconfig*.json ./
 
-# Install Node.js dependencies
-RUN npm ci --legacy-peer-deps --omit=optional && \
-    npm install -D @rollup/rollup-linux-x64-musl
+# Install all dependencies including devDependencies for build
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
@@ -67,8 +66,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install production dependencies (excluding optional deps)
-RUN npm ci --only=production --no-optional --legacy-peer-deps
+# Install production dependencies (including Vite as a production dependency)
+RUN npm ci --only=production --legacy-peer-deps
 
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
