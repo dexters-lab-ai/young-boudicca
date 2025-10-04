@@ -3,8 +3,8 @@ module.exports = {
     {
       name: "backend",
       cwd: __dirname,
-      script: "./node_modules/tsx/dist/cli.js",
-      args: "server/index.ts",
+      script: "npx",
+      args: "tsx server/index.ts",
       interpreter: "node",
       instances: 1,
       exec_mode: "fork",
