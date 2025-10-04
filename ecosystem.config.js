@@ -16,12 +16,15 @@ module.exports = {
       error_file: "/var/log/backend-error.log",
       out_file: "/var/log/backend-out.log",
       time: true,
-      log_date_format: "YYYY-MM-DD HH:mm:ss"
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      merge_logs: true,
+      instance_var: 'INSTANCE_ID',
+      autorestart: true
     },
     {
       name: "frontend",
       cwd: __dirname,
-      script: "node_modules/vite/bin/vite.js",
+      script: "./node_modules/.bin/vite",
       args: "preview --host 0.0.0.0 --port 3000",
       watch: false,
       env: {
@@ -30,7 +33,10 @@ module.exports = {
       error_file: "/var/log/frontend-error.log",
       out_file: "/var/log/frontend-out.log",
       time: true,
-      log_date_format: "YYYY-MM-DD HH:mm:ss"
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      merge_logs: true,
+      instance_var: 'INSTANCE_ID',
+      autorestart: true
     }
   ]
 };

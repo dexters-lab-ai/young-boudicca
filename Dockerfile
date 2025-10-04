@@ -1,6 +1,6 @@
 
-# ---- Build Stage - Build the application ----
-FROM node:22-slim AS build
+# ---- Dependencies Stage ----
+FROM node:22-slim AS deps
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,11 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy package files first for better layer caching
+# Copy package files
 COPY package*.json ./
 
 # Install all dependencies including devDependencies for building
 RUN npm ci --legacy-peer-deps
+
+# ---- Build Stage ----
+FROM deps AS build
+
+WORKDIR /app
+
+# Copy all files from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy the rest of the source code
 COPY . .
@@ -48,12 +56,14 @@ RUN npm install -g pm2
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies and required devDependencies
-# We need to keep vite and typescript for building
+# Install production dependencies
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Install required global packages
-RUN npm install -g tsx vite
+# Install global packages
+RUN npm install -g tsx
+
+# Install Vite as a local dependency for the frontend
+RUN npm install vite@latest --save-dev
 
 # Copy built files from build stage
 COPY --from=build /app/dist ./dist
