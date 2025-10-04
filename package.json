@@ -10,7 +10,7 @@
     "build:prod": "vite build --mode production --config tsconfig.node.json",
     "preview": "vite preview --port 3000",
     "start": "node --import tsx server/index.ts",
-    "start:pm2": "pm2-runtime start ecosystem.config.js",
+    "start:pm2": "pm2-runtime start ecosystem.config.cjs",
     "server": "tsx server/index.ts",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
     "type-check": "tsc --noEmit --skipLibCheck",
