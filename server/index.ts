@@ -35,6 +35,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Health check endpoint
+app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
+  
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
@@ -67,17 +79,6 @@ interface Voice {
   value: string;
   label: string;
 }
-
-// Health check endpoint
-app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      database: dbStatus,
-      environment: process.env.NODE_ENV || 'development'
-    });
-  });
 
 // Simple TTS voices endpoint that returns a fixed set of voices
 app.get('/api/tts-voices', (req: ExpressRequest, res: ExpressResponse) => {
@@ -862,31 +863,6 @@ app.post('/tools/listUserMonacoOrders', async (req: ExpressRequest, res: Express
     }
 });
 
-// Serve static files from the 'dist' directory (Vite's default output directory)
-// Serve static files from the 'dist' directory (Vite's default output directory)
-const distPath = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(distPath)) {
-  try {
-    // Serve static files
-    app.use(express.static(distPath));
-    
-    // Handle SPA routing - return index.html for all other routes
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'), (err) => {
-        if (err) {
-          console.error('Error sending file:', err);
-          res.status(500).send('Error loading the application');
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error setting up static file serving:', error);
-    // Don't exit, let the server continue running
-  }
-} else {
-  console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');
-}  
-
 const PORT = process.env.PORT || 8787;
 const server = http.createServer(app);
 
@@ -914,3 +890,29 @@ process.on('uncaughtException', (error) => {
     console.error('Server error:', error);
     process.exit(1);
   });
+
+  
+// Serve static files from the 'dist' directory (Vite's default output directory)
+// Serve static files from the 'dist' directory (Vite's default output directory)
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  try {
+    // Serve static files
+    app.use(express.static(distPath));
+    
+    // Handle SPA routing - return index.html for all other routes
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+        if (err) {
+          console.error('Error sending file:', err);
+          res.status(500).send('Error loading the application');
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error setting up static file serving:', error);
+    // Don't exit, let the server continue running
+  }
+} else {
+  console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');
+}  
