@@ -5,6 +5,7 @@ FROM node:20-slim AS build
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
+    python3-pip \
     make \
     g++ \
     build-essential \
@@ -12,11 +13,16 @@ RUN apt-get update && \
     libudev-dev \
     libusb-1.0-0-dev \
     pkg-config \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python environment variables
 ENV npm_config_python=python3
 ENV npm_config_build_from_source=true
+
+# Install node-gyp and required Python packages
+RUN npm install -g node-gyp && \
+    python3 -m pip install --upgrade pip setuptools wheel
 
 # Set working directory
 WORKDIR /app
@@ -24,9 +30,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json tsconfig*.json ./
 
-# Install dependencies
-RUN npm install -g node-gyp && \
-    npm ci --legacy-peer-deps --omit=optional && \
+# Install Node.js dependencies
+RUN npm ci --legacy-peer-deps --omit=optional && \
     npm install -D @rollup/rollup-linux-x64-musl
 
 # Copy source code
