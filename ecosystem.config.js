@@ -1,13 +1,17 @@
-const path = require('path');
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-module.exports = {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default {
   apps: [
     {
       name: "backend",
       cwd: path.join(__dirname, 'server'),
       script: "index.ts",
       interpreter: "tsx",
-      interpreter_args: "--require dotenv/config",
+      interpreter_args: "--import tsx",
       watch: false,
       env: {
         NODE_ENV: "production",
@@ -19,7 +23,14 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
       instance_var: 'INSTANCE_ID',
-      autorestart: true
+      exec_mode: 'cluster',
+      instances: 'max',
+      autorestart: true,
+      max_memory_restart: '1G',
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: 3000
+      }
     },
     {
       name: "frontend",

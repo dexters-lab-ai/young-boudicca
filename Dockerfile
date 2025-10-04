@@ -72,5 +72,5 @@ COPY --from=deps /app/tsconfig.json .
 # Expose the port your application will run on.
 EXPOSE 3000
 
-# Start the application using the local pm2 executable.
-CMD ["npx", "pm2-runtime", "ecosystem.config.js"]
+# Start the application using the local pm2 executable
+CMD ["npm", "run", "start:pm2"]
