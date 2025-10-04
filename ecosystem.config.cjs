@@ -11,7 +11,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         HOST: "0.0.0.0",
-        PORT: 3000
+        PORT: process.env.PORT || 3000
       },
       error_file: "./logs/error.log",
       out_file: "./logs/out.log",

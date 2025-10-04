@@ -869,5 +869,5 @@ server.listen(PORT, () => {
     const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
     console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
     console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-    console.log(`[server] Server is listening on http://localhost:${PORT}`);
+    console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
 });
