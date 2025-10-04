@@ -1,5 +1,5 @@
 # ---- Base Stage for Dependencies ----
-# Use Node.js 22 to match dependency requirements and fix EBADENGINE errors.
+# Use Node.js 22 to match dependency requirements (Vite 7+)
 FROM node:22-alpine AS deps
 
 # Install OS-level dependencies needed for native modules (like libusb)
@@ -17,12 +17,12 @@ WORKDIR /app
 # Copy package files first to leverage Docker's layer caching
 COPY package*.json ./
 
-# CRITICAL FIX 1: Explicitly install the native Rollup binary for Alpine Linux (musl).
-# This is required by Vite and solves the "Cannot find module @rollup/rollup-linux-x64-musl" error.
-RUN npm install --no-save @rollup/rollup-linux-x64-musl
+# CRITICAL FIX 1: Explicitly install the native Rollup binary for Alpine Linux.
+# Add --legacy-peer-deps HERE to bypass the ERESOLVE error that was blocking this command.
+RUN npm install --no-save --legacy-peer-deps @rollup/rollup-linux-x64-musl
 
 # CRITICAL FIX 2 & 3: Install all other dependencies.
-# --legacy-peer-deps: Resolves the ERESOLVE conflict with @coral-xyz/anchor.
+# --legacy-peer-deps: Resolves the ERESOLVE conflict again for the main install.
 # --ignore-scripts: Prevents the "prepare" script from running `npm run build` prematurely.
 RUN npm install --legacy-peer-deps --ignore-scripts
 
@@ -37,7 +37,7 @@ FROM deps AS build
 WORKDIR /app
 
 # Run the production build script from your package.json.
-# This will now succeed because the required Rollup binary was installed in the previous stage.
+# This will now succeed because the required Rollup binary was successfully installed.
 RUN npm run build:prod
 
 
@@ -63,9 +63,9 @@ RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts
 COPY --from=build /app/dist ./dist
 
 # Copy the server, public folder, and other necessary config files from the 'deps' stage
-# Assuming ecosystem.config.js exists based on your original Dockerfile. If not, remove that line.
 COPY --from=deps /app/server ./server
 COPY --from=deps /app/public ./public
+# Assuming ecosystem.config.js exists based on your original Dockerfile. If not, remove that line.
 COPY --from=deps /app/ecosystem.config.js .
 COPY --from=deps /app/tsconfig.json .
 
