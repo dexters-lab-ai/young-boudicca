@@ -15,23 +15,26 @@
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 1rem;
+  padding-bottom: 0.6rem;
   flex-shrink: 0;
 }
 .chat-header-icon {
-  font-size: 2rem;
+  font-size: 0.85rem;
   line-height: 1;
-  filter: drop-shadow(0 0 4px var(--glass-shadow));
+  filter: drop-shadow(0 0 3px var(--glass-shadow));
 }
 .chat-header h2 {
-  font-size: 1.4rem;
+  font-size: 0.85rem !important;
   margin-right: auto;
 }
 .header-button {
-    padding: 8px;
+    padding: 5px;
     border-radius: 50%;
+}
+.header-button .icon {
+    font-size: 18px;
 }
 .header-button:hover {
     background: var(--primary-color-transparent);
@@ -510,11 +513,27 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
 }
 
 @media (max-width: 480px) {
+  .wallet-adapter-button-trigger {
+    height: 28px;
+    font-size: 13px;
+    padding: 4px 12px;
+    height: 32px;
+    font-size: 13px;
+    margin-right: 0.2rem;
+  }
+  .token-ticker-controls {
+    padding-left: 0;
+  }
   .chat-container {
-    padding: 0.5rem 1rem;
+    padding: 0.5rem;
+    gap: 0;
+  }
+  .chat-header {
+    padding-bottom: 0;
   }
   .message-bubble {
-    font-size: 14px;
+    font-size: 13px;
+    padding: 3px 8px;
   }
   .filter-selector {
     padding-top: 0.5rem;
@@ -524,7 +543,7 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
     margin-bottom: 5px;
   }
   .chat-input-area {
-    padding: 5px;
+    padding: 2px;
   }
   .chat-input-area input {
      padding-left: 10px;
@@ -536,9 +555,14 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
     display: none; /* Save space on very small screens */
   }
   .filter-chips {
-    gap: 6px;
+    gap: 4px;
     flex-wrap: nowrap;
     overflow-x: auto;
     max-height: 44px;
+  }
+  .filter-chip {
+    padding: 3px 7px;
+    font-size: 0.7rem;
+    text-wrap: nowrap;
   }
 }

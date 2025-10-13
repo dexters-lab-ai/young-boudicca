@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const isProduction = mode === 'production';
 
+  const localServerOrigin = (env.NODE_ENV ?? '').toLowerCase() === 'production'
+    ? 'http://0.0.0.0:8787'
+    : 'http://localhost:8787';
+
   return {
     plugins: [
       react(),
@@ -58,6 +62,23 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       host: true,
       origin: 'http://0.0.0.0:3000',
+      proxy: {
+        '/api': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/tools': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/uploads': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+      },
       watch: {
         usePolling: true,
       },

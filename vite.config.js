@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath } from 'url';
@@ -9,7 +9,16 @@ const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
   const isProduction = mode === 'production';
+
+  const localServerOrigin = (env.NODE_ENV ?? '').toLowerCase() === 'production'
+    ? 'http://0.0.0.0:8787'
+    : 'http://localhost:8787';
+
+  const clientOrigin = (env.NODE_ENV ?? '').toLowerCase() === 'production'
+    ? 'http://0.0.0.0:3000'
+    : 'http://localhost:3000';
 
   return {
     plugins: [
@@ -44,7 +53,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     define: {
-      'process.env': { ...process.env },
+      'process.env': { ...process.env, ...env },
     },
     resolve: {
       alias: {
@@ -55,7 +64,24 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
       host: true,
-      origin: 'http://0.0.0.0:3000',
+      origin: clientOrigin,
+      proxy: {
+        '/api': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/tools': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/uploads': {
+          target: localServerOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+      },
       watch: {
         usePolling: true,
       },

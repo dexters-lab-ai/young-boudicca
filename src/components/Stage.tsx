@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import useStore from '../lib/store';
 import imageData from '../lib/imageData';
 import c from 'clsx';
@@ -39,6 +39,14 @@ export default function Stage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const modelSwitcherRef = useRef<HTMLDivElement>(null);
+
+  const scrollModels = useCallback((direction: 'left' | 'right') => {
+    const container = modelSwitcherRef.current;
+    if (!container) return;
+    const scrollAmount = direction === 'left' ? -180 : 180;
+    container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  }, []);
 
   useEffect(() => {
     if (!audioRef.current) {
@@ -259,18 +267,36 @@ export default function Stage() {
       </div>
 
       <div className="model-switcher">
-        {models.map(model => (
-          <button
-            key={model.name}
-            className={c("model-button", { active: model.url === activeModelUrl && !activeCustomAgent })}
-            onClick={() => {
-              setActiveModelUrl(model);
-            }}
-          >
-            {model.name}
-          </button>
-        ))}
-        <AgentSelector />
+        <button
+          className="model-nav-button"
+          type="button"
+          aria-label="Scroll models left"
+          onClick={() => scrollModels('left')}
+        >
+          <span className="icon">chevron_left</span>
+        </button>
+        <div className="model-scroll" ref={modelSwitcherRef}>
+          {models.map(model => (
+            <button
+              key={model.name}
+              className={c("model-button", { active: model.url === activeModelUrl && !activeCustomAgent })}
+              onClick={() => {
+                setActiveModelUrl(model);
+              }}
+            >
+              {model.name}
+            </button>
+          ))}
+          <AgentSelector />
+        </div>
+        <button
+          className="model-nav-button"
+          type="button"
+          aria-label="Scroll models right"
+          onClick={() => scrollModels('right')}
+        >
+          <span className="icon">chevron_right</span>
+        </button>
       </div>
 
       <div className="input-controls">

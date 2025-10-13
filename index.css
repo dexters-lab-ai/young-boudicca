@@ -214,11 +214,13 @@ button:disabled {
   border: 1px solid var(--border-color) !important;
   font-family: 'Space Mono', monospace !important;
   transition: all 0.2s ease-in-out !important;
-  height: 32px !important;
-  padding: 0 1rem !important;
+  height: 32px;
+  padding: 0 1rem;
   border-radius: 16px !important;
-  font-size: 14px !important;
+  font-size: 14px;
   margin-right: 1rem;
+  white-space: nowrap !important;
+  display: inline-flex !important;
 }
 .wallet-adapter-button-trigger:hover {
   background-color: var(--primary-color) !important;
