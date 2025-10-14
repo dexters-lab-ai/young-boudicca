@@ -8,7 +8,13 @@ import {immer} from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import {createSelectorFunctions} from 'auto-zustand-selectors-hook'
 import { Photo, ChatMessage, FavouriteToken, AgentName, Agent, Environment } from '../types'
-import { DEFAULT_SYSTEM_INSTRUCTION } from './constants';
+import { DEFAULT_SYSTEM_INSTRUCTION, FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants';
+
+export const createAssistantMessage = (text: string): ChatMessage => ({
+  id: crypto.randomUUID(),
+  role: 'assistant',
+  text,
+});
 
 interface AppState {
   apiKey: string | null;
@@ -86,7 +92,7 @@ interface AppState {
   setCustomAgents: (agents: Agent[]) => void;
   setActiveCustomAgent: (agent: Agent | null) => void;
   setKokoroVoices: (voices: { value: string; label: string }[]) => void;
-  setActiveModelUrl: (payload: { url: string; name: string; agent: AgentName; systemInstruction: string | null }) => void;
+  setActiveModelUrl: (payload: { url: string; name: string; agent: AgentName; systemInstruction?: string | null }) => void;
   setActiveEnvironment: (env: Environment) => void;
   setActiveMusic: (music: { name: string; url: string } | null) => void;
   setGesturePlaying: (isPlaying: boolean) => void;
@@ -243,34 +249,53 @@ const useStore = create(
     setCustomAgents: (agents: Agent[]) => set({ customAgents: agents }),
     setActiveCustomAgent: (agent: Agent | null) => {
       if (agent) {
-        set({
-          activeCustomAgent: agent,
-          activeModelUrl: agent.vrmUrl,
-          activeAgent: 'gemini', // All custom agents use the Gemini pipeline
-          activeModelToast: agent.name,
-          activePhotoId: 'default-image'
+        const toastLabel = agent.name;
+        set(state => {
+          state.activeCustomAgent = agent;
+          state.activeModelUrl = agent.vrmUrl;
+          state.activeAgent = 'gemini'; // Custom agents share the Gemini pipeline
+          state.activeModelToast = toastLabel;
+          state.activePhotoId = 'default-image';
+          state.customPrompt = '';
+          state.chatHistory = [createAssistantMessage(buildCustomAgentWelcomeMessage(agent))];
         });
         setTimeout(() => {
-          set({ activeModelToast: null });
+          set(state => {
+            if (state.activeModelToast === toastLabel) {
+              state.activeModelToast = null;
+            }
+          });
         }, 3000);
       } else {
-        const defaultFrankenstein = get().models.find(m => m.name === 'Miko');
-        if (defaultFrankenstein) {
-            get().setActiveModelUrl(defaultFrankenstein);
-        }
+        const currentModel = get().models.find(m => m.url === get().activeModelUrl) ?? null;
+        const welcome = currentModel
+          ? getWelcomeMessageForModelName(currentModel.name)
+          : FALLBACK_WELCOME_MESSAGE;
+        set(state => {
+          state.activeCustomAgent = null;
+          state.customPrompt = '';
+          state.chatHistory = [createAssistantMessage(welcome)];
+        });
       }
     },
     setKokoroVoices: (voices: { value: string; label: string }[]) => set({ kokoroVoices: voices }),
     setActiveModelUrl: ({ url, name, agent }) => {
-      set({
-          activeModelUrl: url,
-          activeModelToast: name,
-          activeAgent: agent,
-          activePhotoId: 'default-image',
-          activeCustomAgent: null,
+      const toastLabel = name;
+      set(state => {
+        state.activeModelUrl = url;
+        state.activeModelToast = toastLabel;
+        state.activeAgent = agent;
+        state.activePhotoId = 'default-image';
+        state.activeCustomAgent = null;
+        state.customPrompt = '';
+        state.chatHistory = [createAssistantMessage(getWelcomeMessageForModelName(name))];
       });
       setTimeout(() => {
-          set({ activeModelToast: null });
+        set(state => {
+          if (state.activeModelToast === toastLabel) {
+            state.activeModelToast = null;
+          }
+        });
       }, 3000);
     },
     setActiveEnvironment: (env: Environment) => {

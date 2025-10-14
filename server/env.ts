@@ -30,3 +30,5 @@ console.log(`[env] Loaded specific: ${specific.error ? 'NO' : 'YES'} (${envSpeci
 console.log(`[env] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
 // eslint-disable-next-line no-console
 console.log(`[env] MONGODB_URI present: ${process.env.MONGODB_URI ? 'YES' : 'NO'} (${redact(process.env.MONGODB_URI)})`);
+// eslint-disable-next-line no-console
+console.log(`[env] Backblaze configured: ${process.env.BACKBLAZE_KEY_ID && process.env.BACKBLAZE_APPLICATION_KEY && process.env.BACKBLAZE_BUCKET_ID ? 'YES' : 'NO'}`);

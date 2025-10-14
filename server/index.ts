@@ -10,13 +10,12 @@ import express, { Request as ExpressRequest, Response as ExpressResponse, NextFu
 import cors from 'cors';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import mongoose from 'mongoose';
-import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import * as fs from 'fs';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import crypto from 'crypto';
 // Monaco Protocol client imports
@@ -30,11 +29,33 @@ import {
 import { solscanService } from './services/solscan';
 import Agent from './models/Agent';
 import User from './models/User';
+import Asset, { IAsset } from './models/Asset';
+import { BackblazeService, createBackblazeServiceFromEnv } from './services/backblaze';
+import { ArweavePublisher, createArweavePublisherFromEnv } from './services/arweave';
+import { createCandyMachineConfigFromEnv, CandyMachineService } from './services/candyMachine';
+import { buildAgentMetadata } from './utils/agentMetadata';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+const backblazeService = createBackblazeServiceFromEnv();
+const arweavePublisher = createArweavePublisherFromEnv();
+const candyMachineConfig = createCandyMachineConfigFromEnv();
+const assetUploadMiddleware = express.raw({ type: '*/*', limit: '100mb' });
+
+let candyMachineServicePromise: Promise<CandyMachineService> | null = null;
+
+async function getCandyMachineService(): Promise<CandyMachineService> {
+  if (!candyMachineConfig) {
+    throw new Error('Candy Machine configuration missing.');
+  }
+  if (!candyMachineServicePromise) {
+    candyMachineServicePromise = CandyMachineService.fromEnv(candyMachineConfig);
+  }
+  return candyMachineServicePromise;
+}
 
 // Health check endpoint
 app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
@@ -168,101 +189,287 @@ if (process.env.MONGODB_URI) {
   console.warn('MONGODB_URI not found in .env file. Agent creation features will be disabled.');
 }
 
-// --- File Uploads (Multer) ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadsPath = path.join(__dirname, '..', 'public', 'uploads');
-    fs.mkdirSync(uploadsPath, { recursive: true });
-    cb(null, uploadsPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+
+// --- Asset Upload API ---
+interface SignedPayloadRequest {
+  message: string;
+  signature: string;
+  walletAddress: string;
+}
+
+function verifySignedPayload({ message, signature, walletAddress }: SignedPayloadRequest) {
+  const publicKey = new PublicKey(walletAddress);
+  const signatureBytes = bs58.decode(signature);
+  const messageBytes = new TextEncoder().encode(message);
+  const isVerified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKey.toBytes());
+  if (!isVerified) {
+    throw new Error('Invalid signature. Wallet ownership could not be verified.');
+  }
+}
+
+app.post('/api/assets/upload', assetUploadMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!backblazeService) {
+    return res.status(503).json({ error: 'Asset storage not configured.' });
+  }
+
+  try {
+    const { type, fileName, contentType, signature, message, walletAddress } = req.query as Record<string, string>;
+
+    if (!type || !fileName || !contentType || !signature || !message || !walletAddress) {
+      return res.status(400).json({ error: 'Missing required query parameters.' });
+    }
+
+    verifySignedPayload({ message, signature, walletAddress });
+
+    const allowedTypes = new Set(['model', 'animation', 'background']);
+    if (!allowedTypes.has(type)) {
+      return res.status(400).json({ error: `Invalid asset type: ${type}` });
+    }
+
+    if (!Buffer.isBuffer(req.body)) {
+      return res.status(400).json({ error: 'Request body must be a binary payload.' });
+    }
+
+    const buffer = req.body as Buffer;
+    if (!buffer.length) {
+      return res.status(400).json({ error: 'Empty payload.' });
+    }
+
+    const safeFileName = `${Date.now()}-${crypto.randomUUID()}-${fileName}`;
+
+    const backblazeResult = await backblazeService.uploadFile({
+      fileName: safeFileName,
+      data: buffer,
+      contentType,
+      info: {
+        'x-wallet-address': walletAddress,
+        'x-asset-type': type,
+      },
+    });
+
+    const asset = new Asset({
+      ownerWallet: walletAddress,
+      type,
+      fileName: backblazeResult.fileName,
+      originalName: fileName,
+      contentType,
+      size: buffer.length,
+      bucketFileId: backblazeResult.fileId,
+      downloadUrl: backblazeResult.downloadUrl,
+    });
+    await asset.save();
+
+    res.status(201).json({ assetId: asset._id, downloadUrl: asset.downloadUrl });
+  } catch (error: any) {
+    console.error('Asset upload error:', error);
+    res.status(500).json({ error: error.message || 'Asset upload failed.' });
   }
 });
-const upload = multer({ 
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    if (path.extname(file.originalname).toLowerCase() !== '.vrm') {
-      return cb(new Error('Only .vrm files are allowed'));
-    }
-    cb(null, true);
-  },
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit
+
+// --- Candy Machine API ---
+app.post('/api/candy-machine/create', async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!candyMachineConfig) {
+    return res.status(503).json({ error: 'Candy Machine not configured.' });
+  }
+
+  const { itemsAvailable, startDate } = req.body;
+
+  if (!itemsAvailable || Number.isNaN(Number(itemsAvailable))) {
+    return res.status(400).json({ error: 'itemsAvailable must be a positive number.' });
+  }
+
+  try {
+    const service = await getCandyMachineService();
+    const candyMachine = await service.createCandyMachine({
+      itemsAvailable: Number(itemsAvailable),
+      startDate: startDate ? new Date(startDate) : undefined,
+    });
+
+    res.status(201).json({
+      address: candyMachine.address.toBase58(),
+      itemsAvailable: Number(candyMachine.itemsAvailable),
+      itemsLoaded: Number(candyMachine.itemsLoaded),
+    });
+  } catch (error: any) {
+    console.error('Candy machine creation failed:', error);
+    res.status(500).json({ error: 'Failed to create candy machine', details: error.message });
+  }
 });
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads')));
+app.post('/api/candy-machine/:address/items', async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!candyMachineConfig) {
+    return res.status(503).json({ error: 'Candy Machine not configured.' });
+  }
+
+  const { address } = req.params;
+  const { items, walletAddress, signature, message } = req.body;
+
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'items array is required.' });
+  }
+
+  if (!walletAddress || !signature || !message) {
+    return res.status(400).json({ error: 'walletAddress, signature, and message are required.' });
+  }
+
+  try {
+    verifySignedPayload({ walletAddress, signature, message });
+
+    const formattedItems = items.map((item: any) => ({
+      name: item.name,
+      uri: item.uri,
+    })).filter((item: any) => item.name && item.uri);
+
+    if (!formattedItems.length) {
+      return res.status(400).json({ error: 'At least one valid item is required.' });
+    }
+
+    const service = await getCandyMachineService();
+    const candyMachineAddress = new PublicKey(address);
+    await service.addItems(candyMachineAddress, formattedItems);
+
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error('Candy machine add items failed:', error);
+    res.status(500).json({ error: 'Failed to insert items into candy machine', details: error.message });
+  }
+});
+
+app.post('/api/candy-machine/:address/mint', async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!candyMachineConfig) {
+    return res.status(503).json({ error: 'Candy Machine not configured.' });
+  }
+
+  const { address } = req.params;
+  const { ownerWalletAddress, signature, message } = req.body;
+
+  if (!ownerWalletAddress || !signature || !message) {
+    return res.status(400).json({ error: 'ownerWalletAddress, signature, and message are required.' });
+  }
+
+  try {
+    verifySignedPayload({ walletAddress: ownerWalletAddress, signature, message });
+
+    const service = await getCandyMachineService();
+    const candyMachineAddress = new PublicKey(address);
+    const candyMachine = await service.loadCandyMachine(candyMachineAddress);
+
+    if (!candyMachine) {
+      return res.status(404).json({ error: 'Candy machine not found.' });
+    }
+
+    const owner = new PublicKey(ownerWalletAddress);
+    const mintAddress = await service.mint(candyMachine, owner);
+
+    res.status(200).json({ mintAddress });
+  } catch (error: any) {
+    console.error('Candy machine mint failed:', error);
+    res.status(500).json({ error: 'Failed to mint from candy machine', details: error.message });
+  }
+});
 
 // --- Agent Creator API ---
-app.post('/api/agents/create', upload.single('vrmFile'), async (req: ExpressRequest, res: ExpressResponse) => {
+app.post('/api/agents/create', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
+
+  const {
+    name,
+    description,
+    systemInstruction,
+    creatorWalletAddress,
+    signature,
+    message,
+    vrmUrl,
+    vrmAssetId,
+    animationGreetingUrl,
+    animationDanceUrl,
+    animationSpinUrl,
+    animationPoseUrl,
+    animationPumpedUrl,
+    environmentUrl,
+  } = req.body;
+
+  if (!name || !description || !systemInstruction || !creatorWalletAddress || !signature || !message) {
+    return res.status(400).json({ error: 'Missing required fields.' });
+  }
+
+  if (!vrmUrl) {
+    return res.status(400).json({ error: 'VRM URL is required.' });
+  }
+
   try {
-    const { 
-        name, description, systemInstruction, creatorWalletAddress, signature, message, 
-        vrmUrl: bodyVrmUrl,
-        animationGreetingUrl,
-        animationDanceUrl,
-        animationSpinUrl,
-        animationPoseUrl,
-        animationPumpedUrl,
-        environmentUrl,
-    } = req.body;
-    
-    if (!name || !description || !systemInstruction || !creatorWalletAddress || !signature || !message) {
-      return res.status(400).json({ error: 'Missing required text fields or signature.' });
-    }
-    
-    const vrmUrl = req.file ? `/uploads/${req.file.filename}` : bodyVrmUrl;
+    verifySignedPayload({ message, signature, walletAddress: creatorWalletAddress });
 
-    if (!vrmUrl) {
-      return res.status(400).json({ error: 'A VRM model file or URL is required.' });
-    }
-
-    // --- Signature Verification ---
-    const publicKey = new PublicKey(creatorWalletAddress);
-    const signatureBytes = bs58.decode(signature);
-    const messageBytes = new TextEncoder().encode(message);
-
-    const isVerified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKey.toBytes());
-
-    if (!isVerified) {
-      return res.status(403).json({ error: 'Invalid signature. Wallet ownership could not be verified.' });
-    }
-    // --- End Signature Verification ---
-
-    // --- SIMULATED NFT MINTING ---
-    const simulatedMintAddress = new PublicKey(crypto.randomBytes(32)).toBase58();
-    const randomBytes = crypto.randomBytes(32);
-const metadataUri = `https://arweave.net/${bs58.encode(new Uint8Array(randomBytes.buffer, randomBytes.byteOffset, randomBytes.length)).slice(0, 43)}`;
-    const nftDetails = {
-        mintAddress: simulatedMintAddress,
-        metadataUri: metadataUri,
-        tokenStandard: 'Metaplex',
+    const animations: Record<string, string> = {
+      greeting: animationGreetingUrl,
+      dance: animationDanceUrl,
+      spin: animationSpinUrl,
+      pose: animationPoseUrl,
+      pumped: animationPumpedUrl,
     };
-    // --- END SIMULATION ---
 
-    const newAgent = new Agent({
+    let linkedAsset: IAsset | null = null;
+    if (vrmAssetId) {
+      linkedAsset = await Asset.findById(vrmAssetId);
+      if (!linkedAsset) {
+        return res.status(400).json({ error: 'Referenced VRM asset not found.' });
+      }
+      if (linkedAsset.ownerWallet !== creatorWalletAddress) {
+        return res.status(403).json({ error: 'Asset owner mismatch.' });
+      }
+    }
+
+    let metadataUri: string | undefined;
+    if (arweavePublisher) {
+      const metadataPayload = buildAgentMetadata({
+        name,
+        description,
+        systemInstruction,
+        creatorWalletAddress,
+        vrmSource: {
+          url: vrmUrl,
+          contentType: linkedAsset?.contentType || 'application/octet-stream',
+          asset: linkedAsset || undefined,
+        },
+        animations,
+        environmentUrl,
+      });
+
+      metadataUri = await arweavePublisher.uploadJson(metadataPayload);
+    } else {
+      console.warn('Arweave publisher not configured; skipping metadata upload.');
+    }
+
+    const simulatedMintAddress = new PublicKey(crypto.randomBytes(32)).toBase58();
+
+    const agent = new Agent({
       name,
       description,
       systemInstruction,
       creatorWalletAddress,
       vrmUrl,
-      nftDetails, // Add the simulated NFT details
-      animationGreetingUrl: animationGreetingUrl || undefined,
-      animationDanceUrl: animationDanceUrl || undefined,
-      animationSpinUrl: animationSpinUrl || undefined,
-      animationPoseUrl: animationPoseUrl || undefined,
-      animationPumpedUrl: animationPumpedUrl || undefined,
-      environmentUrl: environmentUrl || undefined,
+      vrmAssetId: linkedAsset?._id,
+      animationGreetingUrl,
+      animationDanceUrl,
+      animationSpinUrl,
+      animationPoseUrl,
+      animationPumpedUrl,
+      environmentUrl,
+      nftDetails: {
+        mintAddress: simulatedMintAddress,
+        metadataUri: metadataUri || '',
+        tokenStandard: 'Metaplex',
+      },
     });
-    await newAgent.save();
-    res.status(201).json(newAgent);
-  } catch (err: any) {
-    console.error('Agent creation error', err);
-    res.status(500).json({ error: 'Failed to create agent', details: err.message });
+
+    await agent.save();
+
+    res.status(201).json(agent);
+  } catch (error: any) {
+    console.error('Agent creation error:', error);
+    res.status(500).json({ error: 'Failed to create agent', details: error.message });
   }
 });
 

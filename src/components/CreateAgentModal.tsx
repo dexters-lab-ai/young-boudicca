@@ -121,6 +121,8 @@ export default function CreateAgentModal() {
     const [description, setDescription] = useState('');
     const [systemInstruction, setSystemInstruction] = useState('');
     const [vrmUrl, setVrmUrl] = useState('');
+    const [vrmAssetId, setVrmAssetId] = useState<string | null>(null);
+    const [modelUploadStatus, setModelUploadStatus] = useState<'idle' | 'uploading' | 'uploaded' | 'error'>('idle');
     const [animationUrls, setAnimationUrls] = useState<Record<string, string>>({});
     const [isAdvancedOpen, setAdvancedOpen] = useState(false);
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'signing' | 'creating'>('idle');
@@ -136,29 +138,96 @@ export default function CreateAgentModal() {
 
     const getSubmitButtonText = () => {
         switch (submitStatus) {
-            case 'signing': return 'Awaiting Signature...';
-            case 'creating': return 'Minting Agent NFT...';
-            default: return 'Sign & Create Agent';
+            case 'signing':
+                return 'Awaiting Signature...';
+            case 'creating':
+                return 'Minting Agent NFT...';
+            default:
+                return 'Sign & Create Agent';
         }
     };
-    
+
+    const uploadAsset = useCallback(async (file: File, type: 'model' | 'animation' | 'background') => {
+        if (!publicKey || !signMessage) {
+            throw new Error('Connect a wallet that supports message signing before uploading assets.');
+        }
+
+        const walletAddress = publicKey.toBase58();
+        const messageStr = `Authorize ${type} upload ${file.name} at ${new Date().toISOString()}`;
+        const signatureBytes = await signMessage(new TextEncoder().encode(messageStr));
+        const signatureBase58 = bs58.encode(signatureBytes);
+
+        const params = new URLSearchParams({
+            type,
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+            walletAddress,
+            message: messageStr,
+            signature: signatureBase58,
+        });
+
+        const response = await fetch(`/api/assets/upload?${params.toString()}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': file.type || 'application/octet-stream',
+            },
+            body: file,
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Asset upload failed');
+        }
+
+        return result as { assetId: string; downloadUrl: string };
+    }, [publicKey, signMessage]);
+
+    const handleVrmFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        if (file.size > 100 * 1024 * 1024) {
+            setError('Model files must be under 100MB.');
+            return;
+        }
+        if (!file.name.toLowerCase().endsWith('.vrm')) {
+            setError('Please upload a .vrm file.');
+            return;
+        }
+
+        try {
+            setError(null);
+            setModelUploadStatus('uploading');
+            const { assetId, downloadUrl } = await uploadAsset(file, 'model');
+            setVrmAssetId(assetId);
+            setVrmUrl(downloadUrl);
+            setModelUploadStatus('uploaded');
+        } catch (uploadErr: any) {
+            console.error('VRM upload failed', uploadErr);
+            setError(uploadErr.message || 'Failed to upload model.');
+            setModelUploadStatus('error');
+        }
+    }, [uploadAsset]);
+
     const resetForm = () => {
         setName('');
         setDescription('');
         setSystemInstruction('');
         setVrmUrl('');
+        setVrmAssetId(null);
+        setModelUploadStatus('idle');
         setAnimationUrls({});
         setAdvancedOpen(false);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
         if (!publicKey || !signMessage) {
             setError("Please connect your wallet and ensure it supports message signing.");
             return;
         }
         if (!vrmUrl.trim()) {
-            setError("A .vrm model URL is required.");
+            setError("A .vrm model URL or upload is required.");
             return;
         }
         
@@ -178,6 +247,9 @@ export default function CreateAgentModal() {
             formData.append('creatorWalletAddress', publicKey.toBase58());
             formData.append('signature', signatureBase58);
             formData.append('message', "Sign this message to confirm ownership of your wallet for creating an AI Agent.");
+            if (vrmAssetId) {
+                formData.append('vrmAssetId', vrmAssetId);
+            }
             
             if (animationUrls.greeting) formData.append('animationGreetingUrl', animationUrls.greeting);
             if (animationUrls.dance) formData.append('animationDanceUrl', animationUrls.dance);
@@ -255,6 +327,19 @@ export default function CreateAgentModal() {
                                 <input id="agent-vrm-url" type="url" value={vrmUrl} onChange={e => setVrmUrl(e.target.value)} required placeholder="https://example.com/model.vrm" />
                             </div>
                             <div className="form-group">
+                                <label htmlFor="agent-vrm-file">Or upload 3D Model (.vrm)</label>
+                                <input
+                                    id="agent-vrm-file"
+                                    type="file"
+                                    accept=".vrm"
+                                    onChange={handleVrmFileUpload}
+                                    disabled={!publicKey || modelUploadStatus === 'uploading' || isSubmitting}
+                                />
+                                {modelUploadStatus === 'uploading' && <p className="upload-status">Uploading model to secure storage...</p>}
+                                {modelUploadStatus === 'uploaded' && <p className="upload-status success">Model uploaded and linked from Backblaze.</p>}
+                                {modelUploadStatus === 'error' && <p className="upload-status error">Model upload failed. Please try again.</p>}
+                            </div>
+                            <div className="form-group">
                                 <button type="button" className="advanced-options-toggle" onClick={() => setAdvancedOpen(v => !v)}>
                                     Custom Animations (Optional)
                                     <span className="icon">{isAdvancedOpen ? 'expand_less' : 'expand_more'}</span>
@@ -278,7 +363,7 @@ export default function CreateAgentModal() {
                                 )}
                             </div>
                             {error && <p className="error-message">{error}</p>}
-                            <button type="submit" disabled={!publicKey || isSubmitting}>
+                            <button type="submit" disabled={!publicKey || isSubmitting || modelUploadStatus === 'uploading'}>
                                 {getSubmitButtonText()}
                             </button>
                         </fieldset>

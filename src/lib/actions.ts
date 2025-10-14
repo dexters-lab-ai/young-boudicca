@@ -2,11 +2,12 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import useStore from './store'
+import useStore, { createAssistantMessage } from './store'
 import imageData from './imageData'
 import { generateImage as genImageApi } from './llm'
 import modes from './modes'
 import { Photo, Agent, Environment, AgentName } from '../types'
+import { FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName } from './constants'
 
 const get = useStore.getState
 const set = useStore.setState
@@ -26,28 +27,22 @@ export const init = () => {
   const initialPhoto: Photo = { id: defaultImageId, isBusy: false, mode: 'default', isInitial: true }
   
   set(state => {
-    const commonState = {
+    const defaultModel = state.models.find(m => m.agent === 'gemini') ?? state.models[0] ?? null;
+    const welcomeMessage = defaultModel
+      ? getWelcomeMessageForModelName(defaultModel.name)
+      : FALLBACK_WELCOME_MESSAGE;
+
+    const chatAlreadySeeded = state.chatHistory.some(m => m.text === welcomeMessage);
+
+    return {
       didInit: true,
       photos: [initialPhoto],
       activePhotoId: defaultImageId,
-      activeModelUrl: state.models.find(m => m.agent === 'gemini')?.url ?? null,
+      activeModelUrl: defaultModel?.url ?? null,
       activeEnvironmentUrl: state.environments[0]?.url ?? null,
-    };
-    
-    const welcomeMessage = "I am Miss Gemini. I can generate imagery, converse with you, and furnish live info, moves or environments upon request. Chat away or simply articulate your desires.";
-
-    // Avoid adding duplicate welcome messages on hot reloads
-    if (state.chatHistory.some(m => m.text === welcomeMessage)) {
-      return commonState;
-    }
-
-    return {
-        ...commonState,
-        chatHistory: [...state.chatHistory, {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            text: welcomeMessage,
-        }]
+      chatHistory: chatAlreadySeeded && state.chatHistory.length > 0
+        ? state.chatHistory
+        : [createAssistantMessage(welcomeMessage)],
     };
   })
 }
@@ -189,13 +184,12 @@ export const setApiKey = (apiKey: string) => {
     set({ apiKey });
 };
 
-export const setActiveModelUrl = ({ url, name, agent }: { url: string, name: string, agent: AgentName }) => {
+export const setActiveModelUrl = ({ url, name, agent, systemInstruction }: { url: string, name: string, agent: AgentName, systemInstruction?: string | null }) => {
   const defaultEnv = get().environments[0];
-  set({ activeModelUrl: url, activeModelToast: name, activeAgent: agent, activePhotoId: defaultImageId, activeCustomAgent: null });
-  setActiveEnvironment(defaultEnv);
-  setTimeout(() => {
-    set({ activeModelToast: null });
-  }, 3000);
+  get().setActiveModelUrl({ url, name, agent, systemInstruction });
+  if (defaultEnv) {
+    setActiveEnvironment(defaultEnv);
+  }
 }
 
 export const setActiveAgent = (agent: AgentName) => {
@@ -244,22 +238,15 @@ export const setActiveCustomAgent = (agent: Agent | null) => {
   if (agent) {
     const defaultEnv = get().environments[0];
     const agentEnv = get().environments.find(e => e.url === agent.environmentUrl) || defaultEnv;
-    set({
-      activeCustomAgent: agent,
-      activeModelUrl: agent.vrmUrl,
-      activeAgent: 'gemini', // Custom agents use the Frankenstein pipeline
-      activeModelToast: agent.name,
-      activePhotoId: 'default-image',
-    });
-    setActiveEnvironment(agentEnv);
-     setTimeout(() => {
-      set({ activeModelToast: null });
-    }, 3000);
+    get().setActiveCustomAgent(agent);
+    if (agentEnv) {
+      setActiveEnvironment(agentEnv);
+    }
   } else {
-    // Revert to a default model when deselecting a custom agent
-    const defaultModel = get().models.find(m => m.agent === 'gemini');
-    if (defaultModel) {
-      setActiveModelUrl(defaultModel);
+    get().setActiveCustomAgent(null);
+    const fallbackEnv = get().environments[0];
+    if (fallbackEnv) {
+      setActiveEnvironment(fallbackEnv);
     }
   }
 }

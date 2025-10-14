@@ -1,10 +1,11 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IAgent extends Document {
   name: string;
   description: string;
   systemInstruction: string;
   vrmUrl: string;
+  vrmAssetId?: Types.ObjectId;
   creatorWalletAddress: string;
   animationGreetingUrl?: string;
   animationDanceUrl?: string;
@@ -17,7 +18,7 @@ export interface IAgent extends Document {
   subscriptionCount: number;
   nftDetails?: {
     mintAddress: string;
-    metadataUri: string;
+    metadataUri?: string;
     tokenStandard: string;
   };
 }
@@ -27,6 +28,7 @@ const AgentSchema: Schema = new Schema({
   description: { type: String, required: true, trim: true },
   systemInstruction: { type: String, required: true },
   vrmUrl: { type: String, required: true },
+  vrmAssetId: { type: Schema.Types.ObjectId, ref: 'Asset' },
   creatorWalletAddress: { type: String, required: true, index: true },
   animationGreetingUrl: { type: String, required: false },
   animationDanceUrl: { type: String, required: false },
