@@ -11,28 +11,12 @@ main {
   height: calc(100dvh - 41px); /* Account for ticker height */
   overflow: hidden;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 1rem;
-}
-.container {
-  width: 100%;
-  height: 100%;
-  max-width: 1400px;
-  max-height: 900px;
-  display: grid;
-  /* Use minmax(0, ...) so intrinsic sizes from Canvas don't force column shrink */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr);
-  grid-template-rows: minmax(0, 1fr);
+  flex-direction: row;
   gap: 2rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  padding: 2rem;
-  box-shadow: 0 4px 20px var(--glass-shadow);
+  padding: 1.5rem 2rem;
+  box-sizing: border-box;
+  justify-content: center;
+  align-items: stretch;
 }
 
 .temp-background {
@@ -59,18 +43,18 @@ main {
 
 .error-modal-content {
   background: var(--background-light);
-  border: 1px solid #ff453a;
+  border: 1px solid #c53a24;
   border-radius: 15px;
   padding: 1.5rem;
   max-width: 450px;
   width: 90%;
-  box-shadow: 0 0 20px rgba(255, 69, 58, 0.5);
+  box-shadow: 0 0 20px rgba(197, 58, 36, 0.35);
   text-align: center;
 }
 
 .error-modal-content .icon {
     font-size: 2.5rem;
-    color: #ff453a;
+    color: #c53a24;
     margin-bottom: 1rem;
 }
 
@@ -96,35 +80,29 @@ main {
 @media (max-width: 1024px) {
   main {
     padding: 1rem;
-  }
-  .container {
-    grid-template-columns: 1fr 0.8fr;
-    gap: 1rem;
+    gap: 1.5rem;
   }
 }
 
 @media (max-width: 900px) {
   main {
-    padding: 0;
-    height: 100dvh;
-    align-items: flex-start;
-  }
-  .container {
-    display: flex;
+    padding: 0.75rem;
     flex-direction: column;
-    padding: 1rem;
     gap: 1rem;
-    max-height: 100dvh;
     height: 100dvh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-    overflow: hidden;
+  }
+  .app-header .wallet-adapter-button-trigger {
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    line-height: 1.1;
   }
 }
 @media (max-width: 480px) {
-  .container {
+  main {
     padding: 0.5rem;
-    gap: 0.5rem;
   }
 }

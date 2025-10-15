@@ -9,8 +9,12 @@
   padding: 1rem;
   overflow: hidden;
   min-height: 0;
-  /* Prevent intrinsic content from forcing column shrink */
-  min-width: 0;
+  min-width: 320px;
+  max-width: 420px;
+  width: 30vw;
+  position: relative;
+  flex: 0 1 38%;
+  align-self: stretch;
 }
 .chat-header {
   display: flex;

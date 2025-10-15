@@ -73,10 +73,8 @@ function AppContent() {
       {isBettingModalOpen && <BettingModal />}
       {error && <ErrorModal message={error} onClose={() => setError(null)} />}
       <main>
-        <div className="container">
           <Stage />
           {activeAgent === 'gemini' ? <Chat /> : <ElizaChat />}
-        </div>
       </main>
     </>
   )
