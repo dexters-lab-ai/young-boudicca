@@ -55,7 +55,7 @@ export const addMessage = (text: string, role: 'user' | 'assistant', sources?: {
 }
 
 type GenerateOptions = {
-    aspectRatio?: 'portrait' | 'landscape';
+    aspectRatio?: 'portrait' | 'landscape' | 'auto';
     removeWatermark?: boolean;
     suppressUserMessage?: boolean;
 };
@@ -101,7 +101,10 @@ export const generateImage = async (prompt: string, mode: string, options?: Gene
     }
     
     if (mode === 'sora') {
-        const { aspectRatio = 'portrait', removeWatermark = true } = options ?? {};
+        const aspectRatioOption = options?.aspectRatio === 'landscape' || options?.aspectRatio === 'portrait'
+            ? options.aspectRatio
+            : undefined;
+        const removeWatermark = options?.removeWatermark ?? true;
         if (!sourceImage) {
             setError('Upload an image first, then try generating a Sora video.');
             set({ isAssistantTyping: false, activeAnimation: 'IDLE' });
@@ -120,7 +123,7 @@ export const generateImage = async (prompt: string, mode: string, options?: Gene
             const { taskId } = await pollSoraTask({
                 prompt,
                 imageUrl: sourceImage,
-                aspectRatio,
+                aspectRatio: aspectRatioOption,
                 removeWatermark,
                 onStatus: (status: SoraStatus, data?: PollStatusPayload) => {
                     imageData.tasks[newId] = { status, error: data?.error };
