@@ -442,8 +442,15 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
 }
 .filter-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary-color) transparent;
+}
+.filter-chips::-webkit-scrollbar {
+  height: 4px;
 }
 .sora-panel {
   display: flex;
@@ -658,7 +665,8 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
     margin: 0 auto;
     width: 100%;
     max-width: 100%;
-    gap:0
+    gap: 0;
+    margin-top: -15px;
   }
   .sora-panel {
     gap: 6px;
@@ -667,18 +675,25 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
     padding-right: 2px;
   }
   .sora-info {
-    gap: 6px;
+    gap: 5px;
     padding: 6px 8px;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
   .sora-info .icon {
-    font-size: 18px;
+    font-size: 16px;
   }
   .sora-info strong {
-    font-size: 0.7rem;
+    font-size: 0.64rem;
   }
   .sora-info .sora-meta {
-    font-size: 0.63rem;
+    font-size: 0.58rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .sora-field textarea {
     min-height: 88px;
@@ -721,35 +736,34 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
 
 @media (max-width: 480px) {
   .chat-input-area {
-    padding: 2px;
+    padding: 4px 6px;
+    gap: 6px;
   }
 
   .chat-input-area input {
     padding-left: 10px;
+    height: 34px;
+    font-size: 0.82rem;
   }
 
   .filter-selector {
     padding-top: 0.25rem;
   }
 
-  .filter-selector h3 {
-    display: none; /* Save space on very small screens */
-  }
-
-  .filter-chips {
-    gap: 4px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    max-height: 44px;
-  }
-
   .filter-chip {
-    padding: 3px 7px;
-    font-size: 0.7rem;
+    padding:0;
     text-wrap: nowrap;
   }
 
   .sora-field textarea {
     min-height: 90px;
+  }
+
+  .chat-input-area button {
+    padding: 6px;
+  }
+
+  .sora-chat-hint {
+    font-size: 0.58rem;
   }
 }
