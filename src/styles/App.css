@@ -105,4 +105,15 @@ main {
   main {
     padding: 0.5rem;
   }
+  .wallet-adapter-button-trigger {
+    padding: 5px !important;
+    height: 32px !important;
+    margin-right: 0;
+  }
+  .token-ticker-controls {
+    padding-left: 0.5rem;
+  }
+  .voice-selector {
+    max-width: 100px !important;
+  }
 }
