@@ -68,8 +68,8 @@ export const availableTools: FunctionDeclaration[] = [
           description: 'The number of tokens to fetch. Defaults to 20.',
         },
         platform: {
-            type: Type.STRING,
-            description: 'The launchpad platform to filter by. Supported values: "pumpfun", "jupiter", "meteora", "raydium", "kamino", "orca". Defaults to all platforms if not specified.',
+          type: Type.STRING,
+          description: 'The launchpad platform to filter by. Supported values: "pumpfun", "jupiter", "meteora", "raydium", "kamino", "orca". Defaults to all platforms if not specified.',
         },
       },
       required: [],
@@ -114,42 +114,6 @@ export const availableTools: FunctionDeclaration[] = [
           description: 'The address of the token.',
         },
       },
-      required: ['address'],
-    },
-  },
-  {
-    name: 'fetchCandles',
-    description: 'Fetches daily price data for a given token address within a time range.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        address: {
-          type: Type.STRING,
-          description: 'The address of the token.',
-        },
-        time_from: {
-          type: Type.NUMBER,
-          description: 'The start of the time range as a Unix timestamp.',
-        },
-        time_to: {
-          type: Type.NUMBER,
-          description: 'The end of the time range as a Unix timestamp.',
-        },
-      },
-      required: ['address', 'time_from', 'time_to'],
-    },
-  },
-  {
-    name: 'listMonacoMarkets',
-    description: 'Fetches a list of available betting markets from the Monaco Protocol.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        marketStatus: {
-          type: Type.STRING,
-          description: 'The status of the markets to fetch. Defaults to "open". Other options include "initializing", "settled", "readyForSettlement", "voided".',
-        },
-      },
       required: [],
     },
   },
@@ -168,18 +132,40 @@ export const availableTools: FunctionDeclaration[] = [
     },
   },
   {
-      name: 'listUserMonacoOrders',
-      description: 'Lists all active and settled orders for a given user wallet address on the Monaco Protocol.',
-      parameters: {
-          type: Type.OBJECT,
-          properties: {
-              walletAddress: {
-                  type: Type.STRING,
-                  description: 'The Solana wallet address of the user.'
-              }
-          },
-          required: ['walletAddress']
-      }
+    name: 'generateSoraVideo',
+    description: 'Generates a short video using Sora based on the currently active user image. Requires an uploaded or captured image.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        prompt: {
+          type: Type.STRING,
+          description: 'Optional override for the video generation prompt. Leave empty to use the default Sora mode prompt.',
+        },
+        aspectRatio: {
+          type: Type.STRING,
+          description: 'Optional aspect ratio hint. Accepts "portrait" or "landscape".',
+        },
+        removeWatermark: {
+          type: Type.BOOLEAN,
+          description: 'Whether to request watermark removal (defaults to true).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'listUserMonacoOrders',
+    description: 'Lists all active and settled orders for a given user wallet address on the Monaco Protocol.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        walletAddress: {
+          type: Type.STRING,
+          description: 'The Solana wallet address of the user.',
+        },
+      },
+      required: ['walletAddress'],
+    },
   },
   {
     name: 'placeMonacoOrder',
@@ -192,8 +178,8 @@ export const availableTools: FunctionDeclaration[] = [
           description: 'The public key (address) of the market to place an order on.',
         },
         outcomeIndex: {
-            type: Type.NUMBER,
-            description: 'The index of the outcome to bet on (e.g., 0 for the first outcome, 1 for the second).',
+          type: Type.NUMBER,
+          description: 'The index of the outcome to bet on (e.g., 0 for the first outcome, 1 for the second).',
         },
         forAgainst: {
           type: Type.STRING,
@@ -205,10 +191,10 @@ export const availableTools: FunctionDeclaration[] = [
         },
         walletAddress: {
           type: Type.STRING,
-          description: "The user's Solana wallet address."
-        }
+          description: "The user's Solana wallet address.",
+        },
       },
       required: ['marketPk', 'outcomeIndex', 'forAgainst', 'amount', 'walletAddress'],
-    }
-  }
+    },
+  },
 ];

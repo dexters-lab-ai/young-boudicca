@@ -33,6 +33,7 @@ import Asset, { IAsset } from './models/Asset';
 import { BackblazeService, createBackblazeServiceFromEnv } from './services/backblaze';
 import { ArweavePublisher, createArweavePublisherFromEnv } from './services/arweave';
 import { createCandyMachineConfigFromEnv, CandyMachineService } from './services/candyMachine';
+import { createImageToVideoTask, getImageToVideoTask } from './services/sora';
 import { buildAgentMetadata } from './utils/agentMetadata';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +44,45 @@ const app = express();
 const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
 const candyMachineConfig = createCandyMachineConfigFromEnv();
+
+const soraConfig = {
+  apiKey: process.env.SORA_API_KEY,
+  maxGenerationsPerHour: Number(process.env.SORA_MAX_PER_HOUR ?? '3'),
+  cooldownMs: 60 * 60 * 1000,
+};
+
+if (!soraConfig.apiKey) {
+  console.warn('[Server] SORA_API_KEY not set. Image-to-video endpoint disabled.');
+}
+
+const soraUsageMap = new Map<string, number[]>();
+
+function registerSoraUsage(clientKey: string): { allowed: boolean; release: () => void } {
+  const now = Date.now();
+  const cutoff = now - soraConfig.cooldownMs;
+  const timestamps = (soraUsageMap.get(clientKey) ?? []).filter(ts => ts > cutoff);
+
+  if (timestamps.length >= soraConfig.maxGenerationsPerHour) {
+    soraUsageMap.set(clientKey, timestamps);
+    return { allowed: false, release: () => {} };
+  }
+
+  timestamps.push(now);
+  soraUsageMap.set(clientKey, timestamps);
+
+  const release = () => {
+    const current = soraUsageMap.get(clientKey) ?? [];
+    const next = current.filter(ts => ts !== now);
+    if (next.length) {
+      soraUsageMap.set(clientKey, next);
+    } else {
+      soraUsageMap.delete(clientKey);
+    }
+  };
+
+  return { allowed: true, release };
+}
+
 const assetUploadMiddleware = express.raw({ type: '*/*', limit: '100mb' });
 
 let candyMachineServicePromise: Promise<CandyMachineService> | null = null;
@@ -70,7 +110,6 @@ app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
   
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
-
 // --- Request Logging Middleware ---
 app.use((req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
@@ -82,18 +121,64 @@ app.use((req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   next();
 });
 
-// ElevenLabs TTS configuration
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Default voice ID
+// --- Sora Endpoints ---
+app.post('/api/sora/image-to-video', async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!soraConfig.apiKey) {
+    return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
+  }
 
-let elevenlabs: ElevenLabsClient | null = null;
-if (ELEVENLABS_API_KEY) {
-  elevenlabs = new ElevenLabsClient({ apiKey: ELEVENLABS_API_KEY });
-  console.log('[Server] ElevenLabs client initialized.');
-} else {
-  console.warn('ELEVENLABS_API_KEY not found. TTS and Music endpoints will be disabled.');
-}
+  const { prompt, imageUrls, aspectRatio, removeWatermark = true } = req.body ?? {};
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'prompt is required.' });
+  }
+  if (!Array.isArray(imageUrls) || !imageUrls.length) {
+    return res.status(400).json({ error: 'imageUrls must be a non-empty array of URLs.' });
+  }
+  if (aspectRatio && !['portrait', 'landscape'].includes(aspectRatio)) {
+    return res.status(400).json({ error: 'aspectRatio must be "portrait" or "landscape" if provided.' });
+  }
 
+  const clientKey = req.ip ?? req.headers['x-forwarded-for']?.toString() ?? 'unknown';
+  const { allowed, release } = registerSoraUsage(clientKey);
+  if (!allowed) {
+    return res.status(429).json({ error: 'Hourly generation limit reached. Please try again later.' });
+  }
+
+  try {
+    const task = await createImageToVideoTask({
+      apiKey: soraConfig.apiKey,
+      prompt: prompt.trim(),
+      imageUrls,
+      aspectRatio,
+      removeWatermark,
+    });
+
+    res.status(202).json({ taskId: task.taskId });
+  } catch (error: any) {
+    release();
+    console.error('[Server] Sora task creation failed:', error);
+    res.status(502).json({ error: 'Failed to create Sora task.', details: error?.message ?? 'Unknown error' });
+  }
+});
+
+app.get('/api/sora/image-to-video/:taskId', async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!soraConfig.apiKey) {
+    return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
+  }
+
+  const { taskId } = req.params;
+  if (!taskId) {
+    return res.status(400).json({ error: 'taskId is required.' });
+  }
+
+  try {
+    const record = await getImageToVideoTask({ apiKey: soraConfig.apiKey, taskId });
+    res.json({ task: record });
+  } catch (error: any) {
+    console.error('[Server] Sora task query failed:', error);
+    res.status(502).json({ error: 'Failed to fetch Sora task status.', details: error?.message ?? 'Unknown error' });
+  }
+});
 
 // TTS voice interface
 interface Voice {
@@ -122,13 +207,14 @@ app.post('/api/tts', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
   }
-  const { text, voiceId = ELEVENLABS_VOICE_ID } = req.body;
+  const { text, voiceId } = req.body;
   if (!text) {
     return res.status(400).json({ error: 'Text is required.' });
   }
 
   try {
-    const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
+    const voiceToUse: string = typeof voiceId === 'string' && voiceId.trim() ? voiceId : ELEVENLABS_VOICE_ID;
+    const audioStream = await elevenlabs.textToSpeech.convert(voiceToUse, {
       text,
       modelId: 'eleven_multilingual_v2',
     });

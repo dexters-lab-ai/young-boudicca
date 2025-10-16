@@ -8,6 +8,8 @@ export interface Photo {
   mode: string;
   isBusy: boolean;
   isInitial: boolean; // True for the original default, uploaded, or webcam photos
+  mediaType: 'image' | 'video';
+  taskId?: string;
 }
 
 export interface Mode {

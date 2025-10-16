@@ -8,6 +8,7 @@ import { generateImage as genImageApi } from './llm'
 import modes from './modes'
 import { Photo, Agent, Environment, AgentName } from '../types'
 import { FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName } from './constants'
+import { pollSoraTask, SoraStatus, PollStatusPayload } from './soraUtils'
 
 const get = useStore.getState
 const set = useStore.setState
@@ -24,7 +25,7 @@ export const init = () => {
   }
 
   imageData.inputs[defaultImageId] = defaultImageId
-  const initialPhoto: Photo = { id: defaultImageId, isBusy: false, mode: 'default', isInitial: true }
+  const initialPhoto: Photo = { id: defaultImageId, isBusy: false, mode: 'default', isInitial: true, mediaType: 'image' }
   
   set(state => {
     const defaultModel = state.models.find(m => m.agent === 'gemini') ?? state.models[0] ?? null;
@@ -53,20 +54,28 @@ export const addMessage = (text: string, role: 'user' | 'assistant', sources?: {
     }))
 }
 
-export const generateImage = async (prompt: string, mode: string) => {
+type GenerateOptions = {
+    aspectRatio?: 'portrait' | 'landscape';
+    removeWatermark?: boolean;
+    suppressUserMessage?: boolean;
+};
+
+export const generateImage = async (prompt: string, mode: string, options?: GenerateOptions) => {
     const setError = get().setError;
     // Require a user-provided image (upload/webcam). Do not auto-use the default avatar.
     const activePhotoId = get().activePhotoId
-    let sourceImage: string | undefined = (activePhotoId && activePhotoId !== defaultImageId)
+    const activePhoto = get().photos.find(p => p.id === activePhotoId);
+    const sourceIsVideo = activePhoto?.mediaType === 'video';
+    let sourceImage: string | undefined = (!sourceIsVideo && activePhotoId && activePhotoId !== defaultImageId)
         ? imageData.inputs[activePhotoId]
         : undefined;
 
-    if (!sourceImage) {
+    if (!sourceImage && mode !== 'sora') {
         // Show a temporary placeholder image (favicon) for 5 seconds while waiting for user upload
         const tempId = crypto.randomUUID();
         const placeholder = '/images/frankenstein-icon.png';
         imageData.inputs[tempId] = placeholder;
-        const tempPhoto: Photo = { id: tempId, mode: 'placeholder', isBusy: false, isInitial: true };
+        const tempPhoto: Photo = { id: tempId, mode: 'placeholder', isBusy: false, isInitial: true, mediaType: 'image' };
         set(state => ({ photos: [...state.photos, tempPhoto], activePhotoId: tempId }));
         addMessage("Choose an image to filter — showing a placeholder for a moment.", 'assistant');
         setTimeout(() => {
@@ -86,13 +95,78 @@ export const generateImage = async (prompt: string, mode: string) => {
     }
 
     set({ isAssistantTyping: true, activeAnimation: 'TALKING' })
+
+    if (!options?.suppressUserMessage) {
+        addMessage(prompt, 'user')
+    }
     
-    addMessage(prompt, 'user')
-    
+    if (mode === 'sora') {
+        const { aspectRatio = 'portrait', removeWatermark = true } = options ?? {};
+        if (!sourceImage) {
+            setError('Upload an image first, then try generating a Sora video.');
+            set({ isAssistantTyping: false, activeAnimation: 'IDLE' });
+            return;
+        }
+
+        const newId = crypto.randomUUID();
+        const videoPhoto: Photo = { id: newId, mode, isBusy: true, isInitial: false, mediaType: 'video' };
+        imageData.inputs[newId] = sourceImage;
+        set(state => ({
+            photos: [...state.photos, videoPhoto],
+            activePhotoId: newId,
+        }));
+
+        try {
+            const { taskId } = await pollSoraTask({
+                prompt,
+                imageUrl: sourceImage,
+                aspectRatio,
+                removeWatermark,
+                onStatus: (status: SoraStatus, data?: PollStatusPayload) => {
+                    imageData.tasks[newId] = { status, error: data?.error };
+                    if (status === 'success' && data?.videoUrl) {
+                        imageData.videos[newId] = { url: data.videoUrl, thumbnail: data.thumbnailUrl };
+                        addMessage('Sora finished rendering your video. Play it when you are ready.', 'assistant');
+                    }
+                    set(state => ({
+                        photos: state.photos.map(p => p.id === newId ? { ...p, isBusy: status === 'waiting', taskId } : p)
+                    }));
+                },
+            });
+            set(state => ({
+                photos: state.photos.map(p => p.id === newId ? { ...p, taskId } : p),
+            }));
+            addMessage('Video generation started via Sora. I will update you when it finishes.', 'assistant');
+        } catch (err: any) {
+            console.error('Sora generation failed', err);
+            imageData.videos[newId] = undefined;
+            imageData.tasks[newId] = { status: 'fail', error: err?.message };
+            set(state => ({
+                photos: state.photos.filter(p => p.id !== newId),
+            }));
+            const errorMessage = String(err?.message || 'Failed to start Sora video generation.');
+            if (errorMessage.includes('Hourly generation limit')) {
+                setError('Sora hourly limit reached. Try again in about an hour.');
+            } else {
+                setError(errorMessage);
+            }
+            addMessage('The Sora video request failed. Try again in a bit.', 'assistant');
+        } finally {
+            set({ isAssistantTyping: false, activeAnimation: 'IDLE' });
+        }
+        return;
+    }
+
+    if (!sourceImage) {
+        set({ isAssistantTyping: false, activeAnimation: 'IDLE' });
+        setError('Upload an image first, then pick a filter.');
+        return;
+    }
+
     const newId = crypto.randomUUID()
     imageData.inputs[newId] = sourceImage;
 
-    const newPhoto: Photo = { id: newId, mode, isBusy: true, isInitial: false }
+    const newPhoto: Photo = { id: newId, mode, isBusy: true, isInitial: false, mediaType: 'image' }
     set(state => ({
         photos: [...state.photos, newPhoto]
     }))
@@ -133,6 +207,10 @@ export const generateImage = async (prompt: string, mode: string) => {
     }
 }
 
+export const generateSoraVideo = async (prompt: string, options?: GenerateOptions) => {
+    await generateImage(prompt, 'sora', { ...options, suppressUserMessage: true });
+}
+
 export const setCustomPrompt = (prompt: string) => {
     set({ customPrompt: prompt })
 }
@@ -160,7 +238,7 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
     if (source === 'upload' && data) {
         newId = crypto.randomUUID();
         imageData.inputs[newId] = data;
-        newPhoto = { id: newId, isBusy: false, mode: 'upload', isInitial: true };
+        newPhoto = { id: newId, isBusy: false, mode: 'upload', isInitial: true, mediaType: 'image' };
         set(state => ({
             photos: [...state.photos, newPhoto],
             activePhotoId: newId
@@ -171,7 +249,7 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
     if (source === 'webcam' && data) {
         newId = crypto.randomUUID();
         imageData.inputs[newId] = data;
-        newPhoto = { id: newId, isBusy: false, mode: 'webcam', isInitial: true };
+        newPhoto = { id: newId, isBusy: false, mode: 'webcam', isInitial: true, mediaType: 'image' };
         set(state => ({
             photos: [...state.photos, newPhoto],
             activePhotoId: newId

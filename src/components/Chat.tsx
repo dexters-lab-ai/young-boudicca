@@ -2,23 +2,26 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import c from 'classnames';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import modes from '../lib/modes';
-import { handleFilterClick, setCustomPrompt, toggleSettingsModal, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, toggleBettingModal } from '../lib/actions';
+import { handleFilterClick, setCustomPrompt, toggleSettingsModal, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, toggleBettingModal, generateSoraVideo } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 import { useWallet } from '@solana/wallet-adapter-react';
 // FIX: Corrected import from Pnp... to Monaco... types
 import { MonacoMarket, MonacoMarketOutcome, MonacoUserBet } from '../types';
 import { useTransactionSender } from '../hooks/useTransactionSender';
+import useSoraPolling from '../hooks/useSoraPolling';
+import imageData from '../lib/imageData';
 
 import '../styles/Chat.css';
 
 const capitalize = (s: string) => (s && s.length > 0) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+const DEFAULT_IMAGE_ID = 'default-image';
 
 export default function Chat() {
   const { publicKey } = useWallet();
@@ -36,6 +39,82 @@ export default function Chat() {
   const [isCheckingSub, setIsCheckingSub] = useState(false);
   const [isBalanceSufficient, setIsBalanceSufficient] = useState(false);
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+  const [activeTab, setActiveTab] = useState<'filters' | 'sora'>('filters');
+  const [soraPrompt, setSoraPrompt] = useState<string>(modes.sora.prompt);
+  const [soraAspectRatio, setSoraAspectRatio] = useState<'auto' | 'portrait' | 'landscape'>('auto');
+  const [soraRemoveWatermark, setSoraRemoveWatermark] = useState<boolean>(true);
+  const [soraError, setSoraError] = useState<string | null>(null);
+  const [isSoraSubmitting, setIsSoraSubmitting] = useState<boolean>(false);
+  const [isCompactViewport, setIsCompactViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 768px)').matches;
+  });
+
+  const soraPricingCopy = useMemo(() => 'Sora 2 beta · 30 credits (~$0.15) per 10s video with audio. Limit 3 videos/hour per wallet.', []);
+
+  const photoGallery = useStore.use.photos();
+  const soraVideos = useMemo(() => photoGallery.filter(p => p.mediaType === 'video'), [photoGallery]);
+  const hasUserImage = useMemo(
+    () => photoGallery.some(p => p.mediaType === 'image' && p.id !== DEFAULT_IMAGE_ID && !p.isBusy),
+    [photoGallery]
+  );
+  const soraButtonTitle = hasUserImage ? 'Use the current uploaded image to generate a video in Sora.' : 'Upload or capture an image first.';
+
+  useSoraPolling();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const handler = (event: MediaQueryListEvent) => setIsCompactViewport(event.matches);
+    setIsCompactViewport(mediaQuery.matches);
+    try {
+      mediaQuery.addEventListener('change', handler);
+    } catch {
+      // Safari < 14 fallback
+      mediaQuery.addListener(handler);
+    }
+    return () => {
+      try {
+        mediaQuery.removeEventListener('change', handler);
+      } catch {
+        mediaQuery.removeListener(handler);
+      }
+    };
+  }, []);
+
+  const isSoraTabActive = activeTab === 'sora';
+  const disableChatInput = isSoraTabActive && !isCompactViewport;
+
+  const handleSoraGenerate = useCallback(async () => {
+    if (!hasUserImage) {
+      setSoraError('Upload or capture an image first.');
+      setActiveTab('sora');
+      return;
+    }
+
+    const trimmedPrompt = soraPrompt.trim();
+    if (!trimmedPrompt) {
+      setSoraError('Describe the motion you want Sora to create.');
+      setActiveTab('sora');
+      return;
+    }
+
+    setSoraError(null);
+    setIsSoraSubmitting(true);
+    try {
+      await generateSoraVideo(trimmedPrompt, {
+        aspectRatio: soraAspectRatio === 'auto' ? undefined : soraAspectRatio,
+        removeWatermark: soraRemoveWatermark,
+      });
+      setActiveTab('sora');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start Sora video generation.';
+      setSoraError(message);
+      setActiveTab('sora');
+    } finally {
+      setIsSoraSubmitting(false);
+    }
+  }, [hasUserImage, soraPrompt, soraAspectRatio, soraRemoveWatermark]);
 
   // Determine current agent details (custom takes precedence)
   const currentAgentDetails = activeCustomAgent || models.find(m => m.url === activeModelUrl);
@@ -113,6 +192,13 @@ export default function Chat() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isAssistantThinkingOrSpeaking, streamingSummary]);
+
+  useEffect(() => {
+    const hasActiveSoraJob = soraVideos.some(video => video.isBusy || imageData.tasks[video.id]?.status === 'waiting');
+    if (hasActiveSoraJob) {
+      setActiveTab('sora');
+    }
+  }, [soraVideos]);
 
   const handleSendMessage = async () => {
     const text = customPrompt.trim();
@@ -209,18 +295,141 @@ export default function Chat() {
         <div ref={chatEndRef} />
       </div>
 
-      <div className="filter-selector">
-        <h3>Quick Filters</h3>
-        <div className="filter-chips">
-          {Object.entries(modes).map(([key, { name, emoji }]: [string, { name: string; emoji: string }]) => (
-            <button key={key} className="filter-chip" onClick={() => handleFilterClick(key)}>
-              {emoji} {name}
-            </button>
-          ))}
+      <div className="filter-selector tabs">
+        <div className="tab-headers compact">
+          <button
+            className={activeTab === 'filters' ? 'active' : ''}
+            onClick={() => setActiveTab('filters')}
+          >
+            Image Filters
+          </button>
+          <button
+            className={activeTab === 'sora' ? 'active' : ''}
+            onClick={() => setActiveTab('sora')}
+          >
+            Sora Video
+          </button>
+        </div>
+        <div className="tab-body">
+          {activeTab === 'filters' && (
+            <div className="filter-chips">
+              {Object.entries(modes)
+                .filter(([key]) => key !== 'sora')
+                .map(([key, { name, emoji }]: [string, { name: string; emoji: string }]) => (
+                  <button key={key} className="filter-chip" onClick={() => handleFilterClick(key)}>
+                    {emoji} {name}
+                  </button>
+                ))}
+            </div>
+          )}
+          {activeTab === 'sora' && (
+            <div className="sora-panel">
+              <div className="sora-info" title={soraPricingCopy}>
+                <span className="icon">movie</span>
+                <strong>Sora video (beta)</strong>
+                <span className="sora-meta">30 credits (~$0.15) · 10s with audio · 3/hr limit</span>
+              </div>
+              <form
+                className="sora-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSoraGenerate();
+                }}
+              >
+                <label className="sora-field">
+                  <span>Prompt</span>
+                  <textarea
+                    value={soraPrompt}
+                    onChange={(event) => setSoraPrompt(event.target.value)}
+                    placeholder="Describe how the subject should move, the scene, mood, camera, etc."
+                    rows={isCompactViewport ? 3 : 4}
+                    disabled={isSoraSubmitting}
+                  />
+                </label>
+                <div className="sora-inline">
+                  <label>
+                    <span>Aspect ratio</span>
+                    <select
+                      value={soraAspectRatio}
+                      onChange={(event) => setSoraAspectRatio(event.target.value as 'auto' | 'portrait' | 'landscape')}
+                      disabled={isSoraSubmitting}
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="portrait">Portrait</option>
+                      <option value="landscape">Landscape</option>
+                    </select>
+                  </label>
+                  <label className="sora-toggle">
+                    <input
+                      type="checkbox"
+                      checked={soraRemoveWatermark}
+                      onChange={(event) => setSoraRemoveWatermark(event.target.checked)}
+                      disabled={isSoraSubmitting}
+                    />
+                    <span>Remove watermark</span>
+                  </label>
+                </div>
+                {soraError && <p className="sora-error">{soraError}</p>}
+                <div className="sora-actions">
+                  <button
+                    className="primary"
+                    type="submit"
+                    disabled={!hasUserImage || isSoraSubmitting}
+                    title={soraButtonTitle}
+                  >
+                    <span className="icon">{isSoraSubmitting ? 'hourglass_top' : 'play_circle'}</span>
+                    {isSoraSubmitting ? 'Starting…' : 'Generate video'}
+                  </button>
+                </div>
+                {!hasUserImage && (
+                  <p className="sora-hint">Upload or capture an image to unlock Sora generation.</p>
+                )}
+              </form>
+              {soraVideos.length > 0 && (
+                <div className="sora-gallery">
+                  {soraVideos.map(video => {
+                    const videoMeta = imageData.videos[video.id];
+                    const taskMeta = imageData.tasks[video.id];
+                    return (
+                      <div key={video.id} className="sora-card">
+                        {video.isBusy || taskMeta?.status === 'waiting' ? (
+                          <div className="sora-card-pending">
+                            <div className="spinner" />
+                            <p>Rendering video…</p>
+                          </div>
+                        ) : videoMeta?.url ? (
+                          <video
+                            controls
+                            poster={videoMeta.thumbnail}
+                            src={videoMeta.url}
+                            preload="metadata"
+                          />
+                        ) : (
+                          <div className="sora-card-error">
+                            <span className="icon">error</span>
+                            <p>{taskMeta?.error || 'Video unavailable'}</p>
+                          </div>
+                        )}
+                        <div className="sora-card-footer">
+                          <span className="status">{taskMeta?.status ?? (video.isBusy ? 'waiting' : 'unknown')}</span>
+                          {videoMeta?.url && (
+                            <a href={videoMeta.url} download target="_blank" rel="noopener noreferrer">
+                              <span className="icon">download</span>
+                              Download
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="chat-input-area">
+      <div className={c('chat-input-area', { disabled: disableChatInput })}>
         {isChatLocked && (
             <div className="subscription-gate-overlay">
                 <div className="gate-content">
@@ -255,7 +464,7 @@ export default function Chat() {
               handleSendMessage();
             }
           }}
-          disabled={isChatLocked || isCheckingPermissions}
+          disabled={isChatLocked || isCheckingPermissions || disableChatInput}
         />
         {isSpeechRecognitionSupported && (
             <button className={c('mic-button', { listening: isListening })} onClick={toggleListening} title={isListening ? "Stop listening" : "Start listening"} disabled={isChatLocked || isCheckingPermissions}>
@@ -264,10 +473,13 @@ export default function Chat() {
         )}
         <button
             onClick={handleSendMessage}
-            disabled={isChatLocked || isCheckingPermissions || !customPrompt.trim()}
+            disabled={isChatLocked || isCheckingPermissions || !customPrompt.trim() || disableChatInput}
         >
           <span className="icon">send</span>
         </button>
+        {disableChatInput && (
+          <span className="sora-chat-hint">Sora tab is active. Use the Sora form above.</span>
+        )}
       </div>
     </div>
   )

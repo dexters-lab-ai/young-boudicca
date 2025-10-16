@@ -114,11 +114,15 @@ export default function Stage() {
 
 
   const activePhoto = photos.find(p => p.id === activePhotoId);
-  const activePhotoSrc = activePhotoId ? (
-    activePhoto?.isInitial ?
-    imageData.inputs[activePhotoId] :
-    imageData.outputs[activePhotoId]
+  const isVideo = activePhoto?.mediaType === 'video';
+  const activeImageSrc = !isVideo && activePhotoId ? (
+    activePhoto?.isInitial
+      ? imageData.inputs[activePhotoId]
+      : imageData.outputs[activePhotoId]
   ) : null;
+  const activeVideoMeta = isVideo && activePhotoId ? imageData.videos[activePhotoId] : undefined;
+  const activeVideoTask = isVideo && activePhotoId ? imageData.tasks[activePhotoId] : undefined;
+  const activeVideoUrl = activeVideoMeta?.url ?? null;
 
   const startVideo = async () => {
     if (videoRef.current) {
@@ -257,11 +261,42 @@ export default function Stage() {
             </div>
         )}
 
-        {inputSource !== 'webcam' && inputSource !== 'generator' && activePhotoId !== 'default-image' && activePhotoSrc && (
-            <img src={activePhotoSrc} alt="Generated art" />
+        {inputSource !== 'webcam' && inputSource !== 'generator' && activePhotoId !== 'default-image' && (
+          isVideo ? (
+            <div className="video-player">
+              {activeVideoUrl ? (
+                <>
+                  <video
+                    key={activeVideoUrl}
+                    controls
+                    loop
+                    poster={activeVideoMeta?.thumbnail}
+                    src={activeVideoUrl}
+                  />
+                  <a
+                    className="video-download"
+                    href={activeVideoUrl}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span className="icon">download</span>
+                    Download
+                  </a>
+                </>
+              ) : (
+                <div className="video-placeholder">
+                  <div className="spinner" />
+                  <p>{activeVideoTask?.error ?? 'Rendering video…'}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            activeImageSrc && <img src={activeImageSrc} alt="Generated art" />
+          )
         )}
 
-        {inputSource === 'upload' && !activePhotoSrc && (
+        {inputSource === 'upload' && !activeImageSrc && !isVideo && (
            <div className="media-overlay">Select an image</div>
         )}
       </div>

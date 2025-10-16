@@ -5,6 +5,12 @@
 import { Mode } from '../types';
 
 const modes: Record<string, Mode> = {
+  sora: {
+    name: 'Sora Video',
+    emoji: '🎬',
+    prompt: 'Generate a cinematic Sora video based on this image. Include expressive motion and consistent lighting.'
+  },
+
   renaissance: {
     name: 'Renaissance',
     emoji: '🎨',
