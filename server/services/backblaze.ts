@@ -4,6 +4,7 @@ export interface BackblazeCredentials {
   keyId: string;
   applicationKey: string;
   bucketId: string;
+  bucketName?: string;
 }
 
 export interface BackblazeAuthContext {
@@ -15,6 +16,7 @@ export interface BackblazeAuthContext {
 export class BackblazeService {
   private client: Backblaze;
   private bucketId: string;
+  private bucketNameForDownload: string;
   private authContext: BackblazeAuthContext | null = null;
 
   constructor(credentials: BackblazeCredentials) {
@@ -23,6 +25,7 @@ export class BackblazeService {
       applicationKey: credentials.applicationKey,
     });
     this.bucketId = credentials.bucketId;
+    this.bucketNameForDownload = credentials.bucketName?.trim() || credentials.bucketId;
   }
 
   async authorize(): Promise<void> {
@@ -73,7 +76,7 @@ export class BackblazeService {
     return {
       fileId,
       fileName,
-      downloadUrl: `${auth.downloadUrl}/file/${this.bucketId}/${encodeURIComponent(fileName)}`,
+      downloadUrl: `${auth.downloadUrl}/file/${this.bucketNameForDownload}/${encodeURIComponent(fileName)}`,
     };
   }
 
@@ -87,10 +90,11 @@ export function createBackblazeServiceFromEnv(): BackblazeService | null {
   const keyId = process.env.BACKBLAZE_KEY_ID;
   const applicationKey = process.env.BACKBLAZE_APPLICATION_KEY;
   const bucketId = process.env.BACKBLAZE_BUCKET_ID;
+  const bucketName = process.env.BACKBLAZE_BUCKET_NAME;
 
   if (!keyId || !applicationKey || !bucketId) {
     return null;
   }
 
-  return new BackblazeService({ keyId, applicationKey, bucketId });
+  return new BackblazeService({ keyId, applicationKey, bucketId, bucketName });
 }
