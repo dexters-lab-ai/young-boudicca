@@ -45,6 +45,11 @@ const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
 const candyMachineConfig = createCandyMachineConfigFromEnv();
 
+const elevenlabs = process.env.ELEVENLABS_API_KEY
+  ? new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
+  : null;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM';
+
 const soraConfig = {
   apiKey: process.env.SORA_API_KEY,
   maxGenerationsPerHour: Number(process.env.SORA_MAX_PER_HOUR ?? '3'),
@@ -121,6 +126,67 @@ app.use((req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   next();
 });
 
+function inferImageExtension(mimeType: string): string {
+  switch (mimeType) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    default:
+      return 'bin';
+  }
+}
+
+async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
+  const hostedUrls: string[] = [];
+
+  for (const url of imageUrls) {
+    if (!url?.startsWith('data:')) {
+      console.log('[Server][Sora] Using hosted image URL:', url);
+      hostedUrls.push(url);
+      continue;
+    }
+
+    if (!backblazeService) {
+      throw new Error('Sora image-to-video requires BACKBLAZE storage when using data URLs. Configure Backblaze env vars or supply publicly accessible image URLs.');
+    }
+
+    const match = url.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      throw new Error('Invalid data URL provided for Sora image input.');
+    }
+
+    const [, mimeType, base64Payload] = match;
+    const buffer = Buffer.from(base64Payload, 'base64');
+    if (!buffer.length) {
+      throw new Error('Empty image payload provided for Sora image input.');
+    }
+
+    const extension = inferImageExtension(mimeType);
+    const fileName = `sora-inputs/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    console.log('[Server][Sora] Uploading data URL to Backblaze bucket:', fileName, 'size=', buffer.length);
+    const upload = await backblazeService.uploadFile({
+      fileName,
+      data: buffer,
+      contentType: mimeType,
+      info: {
+        'x-origin': 'sora-data-url',
+      },
+    });
+
+    console.log('[Server][Sora] Upload successful:', upload.downloadUrl);
+    hostedUrls.push(upload.downloadUrl);
+  }
+
+  console.log('[Server][Sora] Hosted image URLs prepared:', hostedUrls);
+  return hostedUrls;
+}
+
 // --- Sora Endpoints ---
 app.post('/api/sora/image-to-video', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!soraConfig.apiKey) {
@@ -145,10 +211,11 @@ app.post('/api/sora/image-to-video', async (req: ExpressRequest, res: ExpressRes
   }
 
   try {
+    const hostedImageUrls = await ensureHostedImageUrls(imageUrls);
     const task = await createImageToVideoTask({
       apiKey: soraConfig.apiKey,
       prompt: prompt.trim(),
-      imageUrls,
+      imageUrls: hostedImageUrls,
       aspectRatio,
       removeWatermark,
     });

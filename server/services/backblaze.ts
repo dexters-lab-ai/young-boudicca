@@ -30,10 +30,11 @@ export class BackblazeService {
       return;
     }
     const response = await this.client.authorize();
+    const { apiUrl, downloadUrl, authorizationToken } = response.data;
     this.authContext = {
-      apiUrl: response.apiUrl,
-      downloadUrl: response.downloadUrl,
-      authorizationToken: response.authorizationToken,
+      apiUrl,
+      downloadUrl,
+      authorizationToken,
     };
   }
 
@@ -56,20 +57,23 @@ export class BackblazeService {
       bucketId: this.bucketId,
       authorizationToken: auth.authorizationToken,
     });
+    const { uploadUrl, authorizationToken: uploadAuthToken } = uploadUrlResponse.data;
 
     const result = await this.client.uploadFile({
-      uploadUrl: uploadUrlResponse.uploadUrl,
-      uploadAuthToken: uploadUrlResponse.authorizationToken,
+      uploadUrl,
+      uploadAuthToken,
       fileName: params.fileName,
       data: params.data,
       contentType: params.contentType,
       info: params.info,
     });
 
+    const { fileId, fileName } = result.data;
+
     return {
-      fileId: result.data.fileId,
-      fileName: result.data.fileName,
-      downloadUrl: `${auth.downloadUrl}/file/${this.bucketId}/${encodeURIComponent(result.data.fileName)}`,
+      fileId,
+      fileName,
+      downloadUrl: `${auth.downloadUrl}/file/${this.bucketId}/${encodeURIComponent(fileName)}`,
     };
   }
 

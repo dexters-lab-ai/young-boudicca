@@ -132,7 +132,7 @@ export const generateImage = async (prompt: string, mode: string, options?: Gene
                         addMessage('Sora finished rendering your video. Play it when you are ready.', 'assistant');
                     }
                     set(state => ({
-                        photos: state.photos.map(p => p.id === newId ? { ...p, isBusy: status === 'waiting', taskId } : p)
+                        photos: state.photos.map(p => p.id === newId ? { ...p, isBusy: status === 'waiting' } : p)
                     }));
                 },
             });
