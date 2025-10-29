@@ -1,72 +1,191 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+<img width="1200" alt="AI Dreams - NFT AI Companions" src="/screenshot.png" />
 </div>
 
-# Miko AI - Your 3D AI Companion Platform
+# 🌟 AI Dreams - Your Gateway to the Future of Digital Companionship
 
-**Miko AI** is a next-generation, multimodal AI platform that empowers creators to bring unique 3D virtual companions to life as one-of-a-kind NFTs on the Solana blockchain. Go beyond static JPEGs and build interactive AI agents with distinct personalities, voices, and animations that others can subscribe to and interact with.
+**AI Dreams** is revolutionizing digital interaction by enabling creators to craft unique, interactive 3D AI companions as verifiable NFTs on the Solana blockchain. Unlike traditional static NFTs, these companions are living, breathing digital entities with distinct personalities, voices, and the ability to form meaningful connections with users worldwide.
 
-This project pioneers the concept of **Personified AI Agents**, creating a new digital economy where creativity, AI, and blockchain technology intersect. It's more than an app—it's a launchpad for your digital creations.
+## 🚀 The Next Evolution in Digital Ownership
+
+AI Dreams isn't just another NFT platform—it's a paradigm shift in digital ownership and creator monetization. As a creator, you're not just selling an image; you're bringing to life intelligent companions that can be collected, customized, and cherished by users who subscribe to interact with them.
+
+### For Creators:
+- **True Digital Ownership**: When you create a companion, you maintain creative control while enabling others to own a piece of your creation
+- **Recurring Revenue**: Earn 75% of subscription fees from users who interact with your companions
+- **Flexible Licensing**: Set your own terms for digital usage rights and commercial applications
+- **Vibrant Ecosystem**: Be part of a growing community of creators pushing the boundaries of AI and digital art
+
+### For Collectors:
+- **Own Unique Digital Beings**: Each companion is a one-of-a-kind NFT with verifiable ownership on Solana
+- **Interactive Experiences**: Engage in real conversations, customize appearances, and form bonds with your AI companions
+- **Support Creators**: Your subscriptions directly support the artists and developers behind your favorite companions
+- **Potential Appreciation**: As companions gain popularity, their value in the secondary market may increase
 
 ## ✨ Core Features
 
--   **AI Companion NFT Creator:** Design and mint unique 3D AI agents as NFTs on the Solana blockchain. Each NFT's metadata links directly to the unique assets (VRM model, animations), ensuring verifiable ownership and rarity.
--   **Creator Economy & Subscriptions:** Monetize your creations! Other users can subscribe to your public agents by paying a small fee in Solana-based tokens (like USDC), sent directly to your wallet. You earn 75% of all subscription revenue.
--   **Real-time Voice Conversation:** Chat with agents via text or voice. The app uses the browser's built-in Speech-to-Text, Google's Gemini for lightning-fast responses, and ElevenLabs for high-quality, low-latency voice synthesis.
--   **Dynamic 3D Avatars:** Interact with fully animated 3D character models (VRM) that feature realistic lip-syncing, dynamic facial expressions, and custom gesture animations.
--   **Live Crypto & Betting Toolkit:** Agents are empowered with Gemini Function Calling to access a suite of on-chain tools. Get live market data for Solana tokens or browse and place bets on the PNP Prediction Market Exchange.
--   **Creator Dashboard:** Manage your created agents, view subscriber counts, track earnings, and toggle their public visibility all from a simple interface.
+### 🎨 AI Companion Creation
+- **NFT-Based Ownership**: Each companion is a unique NFT on the Solana blockchain, ensuring true digital ownership and scarcity
+- **3D Character Customization**: Design unique 3D avatars with customizable appearances, outfits, and animations
+- **Personality Engineering**: Craft distinct personalities, backstories, and behavioral traits for your companions
 
-## 🤖 Meet Miko
+### 💰 Creator Monetization
+- **Subscription Model**: Earn recurring revenue from users who interact with your companions
+- **Secondary Market Royalties**: Earn a percentage every time your companion NFT is resold
+- **Premium Features**: Offer exclusive content or abilities to subscribers
+- **X402 Payment Integration**: Seamless payment processing through X402 payment prompts
 
--   **Default Agent:** The platform's default agent is **Miko**, a cheerful, knowledgeable, and helpful AI guide ready to assist you with on-chain data, creative tasks, or a friendly chat.
--   **User-Created Agents:** The true magic comes from the community. Create anyone or anything—from historical figures like Einstein to entirely new fictional characters—each with its own look, personality, and on-chain identity.
+### 🤖 Advanced AI Capabilities
+- **Natural Conversations**: Powered by cutting-edge language models for realistic, contextual dialogue
+- **Voice Synthesis**: High-quality, expressive voice generation with emotional range
+- **Memory & Learning**: Companions remember past interactions and grow with users over time
+- **Multimodal Interaction**: Supports text, voice, and visual interactions
 
-## 🛠️ Technology & Architecture
+### 🌐 Social & Community
+- **Showcase Your Creations**: Share your companions with the world through integrated social features
+- **Collaborative Creation**: Partner with other creators to develop more complex companions
+- **Community Events**: Participate in challenges and events to showcase your creations
 
-The application is built with a modern, secure, and performant tech stack.
+## 🎭 Meet Your Digital Companions
 
--   **Frontend:** React, TypeScript, Vite, Zustand (for state management).
--   **3D Rendering:** Three.js & React Three Fiber power the 3D stage, with `@pixiv/three-vrm` for avatar and animation handling.
--   **Backend:** A lightweight Node.js server using Express and `tsx`. It acts as a secure proxy for all external API services and handles database interactions.
--   **Database:** MongoDB (via Mongoose) for storing user and agent metadata, including NFT details and subscription information.
--   **AI & Generative Services:**
-    -   **Google Gemini (`gemini-2.5-flash`):** The core language model for chat, reasoning, and function calling.
-    -   **Browser `SpeechRecognition` API:** Provides fast, free, and efficient Speech-to-Text.
-    -   **ElevenLabs API:** Used for high-quality, real-time Text-to-Speech, proxied through our secure backend.
--   **Blockchain & NFTs:**
-    -   **Solana:** The high-performance blockchain for all NFT and token-based interactions.
-    -   **Metaplex Umi:** The conceptual framework for minting and managing NFTs via the backend.
-    -   **Solana Wallet Adapter:** For connecting user wallets to sign transactions and verify ownership.
--   **Asset Hosting:** Users can host their VRM and VRMA files on any service with a direct public URL, such as **echo3D** or a properly configured **Google Drive** link.
+### Default Companion: Gemini
+- A versatile, knowledgeable AI assistant that helps you explore the platform's capabilities
+- Demonstrates the potential of AI companions with its advanced conversational abilities
+- Fully customizable to become your ideal digital companion
 
-## 🚀 Running Locally
+### Creator Spotlight
+- Discover amazing companions created by our community of artists and developers
+- From historical figures to original characters, each with unique personalities and abilities
+- Support your favorite creators by subscribing to their companions
 
-**Prerequisites:** Node.js v18+
+## ❓ Frequently Asked Questions
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/miko-ai.git
-    cd miko-ai
-    ```
+### 🤔 What makes AI Dreams different from other NFT projects?
+AI Dreams goes beyond static images by creating interactive, intelligent companions that can form meaningful relationships with users. Our focus is on creating living digital beings with personalities, memories, and the ability to grow over time.
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+### 💰 How do creators earn money?
+Creators earn through:
+1. **Initial NFT Sales**: Sell your companion NFTs on our marketplace
+2. **Subscription Revenue**: Earn 75% of subscription fees from users who interact with your companions
+3. **Secondary Market Royalties**: Earn a percentage every time your companion is resold
+4. **Premium Content**: Offer exclusive features or content to subscribers
 
-3.  **Set up Environment Variables:**
-    -   Create a file named `.env` in the root of the project.
-    -   Add your API keys to this file. See `INSTRUCTIONS.md` for the required keys. You will need:
-        -   **Google Gemini:** `GEMINI_API_KEY`
-        -   **ElevenLabs:** `ELEVENLABS_API_KEY`
-        -   **Solscan:** `SOLSCAN_API_KEY` (For crypto tools)
-        -   **MongoDB:** `MONGODB_URI` (For custom agent creation)
+### 🔒 How does digital ownership work?
+- Each companion is a unique NFT on the Solana blockchain
+- NFT ownership grants specific usage rights defined by the creator
+- Creators can set terms for commercial use, modifications, and redistribution
+- All transactions are transparent and verifiable on-chain
 
-4.  **Run the application:**
-    -   The `dev:all` script runs both the backend server and the frontend client concurrently.
-    ```bash
-    npm run dev:all
-    ```
+### 🌍 Can I use my companion across different platforms?
+Yes! Your companions are designed to be portable across compatible platforms, ensuring you can interact with them wherever you go.
 
-    Your application will be running at `http://localhost:5173`. The server runs on port `8787`.
+### 🎨 What can I do with my AI companion?
+- Engage in meaningful conversations
+- Customize their appearance and personality
+- Teach them new skills and knowledge
+- Take them into virtual worlds and social platforms
+- Use them as creative partners or personal assistants
+
+### 💸 What is the X402 payment system?
+X402 protocol is our integrated payment solution that allows for seamless, secure transactions within the AI Dreams ecosystem. It supports:
+- One-time purchases
+- Recurring subscriptions
+- Microtransactions for premium features
+- Multi-currency support including major cryptocurrencies
+
+## 🛠️ Technology Stack
+
+AI Dreams is built with a modern, robust technology stack:
+
+- **Frontend**: React, TypeScript, Vite, Zustand
+- **3D Rendering**: Three.js & React Three Fiber with `@pixiv/three-vrm`
+- **Backend**: Node.js, Express, tsx
+- **Database**: MongoDB with Mongoose
+- **AI & Voice**:
+  - Google Gemini for natural language processing
+  - ElevenLabs for high-quality voice synthesis
+  - Browser SpeechRecognition API
+- **Blockchain**:
+  - Solana for NFT minting and transactions
+  - Metaplex Umi for NFT management
+  - Solana Wallet Adapter for secure wallet connections
+
+## 🚀 Local Development Setup
+
+### Prerequisites
+- Node.js v18 or higher
+- npm or yarn package manager
+- MongoDB instance (local or cloud)
+- API keys for Gemini and ElevenLabs
+
+### Quick Start
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/ai-dreams.git
+   cd ai-dreams
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   cd server
+   npm install
+   cd ..
+   ```
+
+3. **Set up environment variables**
+   Create a `.env` file in the root directory with:
+   ```env
+   # Server
+   PORT=3000
+   MONGODB_URI=your_mongodb_connection_string
+   
+   # AI Services
+   GEMINI_API_KEY=your_gemini_api_key
+   ELEVENLABS_API_KEY=your_elevenlabs_api_key
+   ```
+
+4. **Start the development servers**
+   In the root directory, run:
+   ```bash
+   # Start frontend (runs on http://localhost:5173)
+   npm run dev
+   
+   # In a separate terminal, start the backend
+   cd server
+   npm run dev
+   ```
+
+5. **Access the application**
+   - Frontend: http://localhost:5173
+   - Backend API: http://localhost:3000
+
+### Available Scripts
+
+- `npm run dev` - Start frontend development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build locally
+- `cd server && npm run dev` - Start backend server with hot-reload
+
+## 🚀 Join the AI Dreams Revolution
+
+### For Creators:
+1. **Design** unique AI companions with custom personalities and appearances
+2. **Mint** your creation as an NFT on Solana
+3. **Earn** from subscriptions and secondary sales
+4. **Grow** your community of fans and supporters
+
+### For Collectors:
+1. **Discover** amazing AI companions created by talented artists
+2. **Collect** unique digital beings as NFTs
+3. **Interact** with your companions anytime, anywhere
+4. **Support** your favorite creators directly
+
+## 📱 Get Started Today
+
+Visit [aidreams.live](https://aidreams.live) to start your journey into the future of digital companionship. Create, collect, and connect with AI companions like never before.
+
+---
+
+*AI Dreams is built on Solana for fast, low-cost transactions and true digital ownership. Join us in shaping the future of digital interaction and creator economies.*

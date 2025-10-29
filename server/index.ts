@@ -812,6 +812,45 @@ setProvider(provider);
 // Monaco program ID (mainnet)
 const MONACO_PROGRAM_ID = new PublicKey('monacoUXKtUi6vKsQwaLyxmXKSievfNWEcYXTgkbCih');
 
+// Type definitions for Monaco Protocol
+interface MarketAccount {
+    marketStatus: {
+        open?: {};
+        [key: string]: any;
+    };
+    title: string;
+    [key: string]: any;
+}
+
+interface Market {
+    publicKey: PublicKey;
+    account: MarketAccount;
+}
+
+interface OrderAccount {
+    publicKey: PublicKey;
+    account: {
+        purchaser: PublicKey;
+        market: PublicKey;
+        marketOutcomeIndex: number;
+        orderStatus: {
+            [key: string]: any;
+        };
+        stake: { toNumber: () => number };
+        payout: { toNumber: () => number };
+        [key: string]: any;
+    };
+}
+
+// Import Monaco Protocol's MarketPrice type
+import type { MarketPrice } from '@monaco-protocol/client/types/market';
+
+// Extend the MarketPrice interface with any additional properties we need
+interface CustomMarketPrice extends MarketPrice {
+    // Add any additional properties here if needed
+    [key: string]: any;
+}
+
 // Initialize the program using Program.at() which fetches the IDL from the chain
 let monacoProgram: any;
 
@@ -827,16 +866,17 @@ const initProgram = async () => {
 };
 
 // Call the initialization
-initProgram().catch(console.error);
+initProgram().catch((error: Error) => {
+    console.error('Error initializing Monaco program:', error);
+});
 
 app.get('/api/monaco/markets', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
-        const allMarkets = await monacoProgram.account.market.all();
-        const openMarkets = allMarkets.filter(m => 'open' in m.account.marketStatus);
-        const markets = openMarkets.map(m => ({
-            id: m.publicKey.toBase58(),
-            title: m.account.title,
-            ...m.account,
+        const allMarkets: Market[] = await monacoProgram.account.market.all();
+        const openMarkets = allMarkets.filter((market) => 'open' in market.account.marketStatus);
+        const markets = openMarkets.map((market: Market) => ({
+            id: market.publicKey.toBase58(),
+            ...market.account
         }));
         res.json({ markets });
     } catch (error) {
@@ -919,8 +959,8 @@ app.post('/api/monaco/orders/place', placeOrderHandler);
 app.get('/api/monaco/orders/user/:walletAddress', async (req: ExpressRequest, res: ExpressResponse) => {
     const { walletAddress } = req.params;
     try {
-        const allOrders = await monacoProgram.account.order.all();
-        const orderAccounts = allOrders.filter(o => o.account.purchaser.toBase58() === walletAddress);
+        const allOrders: OrderAccount[] = await monacoProgram.account.order.all();
+        const orderAccounts = allOrders.filter((o: OrderAccount) => o.account.purchaser.toBase58() === walletAddress);
 
         if (orderAccounts.length === 0) {
             return res.json({ bets: [] });
@@ -936,18 +976,26 @@ app.get('/api/monaco/orders/user/:walletAddress', async (req: ExpressRequest, re
         );
         
         // Create promises for market details and prices with proper type safety
-        const marketDetailsPromises = marketPks.map(marketPk => 
+        const marketDetailsPromises = marketPks.map((marketPk: PublicKey) => 
             getMarket(monacoProgram, marketPk)
         );
-        const marketPricesPromises = marketPks.map(marketPk => 
+        const marketPricesPromises = marketPks.map((marketPk: PublicKey) => 
             getMarketPrices(monacoProgram, marketPk)
         );
 
         const marketDetailsResponses = await Promise.all(marketDetailsPromises);
         const marketPricesResponses = await Promise.all(marketPricesPromises);
         
-        const marketsMap = new Map<string, any>();
-        marketDetailsResponses.forEach((response, index) => {
+        interface MarketData {
+            account: {
+                title: string;
+                [key: string]: any;
+            };
+prices: CustomMarketPrice[];
+        }
+        
+        const marketsMap = new Map<string, MarketData>();
+        marketDetailsResponses.forEach((response: { success: boolean; data: { publicKey: { toBase58: () => string; }; account: any; }; }, index: number) => {
             if (response.success) {
                 const pk = response.data.publicKey.toBase58();
                 const pricesResponse = marketPricesResponses[index];
@@ -957,7 +1005,7 @@ app.get('/api/monaco/orders/user/:walletAddress', async (req: ExpressRequest, re
         });
 
         // Enrich orders with market details
-        const enrichedBets = orderAccounts.map(order => {
+        const enrichedBets = orderAccounts.map((order: OrderAccount) => {
             const marketPk = order.account.market.toBase58();
             const marketData = marketsMap.get(marketPk);
             
@@ -967,7 +1015,7 @@ app.get('/api/monaco/orders/user/:walletAddress', async (req: ExpressRequest, re
 
             const { account: market, prices } = marketData;
 
-            const outcome = prices.find((p: any) => p.marketOutcomeIndex === order.account.marketOutcomeIndex);
+            const outcome = prices.find((p: MarketPrice) => p.marketOutcomeIndex === order.account.marketOutcomeIndex);
             const outcomeTitle = outcome ? outcome.marketOutcome : `Outcome #${order.account.marketOutcomeIndex}`;
             
             const stake = order.account.stake.toNumber() / 1_000_000; // Assuming 6 decimals for USDC
@@ -1156,11 +1204,10 @@ app.post('/tools/listMonacoMarkets', async (req: ExpressRequest, res: ExpressRes
     try {
         const { marketStatus = 'open' } = req.body ?? {};
         const allMarkets = await monacoProgram.account.market.all();
-        const openMarkets = allMarkets.filter(m => marketStatus in m.account.marketStatus);
-        const markets = openMarkets.map(m => ({
-            id: m.publicKey.toBase58(),
-            title: m.account.title,
-            ...m.account,
+        const openMarkets = allMarkets.filter((market: Market) => 'open' in market.account.marketStatus);
+        const markets = openMarkets.map((market: Market) => ({
+            id: market.publicKey.toBase58(),
+            ...market.account
         }));
         res.json({ data: markets });
     } catch (err: any) {
@@ -1215,7 +1262,7 @@ app.post('/tools/listUserMonacoOrders', async (req: ExpressRequest, res: Express
         if (!walletAddress) return res.status(400).json({ error: 'Missing walletAddress' });
         
         const allOrders = await monacoProgram.account.order.all();
-        const userOrders = allOrders.filter(o => o.account.purchaser.toBase58() === walletAddress);
+        const userOrders = allOrders.filter((o: OrderAccount) => o.account.purchaser.toBase58() === walletAddress);
         res.json({ data: userOrders });
     } catch (err: any) {
         console.error('listUserMonacoOrders tool error:', err);

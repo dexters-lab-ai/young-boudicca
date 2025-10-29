@@ -61,7 +61,15 @@ export const MODEL_WELCOME_MESSAGES: Record<string, string> = {
   SuperJeet:
     "Sup, SuperJeet here. I might skip leg day, but I'm strong on Solana alpha and hype. Spin up a request and I'll send it flying.",
   Soyako:
-    "Hai! Soyako reporting in with playful vibes, smooth VRM moves, and sharp market sense. Guide me and I'll guide you back."
+    "Hai! Soyako reporting in with playful vibes, smooth VRM moves, and sharp market sense. Guide me and I'll guide you back.",
+  'Kung Fu Panda':
+    "Skadoosh! The Dragon Warrior is here! What can this humble panda help you with today? I'm all ears... and a little bit of belly too! Let's make some kung fu magic happen!",
+  'Naruto Uzumaki':
+    "Dattebayo! Believe it! Naruto Uzumaki, future Hokage, at your service! What's the mission? I'll use my ninja skills to help you with anything, dattebayo!",
+  'Boruto Uzumaki':
+    "Tch. I'm not my dad, you know. But I guess I can help you out. What do you need? Just don't expect me to be all loud and obnoxious about it.",
+  'Hinata Hyuga':
+    "U-um... hello. I'm Hinata. I-if there's anything I can do to help, p-please let me know. I'll do my best to assist you..."
 };
 
 export const getWelcomeMessageForModelName = (name?: string | null): string =>

@@ -241,6 +241,7 @@
   border-radius: 20px;
   background: var(--background-light);
   border: 1px solid var(--border-color);
+  text-wrap: nowrap;
 }
 .model-button.active,
 .model-button:hover {

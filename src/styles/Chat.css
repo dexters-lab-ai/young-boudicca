@@ -563,6 +563,7 @@ html[data-theme='dark'] .bet-status.pending { background-color: #444; color: #ee
   border: 1px solid var(--border-color);
   cursor: pointer;
   font-size: 0.8rem;
+  text-wrap: nowrap;
 }
 .filter-chip:hover {
   background: var(--primary-color);
