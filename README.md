@@ -1,5 +1,5 @@
 <div align="center">
-<img width="1200" alt="AI Dreams - NFT AI Companions" src="/screenshot.png" />
+<img width="1200" alt="AI Dreams - NFT AI Companions" src="https://raw.githubusercontent.com/dexters-lab-ai/young-boudicca/main/public/screenshot.png" />
 </div>
 
 # 🌟 AI Dreams - Your Gateway to the Future of Digital Companionship
