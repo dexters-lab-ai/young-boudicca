@@ -31,6 +31,7 @@ function dataUrlToInlineData(dataUrl: string) {
 }
 
 function getAi() {
+    // FIX: Correctly access apiKey from store state
     const apiKey = useStore.getState().apiKey;
     if (!apiKey) throw new Error('Missing API key');
     return new GoogleGenAI({ apiKey });

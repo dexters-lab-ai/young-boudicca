@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useStore from '../lib/store';
 import c from 'clsx';
+// FIX: Add toggleSettingsModal to import
 import { setCustomPrompt, toggleSettingsModal, toggleAboutModal } from '../lib/actions';
 import { useElizaAgent } from '../hooks/useElizaAgent';
 import { useWallet } from '@solana/wallet-adapter-react';

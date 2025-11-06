@@ -6,8 +6,6 @@ import * as React from 'react';
 import { useEffect } from 'react';
 import Stage from './Stage';
 import Chat from './Chat';
-import Welcome from './Welcome';
-import Settings from './Settings';
 import About from './About';
 import useStore from '../lib/store';
 import ElizaChat from './ElizaChat';
@@ -20,19 +18,27 @@ import VoiceSelector from './VoiceSelector';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import SubscriptionModal from './SubscriptionModal';
 import { BettingModal } from './BettingModal';
+import PaywallModal from './PaywallModal';
+// FIX: Import Settings and Welcome modals
+import Settings from './Settings';
+import Welcome from './Welcome';
+import { toggleWelcomeModal } from '../lib/actions';
+
 
 import '../styles/App.css';
 import '../styles/Modals.css';
 import '../styles/BettingModal.css';
 
 function AppContent() {
-  const isWelcomeModalOpen = useStore.use.isWelcomeModalOpen();
-  const isSettingsModalOpen = useStore.use.isSettingsModalOpen();
   const isAboutModalOpen = useStore.use.isAboutModalOpen();
   const isCreateAgentModalOpen = useStore.use.isCreateAgentModalOpen();
   const isTokenDetailModalOpen = useStore.use.isTokenDetailModalOpen();
   const isSubscriptionModalOpen = useStore.use.isSubscriptionModalOpen();
   const isBettingModalOpen = useStore.use.isBettingModalOpen();
+  const isPaywallModalOpen = useStore.use.isPaywallModalOpen();
+  // FIX: Get state for settings and welcome modals
+  const isSettingsModalOpen = useStore.use.isSettingsModalOpen();
+  const isWelcomeModalOpen = useStore.use.isWelcomeModalOpen();
   const activeAgent = useStore.use.activeAgent();
   const tempBackgroundUrl = useStore.use.tempBackgroundUrl();
   const error = useStore.use.error();
@@ -44,6 +50,13 @@ function AppContent() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // FIX: Show welcome modal on first load if API key is not set
+  useEffect(() => {
+    if (!useStore.getState().apiKey) {
+      toggleWelcomeModal(true);
+    }
+  }, []);
 
   return (
     <>
@@ -64,13 +77,15 @@ function AppContent() {
             </button>
         </div>
       </div>
-      {isWelcomeModalOpen && <Welcome />}
-      {isSettingsModalOpen && <Settings />}
       {isAboutModalOpen && <About />}
       {isCreateAgentModalOpen && <CreateAgentModal />}
       {isTokenDetailModalOpen && <TokenDetailModal />}
       {isSubscriptionModalOpen && <SubscriptionModal />}
       {isBettingModalOpen && <BettingModal />}
+      {isPaywallModalOpen && <PaywallModal />}
+      {/* FIX: Render Settings and Welcome modals */}
+      {isSettingsModalOpen && <Settings />}
+      {isWelcomeModalOpen && <Welcome />}
       {error && <ErrorModal message={error} onClose={() => setError(null)} />}
       <main>
           <Stage />

@@ -4,9 +4,11 @@
 */
 import { useState } from 'react';
 import useStore from '../lib/store';
+// FIX: Correct imports from actions.ts
 import { setApiKey, toggleSettingsModal } from '../lib/actions';
 
 export default function Settings() {
+    // FIX: Correctly access apiKey from the store
     const currentApiKey = useStore.use.apiKey();
     const currentRealtimeModel = useStore.use.realtimeModel();
     const setRealtimeModel = useStore.use.setRealtimeModel();

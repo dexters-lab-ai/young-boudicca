@@ -79,14 +79,11 @@ const YourAgentsTab: React.FC<{ onAgentCreated: () => void }> = ({ onAgentCreate
                 <div key={agent._id} className="agent-list-item">
                      <div className="agent-list-item-info">
                         <h5>{agent.name}</h5>
-                        <a href={`https://solscan.io/token/${agent.nftDetails?.mintAddress}?cluster=devnet`} target="_blank" rel="noopener noreferrer" className="nft-link">
-                           View NFT <span className="icon small">open_in_new</span>
-                        </a>
+                        <p className="agent-list-subscribers">
+                            <span className="icon small">group</span> {agent.subscriptionCount || 0} subscribers
+                        </p>
                     </div>
                     <div className="agent-list-metrics">
-                        <div className="metric-item">
-                            <span className="icon small">group</span> {agent.subscriptionCount || 0}
-                        </div>
                          <div className="visibility-toggle">
                             <label htmlFor={`vis-${agent._id}`}>{agent.isPublic ? 'Public' : 'Private'}</label>
                             <label className="switch">
@@ -117,17 +114,32 @@ const animationFields = [
 export default function CreateAgentModal() {
     const { publicKey, signMessage } = useWallet();
     const [activeTab, setActiveTab] = useState<'create' | 'your_agents'>('create');
+    
+    // Form State
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [systemInstruction, setSystemInstruction] = useState('');
     const [vrmUrl, setVrmUrl] = useState('');
+    const [environmentUrl, setEnvironmentUrl] = useState('');
     const [vrmAssetId, setVrmAssetId] = useState<string | null>(null);
     const [modelUploadStatus, setModelUploadStatus] = useState<'idle' | 'uploading' | 'uploaded' | 'error'>('idle');
     const [animationUrls, setAnimationUrls] = useState<Record<string, string>>({});
+    
+    // Monetization State
+    const [unlockAmountUSDC, setUnlockAmountUSDC] = useState<number>(0.1);
+    const [payoutWalletAddress, setPayoutWalletAddress] = useState<string>('');
+    const [network, setNetwork] = useState<'Solana' | 'Base' | 'BSC'>('Solana');
+
     const [isAdvancedOpen, setAdvancedOpen] = useState(false);
     const [submitStatus, setSubmitStatus] = useState<'idle' | 'signing' | 'creating'>('idle');
     const [error, setError] = useState<string | null>(null);
     const [_agentCreated, setAgentCreated] = useState(0);
+
+    useEffect(() => {
+        if (publicKey && !payoutWalletAddress) {
+            setPayoutWalletAddress(publicKey.toBase58());
+        }
+    }, [publicKey, payoutWalletAddress]);
 
     const isSubmitting = submitStatus !== 'idle';
     const setCustomAgents = useStore.use.setCustomAgents();
@@ -141,7 +153,7 @@ export default function CreateAgentModal() {
             case 'signing':
                 return 'Awaiting Signature...';
             case 'creating':
-                return 'Minting Agent NFT...';
+                return 'Creating Agent...';
             default:
                 return 'Sign & Create Agent';
         }
@@ -219,9 +231,13 @@ export default function CreateAgentModal() {
         setModelUploadStatus('idle');
         setAnimationUrls({});
         setAdvancedOpen(false);
+        setUnlockAmountUSDC(0.1);
+        setPayoutWalletAddress(publicKey?.toBase58() || '');
+        setNetwork('Solana');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!publicKey || !signMessage) {
             setError("Please connect your wallet and ensure it supports message signing.");
             return;
@@ -230,38 +246,44 @@ export default function CreateAgentModal() {
             setError("A .vrm model URL or upload is required.");
             return;
         }
+        if (unlockAmountUSDC > 0 && !payoutWalletAddress.trim()) {
+            setError("A payout wallet is required for monetization.");
+            return;
+        }
         
         setError(null);
 
         try {
             setSubmitStatus('signing');
-            const message = new TextEncoder().encode("Sign this message to confirm ownership of your wallet for creating an AI Agent.");
+            const message = new TextEncoder().encode("Sign this message to confirm ownership for creating an AI Agent.");
             const signature = await signMessage(message);
-            const signatureBase58 = bs58.encode(signature);
-
+            
             setSubmitStatus('creating');
-            const formData = new FormData();
-            formData.append('name', name);
-            formData.append('description', description);
-            formData.append('systemInstruction', systemInstruction);
-            formData.append('creatorWalletAddress', publicKey.toBase58());
-            formData.append('signature', signatureBase58);
-            formData.append('message', "Sign this message to confirm ownership of your wallet for creating an AI Agent.");
-            if (vrmAssetId) {
-                formData.append('vrmAssetId', vrmAssetId);
-            }
-            
-            if (animationUrls.greeting) formData.append('animationGreetingUrl', animationUrls.greeting);
-            if (animationUrls.dance) formData.append('animationDanceUrl', animationUrls.dance);
-            if (animationUrls.spin) formData.append('animationSpinUrl', animationUrls.spin);
-            if (animationUrls.pose) formData.append('animationPoseUrl', animationUrls.pose);
-            if (animationUrls.pumped) formData.append('animationPumpedUrl', animationUrls.pumped);
-            
-            formData.append('vrmUrl', vrmUrl);
+
+            const payload = {
+                name,
+                description,
+                systemInstruction,
+                creatorWalletAddress: publicKey.toBase58(),
+                signature: bs58.encode(signature),
+                message: "Sign this message to confirm ownership for creating an AI Agent.",
+                vrmUrl,
+                vrmAssetId,
+                environmentUrl,
+                animationGreetingUrl: animationUrls.greeting || undefined,
+                animationDanceUrl: animationUrls.dance || undefined,
+                animationSpinUrl: animationUrls.spin || undefined,
+                animationPoseUrl: animationUrls.pose || undefined,
+                animationPumpedUrl: animationUrls.pumped || undefined,
+                unlockAmountUSDC,
+                payoutWalletAddress,
+                network,
+            };
 
             const response = await fetch('/api/agents/create', {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
             });
 
             const result = await response.json();
@@ -291,9 +313,12 @@ export default function CreateAgentModal() {
                 <button className="close-button" onClick={() => toggleCreateAgentModal(false)}>
                     <span className="icon">close</span>
                 </button>
-                <div className="tab-headers">
-                    <button className={activeTab === 'create' ? 'active' : ''} onClick={() => setActiveTab('create')}>Create New Agent</button>
-                    <button className={activeTab === 'your_agents' ? 'active' : ''} onClick={() => setActiveTab('your_agents')}>Your Agents</button>
+                <div className="modal-header-tabs">
+                    <h2>Creator Studio</h2>
+                    <div className="tab-headers">
+                        <button className={activeTab === 'create' ? 'active' : ''} onClick={() => setActiveTab('create')}>Create New Agent</button>
+                        <button className={activeTab === 'your_agents' ? 'active' : ''} onClick={() => setActiveTab('your_agents')}>Your Agents</button>
+                    </div>
                 </div>
 
                 {activeTab === 'create' ? (
@@ -305,41 +330,45 @@ export default function CreateAgentModal() {
                             </div>
                         )}
                         <fieldset disabled={!publicKey || isSubmitting}>
-                            <div className="form-instructions">
-                                <h3>Become an aiDreams Creator!</h3>
-                                <p>To make your agent unique, you need a <strong>.vrm model file</strong> hosted online. We recommend <a href="https://echo3d.com" target="_blank" rel="noopener noreferrer">echo3D</a> for easy public links. Alternatively, use a service like Google Drive, but ensure you create a <strong>direct download link</strong>.</p>
-                                <p>Learn to create 3D characters <a href="https://pandako.itch.io/with-threejs-extension-for-gdevelop/devlog/998994/what-is-vrm-and-how-to-make-it" target="_blank" rel="noopener noreferrer">here</a>.</p>
+                            {/* --- Core Identity --- */}
+                            <div className="form-section">
+                                <h4>Core Identity</h4>
+                                <div className="form-group">
+                                    <label htmlFor="agent-name">Agent Name</label>
+                                    <input id="agent-name" type="text" value={name} onChange={e => setName(e.target.value)} required placeholder="e.g., Captain Pepe" />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="agent-desc">Short Description</label>
+                                    <input id="agent-desc" type="text" value={description} onChange={e => setDescription(e.target.value)} required placeholder="e.g., A degen space frog on a mission." />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="agent-instruction">Personality / System Instruction</label>
+                                    <textarea id="agent-instruction" value={systemInstruction} onChange={e => setSystemInstruction(e.target.value)} required placeholder="Describe your agent's persona, knowledge, and how it should behave." />
+                                </div>
                             </div>
-                            <div className="form-group">
-                                <label htmlFor="agent-name">Agent Name</label>
-                                <input id="agent-name" type="text" value={name} onChange={e => setName(e.target.value)} required placeholder="e.g., Captain Pepe" />
+                            
+                            {/* --- Appearance --- */}
+                            <div className="form-section">
+                                <h4>Appearance</h4>
+                                <div className="form-group">
+                                    <label htmlFor="agent-vrm-url">3D Model URL (.vrm)</label>
+                                    <input id="agent-vrm-url" type="url" value={vrmUrl} onChange={e => setVrmUrl(e.target.value)} required placeholder="https://example.com/model.vrm" />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="agent-vrm-file">Or upload 3D Model (.vrm)</label>
+                                    <input id="agent-vrm-file" type="file" accept=".vrm" onChange={handleVrmFileUpload} disabled={!publicKey || modelUploadStatus === 'uploading' || isSubmitting} />
+                                    {modelUploadStatus === 'uploading' && <p className="upload-status">Uploading...</p>}
+                                    {modelUploadStatus === 'uploaded' && <p className="upload-status success">Model uploaded and linked.</p>}
+                                    {modelUploadStatus === 'error' && <p className="upload-status error">Upload failed.</p>}
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="agent-env-url">Environment URL (optional)</label>
+                                    <input id="agent-env-url" type="url" value={environmentUrl} onChange={e => setEnvironmentUrl(e.target.value)} placeholder="e.g., URL to a .png or .jpg background" />
+                                </div>
                             </div>
-                            <div className="form-group">
-                                <label htmlFor="agent-desc">Short Description</label>
-                                <input id="agent-desc" type="text" value={description} onChange={e => setDescription(e.target.value)} required placeholder="e.g., A degen space frog on a mission." />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="agent-instruction">Personality / System Instruction</label>
-                                <textarea id="agent-instruction" value={systemInstruction} onChange={e => setSystemInstruction(e.target.value)} required placeholder="Describe your agent's persona, knowledge, and how it should behave." />
-                            </div>
-                             <div className="form-group">
-                                <label htmlFor="agent-vrm-url">3D Model URL (.vrm)</label>
-                                <input id="agent-vrm-url" type="url" value={vrmUrl} onChange={e => setVrmUrl(e.target.value)} required placeholder="https://example.com/model.vrm" />
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="agent-vrm-file">Or upload 3D Model (.vrm)</label>
-                                <input
-                                    id="agent-vrm-file"
-                                    type="file"
-                                    accept=".vrm"
-                                    onChange={handleVrmFileUpload}
-                                    disabled={!publicKey || modelUploadStatus === 'uploading' || isSubmitting}
-                                />
-                                {modelUploadStatus === 'uploading' && <p className="upload-status">Uploading model to secure storage...</p>}
-                                {modelUploadStatus === 'uploaded' && <p className="upload-status success">Model uploaded and linked from Backblaze.</p>}
-                                {modelUploadStatus === 'error' && <p className="upload-status error">Model upload failed. Please try again.</p>}
-                            </div>
-                            <div className="form-group">
+
+                             {/* --- Animations --- */}
+                            <div className="form-section">
                                 <button type="button" className="advanced-options-toggle" onClick={() => setAdvancedOpen(v => !v)}>
                                     Custom Animations (Optional)
                                     <span className="icon">{isAdvancedOpen ? 'expand_less' : 'expand_more'}</span>
@@ -362,6 +391,28 @@ export default function CreateAgentModal() {
                                     </div>
                                 )}
                             </div>
+
+                             {/* --- Monetization --- */}
+                             <div className="form-section">
+                                <h4>Monetization</h4>
+                                <div className="form-group">
+                                    <label htmlFor="unlock-amount">Unlock Amount (USDC)</label>
+                                    <input id="unlock-amount" type="number" value={unlockAmountUSDC} onChange={e => setUnlockAmountUSDC(parseFloat(e.target.value))} min="0" step="0.01" />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="payout-wallet">Payout Wallet Address</label>
+                                    <input id="payout-wallet" type="text" value={payoutWalletAddress} onChange={e => setPayoutWalletAddress(e.target.value)} required={unlockAmountUSDC > 0} placeholder="Your Solana or Base wallet address" />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="network">Payment Network</label>
+                                    <select id="network" value={network} onChange={e => setNetwork(e.target.value as any)}>
+                                        <option value="Solana">Solana</option>
+                                        <option value="Base">Base</option>
+                                        <option value="BSC" disabled>Binance Smart Chain (coming soon)</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             {error && <p className="error-message">{error}</p>}
                             <button type="submit" disabled={!publicKey || isSubmitting || modelUploadStatus === 'uploading'}>
                                 {getSubmitButtonText()}

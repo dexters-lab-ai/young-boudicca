@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import modes from '../lib/modes';
-import { handleFilterClick, setCustomPrompt, toggleSettingsModal, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, toggleBettingModal, generateSoraVideo } from '../lib/actions';
+import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, toggleBettingModal, generateSoraVideo } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -17,6 +17,7 @@ import { MonacoMarket, MonacoMarketOutcome, MonacoUserBet } from '../types';
 import { useTransactionSender } from '../hooks/useTransactionSender';
 import useSoraPolling from '../hooks/useSoraPolling';
 import imageData from '../lib/imageData';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 import '../styles/Chat.css';
 
@@ -27,18 +28,12 @@ export default function Chat() {
   const { publicKey } = useWallet();
   const chatHistory = useStore.use.chatHistory();
   const customPrompt = useStore.use.customPrompt();
-  const apiKey = useStore.use.apiKey();
   const activeAgent = useStore.use.activeAgent();
   const activeCustomAgent = useStore.use.activeCustomAgent();
   const activeModelUrl = useStore.use.activeModelUrl();
   const models = useStore.use.models();
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const subscriptionStatus = useStore.use.subscriptionStatus();
-  const setSubscriptionStatus = useStore.use.setSubscriptionStatus();
   
-  const [isCheckingSub, setIsCheckingSub] = useState(false);
-  const [isBalanceSufficient, setIsBalanceSufficient] = useState(false);
-  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [activeTab, setActiveTab] = useState<'filters' | 'sora'>('filters');
   const [soraPrompt, setSoraPrompt] = useState<string>(modes.sora.prompt);
   const [soraAspectRatio, setSoraAspectRatio] = useState<'auto' | 'portrait' | 'landscape'>('auto');
@@ -50,12 +45,12 @@ export default function Chat() {
     return window.matchMedia('(max-width: 768px)').matches;
   });
 
-  const soraPricingCopy = useMemo(() => 'Sora 2 beta · 30 credits (~$0.15) per 10s video with audio. Limit 3 videos/hour per wallet.', []);
+  const soraPricingCopy = useMemo(() => '$1 for 3 Sora videos.', []);
 
   const photoGallery = useStore.use.photos();
   const soraVideos = useMemo(() => photoGallery.filter(p => p.mediaType === 'video'), [photoGallery]);
   const hasUserImage = useMemo(
-    () => photoGallery.some(p => p.mediaType === 'image' && p.id !== DEFAULT_IMAGE_ID && !p.isBusy),
+    () => photoGallery.some(p => p.id !== DEFAULT_IMAGE_ID && !p.isBusy),
     [photoGallery]
   );
   const soraButtonTitle = hasUserImage ? 'Use the current uploaded image to generate a video in Sora.' : 'Upload or capture an image first.';
@@ -130,63 +125,10 @@ export default function Chat() {
     toggleListening,
     isSpeechRecognitionSupported
   } = useVoiceAgent({
-    apiKey,
     systemInstruction: systemInstruction || undefined,
   });
 
   const isAssistantThinkingOrSpeaking = isProcessing || streamingSummary;
-
-  const isCustomAgentPublic = activeCustomAgent && activeCustomAgent.isPublic;
-  const currentSubStatus = activeCustomAgent ? subscriptionStatus[activeCustomAgent._id] : undefined;
-  
-  const isSubscribedToCustom = !isCustomAgentPublic || (currentSubStatus?.isSubscribed ?? false);
-
-  const checkSubscription = useCallback(async () => {
-    if (!isCustomAgentPublic || !publicKey) {
-        if (activeCustomAgent) {
-            setSubscriptionStatus(activeCustomAgent._id, { isSubscribed: !isCustomAgentPublic });
-        }
-        return;
-    }
-    setIsCheckingSub(true);
-    try {
-        const res = await fetch(`/api/users/subscription-status/${activeCustomAgent._id}?walletAddress=${publicKey.toBase58()}`);
-        const data = await res.json();
-        setSubscriptionStatus(activeCustomAgent._id, { isSubscribed: !!data.isSubscribed, expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined });
-    } catch (err) {
-        console.error("Failed to check subscription status", err);
-        setSubscriptionStatus(activeCustomAgent._id, { isSubscribed: false });
-    } finally {
-        setIsCheckingSub(false);
-    }
-  }, [isCustomAgentPublic, publicKey, activeCustomAgent, setSubscriptionStatus]);
-
-  const checkBalance = useCallback(async () => {
-    if (activeCustomAgent || !publicKey) {
-        setIsBalanceSufficient(true);
-        return;
-    }
-    setIsCheckingBalance(true);
-    try {
-        const res = await fetch(`/api/users/wallet-balance?walletAddress=${publicKey.toBase58()}`);
-        const data = await res.json();
-        setIsBalanceSufficient(data.isSufficient);
-    } catch (err) {
-        console.error("Failed to check wallet balance", err);
-        setIsBalanceSufficient(false);
-    } finally {
-        setIsCheckingBalance(false);
-    }
-  }, [publicKey, activeCustomAgent]);
-
-  useEffect(() => {
-    if (activeCustomAgent) {
-      checkSubscription();
-    } else {
-      checkBalance();
-    }
-  }, [checkSubscription, checkBalance, activeCustomAgent]);
-
 
   // Auto-scroll chat
   useEffect(() => {
@@ -207,15 +149,8 @@ export default function Chat() {
       await sendText(text);
     }
   };
-  
-  const handleSubscribe = () => {
-    if (activeCustomAgent) {
-      toggleSubscriptionModal(true, activeCustomAgent._id);
-    }
-  };
 
-  const isChatLocked = activeCustomAgent ? !isSubscribedToCustom : !isBalanceSufficient;
-  const isCheckingPermissions = isCheckingSub || isCheckingBalance;
+  const isChatLocked = !publicKey;
 
   return (
     <div className="chat-container">
@@ -228,13 +163,6 @@ export default function Chat() {
             title="About Miko AI"
         >
             <span className="icon">info</span>
-        </button>
-        <button
-            className="header-button"
-            onClick={() => toggleSettingsModal(true)}
-            title="Open settings"
-        >
-            <span className="icon">settings</span>
         </button>
       </div>
 
@@ -327,7 +255,7 @@ export default function Chat() {
               <div className="sora-info" title={soraPricingCopy}>
                 <span className="icon">movie</span>
                 <strong>Sora video (beta)</strong>
-                <span className="sora-meta">30 credits (~$0.15) · 10s with audio · 3/hr limit</span>
+                <span className="sora-meta">$1 for 3 videos</span>
               </div>
               <form
                 className="sora-form"
@@ -434,21 +362,8 @@ export default function Chat() {
             <div className="subscription-gate-overlay">
                 <div className="gate-content">
                     <span className="icon">lock</span>
-                    {activeCustomAgent ? (
-                        <>
-                            <p>Subscribe to chat with this agent.</p>
-                            <button onClick={handleSubscribe} disabled={isCheckingPermissions}>
-                                {isCheckingPermissions ? 'Checking...' : 'Subscribe to Unlock'}
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <p>Requires ≥ $10 USDC in wallet.</p>
-                             <button disabled={isCheckingPermissions}>
-                                {isCheckingPermissions ? 'Checking Balance...' : 'Add Funds to Chat'}
-                            </button>
-                        </>
-                    )}
+                    <p>Connect your wallet to chat.</p>
+                    <WalletMultiButton />
                 </div>
             </div>
         )}
@@ -464,16 +379,16 @@ export default function Chat() {
               handleSendMessage();
             }
           }}
-          disabled={isChatLocked || isCheckingPermissions || disableChatInput}
+          disabled={isChatLocked || disableChatInput}
         />
         {isSpeechRecognitionSupported && (
-            <button className={c('mic-button', { listening: isListening })} onClick={toggleListening} title={isListening ? "Stop listening" : "Start listening"} disabled={isChatLocked || isCheckingPermissions}>
+            <button className={c('mic-button', { listening: isListening })} onClick={toggleListening} title={isListening ? "Stop listening" : "Start listening"} disabled={isChatLocked}>
                 <span className="icon">{isListening ? 'mic_off' : 'mic'}</span>
             </button>
         )}
         <button
             onClick={handleSendMessage}
-            disabled={isChatLocked || isCheckingPermissions || !customPrompt.trim() || disableChatInput}
+            disabled={isChatLocked || !customPrompt.trim() || disableChatInput}
         >
           <span className="icon">send</span>
         </button>

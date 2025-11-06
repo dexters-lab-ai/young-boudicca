@@ -7,8 +7,8 @@ import {create} from 'zustand'
 import {immer} from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import {createSelectorFunctions} from 'auto-zustand-selectors-hook'
-import { Photo, ChatMessage, FavouriteToken, AgentName, Agent, Environment } from '../types'
-import { DEFAULT_SYSTEM_INSTRUCTION, FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants';
+import { Photo, ChatMessage, FavouriteToken, AgentName, Agent, Environment, PaywallDetails } from '../types'
+import { DEFAULT_SYSTEM_INSTRUCTION, FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants'
 
 export const createAssistantMessage = (text: string): ChatMessage => ({
   id: crypto.randomUUID(),
@@ -17,10 +17,10 @@ export const createAssistantMessage = (text: string): ChatMessage => ({
 });
 
 interface AppState {
-  apiKey: string | null;
   didInit: boolean;
-  isWelcomeModalOpen: boolean;
-  isSettingsModalOpen: boolean;
+  apiKey: string | null; // FIX: Add apiKey to state
+  isSettingsModalOpen: boolean; // FIX: Add isSettingsModalOpen to state
+  isWelcomeModalOpen: boolean; // FIX: Add isWelcomeModalOpen to state
   isAboutModalOpen: boolean;
   isCreateAgentModalOpen: boolean;
   isSubscriptionModalOpen: boolean;
@@ -29,6 +29,8 @@ interface AppState {
   tokenDetailModalAddress: string | null;
   isBettingModalOpen: boolean;
   bettingModalMarketPk: string | null;
+  isPaywallModalOpen: boolean;
+  paywallDetails: PaywallDetails | null;
   photos: Photo[];
   activePhotoId: string | null;
   customPrompt: string;
@@ -75,13 +77,11 @@ interface AppState {
   setPreferredLanguage: (lang: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
   addToolMessage: (toolName: string, data: any, text?: string) => void;
-  setApiKey: (key: string) => void;
-  toggleWelcomeModal: (open?: boolean) => void;
-  toggleSettingsModal: (open?: boolean) => void;
   toggleAboutModal: (open?: boolean) => void;
   toggleCreateAgentModal: (open?: boolean) => void;
   toggleSubscriptionModal: (open?: boolean, agentId?: string) => void;
   toggleBettingModal: (open?: boolean, marketPk?: string) => void;
+  togglePaywallModal: (open?: boolean, details?: PaywallDetails) => void;
   openTokenDetailModal: (address: string) => void;
   closeTokenDetailModal: () => void;
   addFavourite: (token: FavouriteToken) => void;
@@ -103,10 +103,10 @@ interface AppState {
 const useStore = create(
   persist(
     immer<AppState>((set, get) => ({
-      apiKey: null,
     didInit: false,
-    isWelcomeModalOpen: true,
-    isSettingsModalOpen: false,
+    apiKey: null, // FIX: Initialize apiKey
+    isSettingsModalOpen: false, // FIX: Initialize isSettingsModalOpen
+    isWelcomeModalOpen: false, // FIX: Initialize isWelcomeModalOpen
     isAboutModalOpen: false,
     isCreateAgentModalOpen: false,
     isSubscriptionModalOpen: false,
@@ -115,6 +115,8 @@ const useStore = create(
     tokenDetailModalAddress: null,
     isBettingModalOpen: false,
     bettingModalMarketPk: null,
+    isPaywallModalOpen: false,
+    paywallDetails: null,
     photos: [],
     activePhotoId: null,
     customPrompt: '',
@@ -218,11 +220,6 @@ const useStore = create(
         ]
       }))
     },
-    setApiKey: (key: string) => {
-        set({ apiKey: key });
-    },
-    toggleWelcomeModal: (open?: boolean) => set(state => ({ isWelcomeModalOpen: open ?? !state.isWelcomeModalOpen })),
-    toggleSettingsModal: (open?: boolean) => set(state => ({ isSettingsModalOpen: open ?? !state.isSettingsModalOpen })),
     toggleAboutModal: (open?: boolean) => set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen })),
     toggleCreateAgentModal: (open?: boolean) => set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen })),
     toggleSubscriptionModal: (open?: boolean, agentId?: string) => {
@@ -235,6 +232,12 @@ const useStore = create(
         set(state => ({
             isBettingModalOpen: open ?? !state.isBettingModalOpen,
             bettingModalMarketPk: marketPk || null,
+        }));
+    },
+    togglePaywallModal: (open?: boolean, details?: PaywallDetails) => {
+        set(state => ({
+            isPaywallModalOpen: open ?? !state.isPaywallModalOpen,
+            paywallDetails: details || null,
         }));
     },
     openTokenDetailModal: (address: string) => set({ isTokenDetailModalOpen: true, tokenDetailModalAddress: address }),
@@ -324,7 +327,7 @@ const useStore = create(
   {
     name: 'boudi-ai-storage',
     partialize: (state) => ({ 
-        apiKey: state.apiKey, 
+        apiKey: state.apiKey, // FIX: Persist apiKey
         preferredVoiceName: state.preferredVoiceName,
         preferredLanguage: state.preferredLanguage,
         favourites: state.favourites,

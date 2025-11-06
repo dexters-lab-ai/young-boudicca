@@ -80,6 +80,9 @@ export interface Agent {
   animationPumpedUrl?: string;
   environmentUrl?: string;
   isPublic: boolean;
+  unlockAmountUSDC: number;
+  payoutWalletAddress?: string;
+  network: 'Solana' | 'Base' | 'BSC';
   subscriptionCount: number;
   nftDetails?: {
     mintAddress: string;
@@ -136,4 +139,15 @@ export interface MonacoUserBet {
   creationTimestamp?: number;
   // Unix timestamp (seconds since epoch) when the market locks/closes
   marketLockTimestamp?: number;
+}
+
+export interface PaywallDetails {
+  type: 'chat_credits' | 'agent_unlock' | 'sora_credits' | 'image_credits';
+  amount: number;
+  recipient: string;
+  currency: 'USDC';
+  network: 'Solana' | 'Base' | 'BSC';
+  itemDescription: string;
+  quantity?: number; // e.g., how many credits are being bought
+  originalRequest: () => Promise<any>; // The function to retry after payment
 }

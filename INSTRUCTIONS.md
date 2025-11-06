@@ -2,8 +2,8 @@
 # -----------------------------
 # Create a .env file in the root of the project and add the following keys.
 
-# Required for Gemini text generation and function calling
-GEMINI_API_KEY="YOUR_GOOGLE_GEMINI_API_KEY"
+# Required for the new server-side OpenAI conversational engine
+OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
 
 # Required for Text-to-Speech voice synthesis
 ELEVENLABS_API_KEY="YOUR_ELEVENLABS_API_KEY"

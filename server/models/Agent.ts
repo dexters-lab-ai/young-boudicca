@@ -14,7 +14,9 @@ export interface IAgent extends Document {
   animationPumpedUrl?: string;
   environmentUrl?: string;
   isPublic: boolean;
-  subscriptionPrice: number;
+  unlockAmountUSDC: number;
+  payoutWalletAddress?: string;
+  network: 'Solana' | 'Base' | 'BSC';
   subscriptionCount: number;
   nftDetails?: {
     mintAddress: string;
@@ -37,7 +39,9 @@ const AgentSchema: Schema = new Schema({
   animationPumpedUrl: { type: String, required: false },
   environmentUrl: { type: String, required: false },
   isPublic: { type: Boolean, default: false },
-  subscriptionPrice: { type: Number, default: 1 },
+  unlockAmountUSDC: { type: Number, default: 0.1 },
+  payoutWalletAddress: { type: String, trim: true },
+  network: { type: String, enum: ['Solana', 'Base', 'BSC'], default: 'Solana' },
   subscriptionCount: { type: Number, default: 0 },
   nftDetails: {
     mintAddress: { type: String, unique: true, sparse: true, index: true },

@@ -3,6 +3,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type AssetType = 'model' | 'animation' | 'background';
 
 export interface IAsset extends Document {
+  // FIX: Explicitly define `_id` to resolve TypeScript error in server/index.ts.
+  _id: mongoose.Types.ObjectId;
   ownerWallet: string;
   type: AssetType;
   fileName: string;

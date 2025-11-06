@@ -4,9 +4,11 @@
  */
 // Load environment variables BEFORE anything else
 import './env';
+// FIX: Import 'process' to provide correct types for process.on() and process.exit().
+import process from 'process';
 
-// FIX: Aliased Request and Response to avoid type conflicts.
-import express, { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from 'express';
+// FIX: Change to named imports to avoid type conflicts with global DOM types.
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
 import path from 'path';
@@ -103,7 +105,8 @@ async function getCandyMachineService(): Promise<CandyMachineService> {
 }
 
 // Health check endpoint
-app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/health', (req: Request, res: Response) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
     res.status(200).json({
       status: 'ok',
@@ -116,7 +119,8 @@ app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 // --- Request Logging Middleware ---
-app.use((req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+// FIX: Use Request, Response, and NextFunction types from express.
+app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
     console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
     if (req.method === 'POST' && req.body && Object.keys(req.body).length > 0) {
@@ -188,7 +192,8 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 }
 
 // --- Sora Endpoints ---
-app.post('/api/sora/image-to-video', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/sora/image-to-video', async (req: Request, res: Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -228,7 +233,8 @@ app.post('/api/sora/image-to-video', async (req: ExpressRequest, res: ExpressRes
   }
 });
 
-app.get('/api/sora/image-to-video/:taskId', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/sora/image-to-video/:taskId', async (req: Request, res: Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -254,7 +260,8 @@ interface Voice {
 }
 
 // Simple TTS voices endpoint that returns a fixed set of voices
-app.get('/api/tts-voices', (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/tts-voices', (req: Request, res: Response) => {
   const voices: Voice[] = [
     { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
     { value: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi' },
@@ -270,7 +277,8 @@ app.get('/api/tts-voices', (req: ExpressRequest, res: ExpressResponse) => {
   res.json({ voices, lastLoaded: Date.now() });
 });
 
-app.post('/api/tts', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/tts', async (req: Request, res: Response) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
   }
@@ -302,7 +310,8 @@ app.post('/api/tts', async (req: ExpressRequest, res: ExpressResponse) => {
   }
 });
 
-app.post('/api/music/compose', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/music/compose', async (req: Request, res: Response) => {
     if (!elevenlabs) {
         return res.status(503).json({ error: 'Music service not configured on the server.' });
     }
@@ -360,7 +369,8 @@ function verifySignedPayload({ message, signature, walletAddress }: SignedPayloa
   }
 }
 
-app.post('/api/assets/upload', assetUploadMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: Response) => {
   if (!backblazeService) {
     return res.status(503).json({ error: 'Asset storage not configured.' });
   }
@@ -420,7 +430,8 @@ app.post('/api/assets/upload', assetUploadMiddleware, async (req: ExpressRequest
 });
 
 // --- Candy Machine API ---
-app.post('/api/candy-machine/create', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -449,7 +460,8 @@ app.post('/api/candy-machine/create', async (req: ExpressRequest, res: ExpressRe
   }
 });
 
-app.post('/api/candy-machine/:address/items', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/candy-machine/:address/items', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -488,7 +500,8 @@ app.post('/api/candy-machine/:address/items', async (req: ExpressRequest, res: E
   }
 });
 
-app.post('/api/candy-machine/:address/mint', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -522,7 +535,8 @@ app.post('/api/candy-machine/:address/mint', async (req: ExpressRequest, res: Ex
 });
 
 // --- Agent Creator API ---
-app.post('/api/agents/create', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/agents/create', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -626,7 +640,8 @@ app.post('/api/agents/create', async (req: ExpressRequest, res: ExpressResponse)
   }
 });
 
-app.put('/api/agents/:agentId/visibility', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { isPublic, creatorWalletAddress, signature, message } = req.body;
 
@@ -660,7 +675,8 @@ app.put('/api/agents/:agentId/visibility', async (req: ExpressRequest, res: Expr
 });
 
 
-app.get('/api/agents/list', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/agents/list', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -673,7 +689,8 @@ app.get('/api/agents/list', async (req: ExpressRequest, res: ExpressResponse) =>
   }
 });
 
-app.get('/api/agents/creator/:walletAddress', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/agents/creator/:walletAddress', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -698,7 +715,8 @@ const findOrCreateUser = async (walletAddress: string) => {
     return user;
 };
 
-app.get('/api/users/wallet-balance', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
     const { walletAddress } = req.query;
     if (!walletAddress || typeof walletAddress !== 'string') {
         return res.status(400).json({ isSufficient: false, error: 'Wallet address is required.' });
@@ -716,7 +734,8 @@ app.get('/api/users/wallet-balance', async (req: ExpressRequest, res: ExpressRes
     }
 });
 
-app.get('/api/users/subscription-status/:agentId', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { walletAddress } = req.query;
 
@@ -747,7 +766,8 @@ app.get('/api/users/subscription-status/:agentId', async (req: ExpressRequest, r
     }
 });
 
-app.post('/api/subscribe/:agentId', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { walletAddress, txSignature } = req.body;
 
@@ -870,7 +890,8 @@ initProgram().catch((error: Error) => {
     console.error('Error initializing Monaco program:', error);
 });
 
-app.get('/api/monaco/markets', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/monaco/markets', async (req: Request, res: Response) => {
     try {
         const allMarkets: Market[] = await monacoProgram.account.market.all();
         const openMarkets = allMarkets.filter((market) => 'open' in market.account.marketStatus);
@@ -885,7 +906,8 @@ app.get('/api/monaco/markets', async (req: ExpressRequest, res: ExpressResponse)
     }
 });
 
-app.get('/api/monaco/market/:marketPk', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/monaco/market/:marketPk', async (req: Request, res: Response) => {
     try {
         const { marketPk } = req.params;
         const marketPublicKey = new PublicKey(marketPk);
@@ -920,7 +942,8 @@ app.get('/api/monaco/market/:marketPk', async (req: ExpressRequest, res: Express
 });
 
 
-const placeOrderHandler = async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+const placeOrderHandler = async (req: Request, res: Response) => {
     const { marketPk, outcomeIndex, forAgainst, amount, walletAddress } = req.body;
     if (marketPk === undefined || outcomeIndex === undefined || forAgainst === undefined || amount === undefined || !walletAddress) {
         return res.status(400).json({ error: 'Missing required fields for placing an order.' });
@@ -956,7 +979,8 @@ const placeOrderHandler = async (req: ExpressRequest, res: ExpressResponse) => {
 
 app.post('/api/monaco/orders/place', placeOrderHandler);
 
-app.get('/api/monaco/orders/user/:walletAddress', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.get('/api/monaco/orders/user/:walletAddress', async (req: Request, res: Response) => {
     const { walletAddress } = req.params;
     try {
         const allOrders: OrderAccount[] = await monacoProgram.account.order.all();
@@ -1042,7 +1066,8 @@ prices: CustomMarketPrice[];
 
 // --- Solana Tools (Solscan-backed) ---
 
-app.post('/tools/fetchTokenList', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
     try {
         const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
         let data;
@@ -1066,7 +1091,8 @@ app.post('/tools/fetchTokenList', async (req: ExpressRequest, res: ExpressRespon
 });
 
 
-app.post('/tools/fetchTrendingTokens', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 9 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchTrendingTokens with limit: ${limit}`);
@@ -1084,7 +1110,8 @@ app.post('/tools/fetchTrendingTokens', async (req: ExpressRequest, res: ExpressR
     }
 });
 
-app.post('/tools/fetchToken', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchToken', async (req: Request, res: Response) => {
     try {
         const { mint } = req.body ?? {};
         if (!mint) return res.status(400).json({ error: 'Missing mint' });
@@ -1103,7 +1130,8 @@ app.post('/tools/fetchToken', async (req: ExpressRequest, res: ExpressResponse) 
     }
 });
 
-app.post('/tools/fetchBondingTokens', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 20, platform } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchLaunchpadTokens (bonding) with limit: ${limit} on platform: ${platform}`);
@@ -1121,7 +1149,8 @@ app.post('/tools/fetchBondingTokens', async (req: ExpressRequest, res: ExpressRe
     }
 });
 
-app.post('/tools/fetchLatestTokens', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 50 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.getLatestTokens with limit: ${limit}`);
@@ -1139,7 +1168,8 @@ app.post('/tools/fetchLatestTokens', async (req: ExpressRequest, res: ExpressRes
     }
 });
 
-app.post('/tools/getTokenMetadata', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1158,7 +1188,8 @@ app.post('/tools/getTokenMetadata', async (req: ExpressRequest, res: ExpressResp
     }
 });
 
-app.post('/tools/getMarketInfo', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1177,7 +1208,8 @@ app.post('/tools/getMarketInfo', async (req: ExpressRequest, res: ExpressRespons
     }
 });
 
-app.post('/tools/fetchCandles', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/fetchCandles', async (req: Request, res: Response) => {
     try {
         const { address, time_from, time_to } = req.body ?? {};
         if (!address || !time_from || !time_to) return res.status(400).json({ error: 'Missing fields' });
@@ -1200,7 +1232,8 @@ app.post('/tools/fetchCandles', async (req: ExpressRequest, res: ExpressResponse
     }
 });
 
-app.post('/tools/listMonacoMarkets', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/listMonacoMarkets', async (req: Request, res: Response) => {
     try {
         const { marketStatus = 'open' } = req.body ?? {};
         const allMarkets = await monacoProgram.account.market.all();
@@ -1216,7 +1249,8 @@ app.post('/tools/listMonacoMarkets', async (req: ExpressRequest, res: ExpressRes
     }
 });
 
-app.post('/tools/getMonacoMarketDetails', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/getMonacoMarketDetails', async (req: Request, res: Response) => {
     try {
         const { marketPk } = req.body ?? {};
         if (!marketPk) return res.status(400).json({ error: 'Missing marketPk' });
@@ -1256,7 +1290,8 @@ app.post('/tools/getMonacoMarketDetails', async (req: ExpressRequest, res: Expre
 // This endpoint is for AI tool-based betting
 app.post('/tools/placeMonacoOrder', placeOrderHandler);
 
-app.post('/tools/listUserMonacoOrders', async (req: ExpressRequest, res: ExpressResponse) => {
+// FIX: Use Request and Response types from express.
+app.post('/tools/listUserMonacoOrders', async (req: Request, res: Response) => {
     try {
         const { walletAddress } = req.body ?? {};
         if (!walletAddress) return res.status(400).json({ error: 'Missing walletAddress' });
@@ -1308,7 +1343,8 @@ if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
     
     // Handle SPA routing - return index.html for all other routes
-    app.get('*', (req, res) => {
+    // FIX: Use Request and Response types from express.
+    app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'), (err) => {
         if (err) {
           console.error('Error sending file:', err);
@@ -1322,4 +1358,4 @@ if (fs.existsSync(distPath)) {
   }
 } else {
   console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');
-}  
+}

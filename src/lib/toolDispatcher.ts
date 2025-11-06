@@ -1,6 +1,5 @@
 import useStore from './store';
-// FIX: `setGesture` is not exported from `./actions`. It's a method on the store.
-// FIX: Corrected import from setActiveEnvironmentUrl to setActiveEnvironment.
+// FIX: Corrected import from setActiveEnvironment to setActiveEnvironment.
 import { setActiveEnvironment } from './actions';
 
 // Server-side tools that require an API call

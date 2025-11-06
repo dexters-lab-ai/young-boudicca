@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+// FIX: Removed reference to "vite/client" to prevent type definition errors.
 
 interface ImportMetaEnv {
   // Add other environment variables here

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { useState } from 'react';
+// FIX: Correct imports from actions.ts
 import { setApiKey, toggleWelcomeModal } from '../lib/actions';
 
 export default function Welcome() {
