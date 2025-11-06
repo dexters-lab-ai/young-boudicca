@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useState } from 'react'
 import useStore from '../lib/store'
-import { addMessage, setActiveAgent } from '../lib/actions'
+import { addMessage } from '../lib/actions'
 import '../styles/Filters.css';
 
 function mapToolToEndpoint(name: string): { url: string; body: (args: any) => any } | null {
@@ -40,13 +40,8 @@ async function callTool(name: string, args?: any) {
 export default function Filters() {
   const [tab, setTab] = useState<'crypto' | 'games'>('crypto')
   const addToolMessage = useStore.use.addToolMessage()
-  const activeAgent = useStore.use.activeAgent()
 
   const handleCrypto = async (name: 'fetchTrendingTokens' | 'fetchLatestTokens' | 'fetchBondingTokens') => {
-    if (activeAgent !== 'gemini') {
-      addMessage('Switch to the Gemini agent to use the advanced crypto tools.', 'assistant');
-      return;
-    }
     const result = await callTool(name)
     if (result && 'data' in result) {
       addToolMessage(name, (result as any).data)
@@ -57,11 +52,6 @@ export default function Filters() {
 
   const handleGameStub = (game: 'Minecraft' | 'Factorio') => {
     addMessage(`${game} integration is coming soon. What would you like to do there?`, 'assistant')
-  }
-
-  const handleElizaClick = () => {
-    setActiveAgent('eliza');
-    addMessage("Eliza activated. I am a data-driven crypto analyst agent. How may I assist you?", 'assistant');
   }
 
   return (
@@ -82,10 +72,6 @@ export default function Filters() {
               </button>
               <button onClick={()=>handleCrypto('fetchBondingTokens')} title="Bonding">
                 <span className="icon">auto_graph</span> Bonding
-              </button>
-              {/* Eliza Widget */}
-              <button onClick={handleElizaClick} title="Activate Eliza Agent">
-                <span className="icon">🤖</span> Eliza
               </button>
             </div>
           </div>

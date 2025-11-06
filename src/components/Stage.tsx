@@ -6,7 +6,7 @@ import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react
 import useStore from '../lib/store';
 import imageData from '../lib/imageData';
 import c from 'clsx';
-import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveEnvironment, toggleMusicMuted, toggleBettingModal } from '../lib/actions';
+import { setInputSource, setActiveModelUrl, toggleCreateAgentModal, setActiveEnvironment, toggleMusicMuted } from '../lib/actions';
 import Avatar from './Avatar';
 import Filters from './Filters';
 import { Canvas } from '@react-three/fiber';
@@ -337,9 +337,6 @@ export default function Stage() {
       <div className="input-controls">
         <button className="control-button" onClick={() => toggleCreateAgentModal(true)} title="Create a new AI Agent">
           <span className="icon">add_circle</span>
-        </button>
-        <button className="control-button" onClick={() => toggleBettingModal(true)} title="Monaco Protocol">
-          <span className="icon">paid</span>
         </button>
         <button className={c("control-button", { active: inputSource === 'generator' })} onClick={() => setSource('generator')} title="Meme Generator">
           <span className="icon">auto_awesome</span>

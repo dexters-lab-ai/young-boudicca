@@ -8,13 +8,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import modes from '../lib/modes';
-import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, toggleBettingModal, generateSoraVideo } from '../lib/actions';
+import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, generateSoraVideo } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 import { useWallet } from '@solana/wallet-adapter-react';
-// FIX: Corrected import from Pnp... to Monaco... types
-import { MonacoMarket, MonacoMarketOutcome, MonacoUserBet } from '../types';
-import { useTransactionSender } from '../hooks/useTransactionSender';
 import useSoraPolling from '../hooks/useSoraPolling';
 import imageData from '../lib/imageData';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
@@ -28,7 +25,6 @@ export default function Chat() {
   const { publicKey } = useWallet();
   const chatHistory = useStore.use.chatHistory();
   const customPrompt = useStore.use.customPrompt();
-  const activeAgent = useStore.use.activeAgent();
   const activeCustomAgent = useStore.use.activeCustomAgent();
   const activeModelUrl = useStore.use.activeModelUrl();
   const models = useStore.use.models();
@@ -114,8 +110,8 @@ export default function Chat() {
   // Determine current agent details (custom takes precedence)
   const currentAgentDetails = activeCustomAgent || models.find(m => m.url === activeModelUrl);
   const systemInstruction = currentAgentDetails?.systemInstruction;
-  const agentName = currentAgentDetails?.name || (activeAgent === 'gemini' ? 'Miko' : 'Eliza');
-  const agentIcon = activeCustomAgent ? '✨' : (activeAgent === 'gemini' ? '🤖' : '🤖');
+  const agentName = currentAgentDetails?.name || 'Miko';
+  const agentIcon = activeCustomAgent ? '✨' : '🤖';
 
   const { 
     streamingSummary,
@@ -400,79 +396,6 @@ export default function Chat() {
   )
 }
 
-function MonacoPlaceOrderCard({ data }: { data: any }) {
-    const { send, status, signature, error, reset } = useTransactionSender();
-    const { outcomeIndex, amount } = data.args;
-    const { wallet } = useWallet();
-    
-    // A more robust implementation would fetch market details to get the title
-    const outcomeTitle = outcomeIndex === 0 ? 'YES' : (outcomeIndex === 1 ? 'NO' : `Outcome #${outcomeIndex}`);
-
-    const handleConfirm = () => {
-        if (data.data.serializedTransaction) {
-            send(data.data.serializedTransaction);
-        }
-    };
-    
-    const getStatusMessage = () => {
-        switch (status) {
-            case 'sending': return 'Sending to wallet...';
-            case 'confirming': return 'Confirming transaction...';
-            case 'success': return 'Bet placed successfully!';
-            case 'error': return `Error: ${error}`;
-            default: return `Confirm ${amount} USDC bet on "${outcomeTitle}"`;
-        }
-    };
-
-    if (!wallet) {
-        return (
-            <div className="tool-card pnp-bet-confirmation-card">
-                 <p>Connect your wallet to confirm this bet.</p>
-            </div>
-        );
-    }
-    
-    if (status === 'success') {
-         return (
-             <div className="tool-card pnp-bet-confirmation-card">
-                 <div className={`tx-status ${status}`}>{getStatusMessage()}</div>
-                 {signature && (
-                     <a href={`https://solscan.io/tx/${signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer" className="tx-link">
-                         View on Solscan <span className="icon small">open_in_new</span>
-                     </a>
-                 )}
-             </div>
-         );
-    }
-
-    return (
-        <div className="tool-card pnp-bet-confirmation-card">
-            <p>Miko has prepared a bet based on your request.</p>
-            <div className="bet-details-summary">
-                <span>Betting <strong>{amount} USDC</strong> on <strong>"{outcomeTitle}"</strong></span>
-            </div>
-            
-            {status === 'idle' && (
-                 <button className="details-button" onClick={handleConfirm}>
-                    Confirm in Wallet
-                </button>
-            )}
-
-            {(status === 'sending' || status === 'confirming' || status === 'error') && (
-                <div className="tx-status-container">
-                    <div className={`tx-status ${status}`}>{getStatusMessage()}</div>
-                    {status === 'error' && (
-                        <button className="details-button" onClick={reset} style={{marginTop: '10px'}}>
-                           Try Again
-                        </button>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
-
 function renderToolCard(name: string, data: any) {
   switch (name) {
     case 'fetchTrendingTokens':
@@ -489,88 +412,9 @@ function renderToolCard(name: string, data: any) {
       return renderMarketInfoCard(data?.data)
     case 'fetchCandles':
       return renderCandlesSummary(data?.data)
-    // FIX: Corrected tool names from Pnp... to Monaco...
-    case 'listMonacoMarkets':
-        return renderMonacoMarketList(data?.data);
-    case 'getMonacoMarketDetails':
-        return renderMonacoMarketDetails(data?.data);
-    case 'listUserMonacoOrders':
-        return renderUserMonacoBets(data?.data);
-    case 'placeMonacoOrder':
-        return <MonacoPlaceOrderCard data={data} />;
     default:
       return renderKeyValue(data)
   }
-}
-
-function renderMonacoMarketList(markets: MonacoMarket[]) {
-    if (!markets || markets.length === 0) return <div className="tool-card">No open markets found.</div>;
-    return (
-        <div className="tool-card pnp-market-list">
-            {markets.slice(0, 5).map(market => (
-                <div key={market.id} className="pnp-market-item">
-                    <div className="pnp-market-info">
-                        <div className="pnp-market-title">{market.title}</div>
-                        <div className="pnp-market-expiry">Closes in {timeAgo(market.marketLockTimestamp)}</div>
-                    </div>
-                    <button className="details-button" onClick={() => toggleBettingModal(true, market.id)}>
-                        Place Bet
-                    </button>
-                </div>
-            ))}
-            {markets.length > 5 && <div className="pnp-market-item-footer">...and {markets.length - 5} more</div>}
-        </div>
-    );
-}
-
-function renderMonacoMarketDetails(data: { market: MonacoMarket, outcomes: MonacoMarketOutcome[] }) {
-    if (!data || !data.market) return null;
-    const { market, outcomes } = data;
-    return (
-         <div className="tool-card pnp-market-details">
-            <div className="pnp-market-title">{market.title}</div>
-            <div className="pnp-outcomes">
-                {outcomes.map(outcome => (
-                    <div key={outcome.id} className="pnp-outcome">
-                        <span className="pnp-outcome-name">{outcome.title}</span>
-                        <span className="pnp-outcome-odds">{outcome.odds.toFixed(2)}x</span>
-                    </div>
-                ))}
-            </div>
-            <div className="token-card-actions">
-                <div className="links">
-                    <div className="pnp-market-expiry">Closes in {timeAgo(market.marketLockTimestamp)}</div>
-                </div>
-                <button className="details-button" onClick={() => toggleBettingModal(true, market.id)}>
-                    Place Bet
-                </button>
-            </div>
-        </div>
-    )
-}
-
-function renderUserMonacoBets(bets: MonacoUserBet[]) {
-    if (!bets || bets.length === 0) return <div className="tool-card">You have no active bets.</div>;
-     return (
-        <div className="tool-card pnp-market-list">
-             {bets.slice(0, 3).map(bet => (
-                <div key={bet.id} className="pnp-market-item">
-                    <div className="pnp-market-info">
-                        <div className="pnp-market-title">{bet.marketTitle}</div>
-                        <div className="pnp-bet-info">
-                           Bet: <strong>{bet.stake} USDC</strong> on "{bet.outcomeTitle}"
-                        </div>
-                    </div>
-                    <div className={`bet-status ${bet.status}`}>{bet.status}</div>
-                </div>
-            ))}
-            {bets.length > 3 && <div className="pnp-market-item-footer">...and {bets.length - 3} more</div>}
-             {/* FIX: Corrected bettingModalMarketId to bettingModalMarketPk */}
-             <button className="details-button" style={{marginTop: '10px'}} onClick={() => { toggleBettingModal(true); useStore.setState({ bettingModalMarketPk: null }); }}>
-                View All Bets
-            </button>
-        </div>
-    );
 }
 
 function renderTokenList(list: any[]) {

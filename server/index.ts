@@ -8,6 +8,7 @@ import './env';
 import process from 'process';
 
 // FIX: Change to named imports to avoid type conflicts with global DOM types.
+// FIX: Import Request, Response, and NextFunction types from express.
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
@@ -15,18 +16,12 @@ import path from 'path';
 import fs from 'fs';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import crypto from 'crypto';
-// Monaco Protocol client imports
-import { AnchorProvider, Program, Wallet, setProvider } from '@coral-xyz/anchor';
-import { 
-  getMarket,
-  getMarketPrices,
-  createOrderUiStake
-} from '@monaco-protocol/client';
+import OpenAI from 'openai';
 
 import { solscanService } from './services/solscan';
 import Agent from './models/Agent';
@@ -46,6 +41,14 @@ const app = express();
 const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
 const candyMachineConfig = createCandyMachineConfigFromEnv();
+
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+if (!openai) {
+    console.warn('[Server] OPENAI_API_KEY not set. AI endpoints will be disabled.');
+}
 
 const elevenlabs = process.env.ELEVENLABS_API_KEY
   ? new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
@@ -129,6 +132,111 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+
+
+// --- AI Endpoints (Server-Side OpenAI) ---
+
+app.post('/api/chat', async (req: Request, res: Response) => {
+    if (!openai) {
+      return res.status(503).json({ error: 'OpenAI service not configured.' });
+    }
+  
+    const { message, history, agentId } = req.body;
+  
+    try {
+        let systemInstruction = 'You are a helpful AI assistant.';
+        if (agentId) {
+            const agent = await Agent.findById(agentId);
+            if (agent) {
+                systemInstruction = agent.systemInstruction;
+            }
+        }
+
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+            { role: 'system', content: systemInstruction },
+            ...(history || []).map((msg: any) => ({
+                role: msg.role,
+                content: msg.text,
+            })),
+            { role: 'user', content: message },
+        ];
+
+        // --- AUTONOMOUS AGENT STATE MACHINE PLACEHOLDER ---
+        // Here, you could implement a state machine for the agent.
+        // For example, if the last message was a while ago, the agent
+        // could proactively start a monologue.
+        // const agentState = await getAgentState(req.session.id, agentId);
+        // if (agentState.status === 'IDLE' && Date.now() - agentState.lastInteraction > 15000) {
+        //   messages.push({ role: 'user', content: 'You have been quiet. What are you thinking about?' });
+        //   // The server could send a { type: 'MONOLOGUE_START' } event here via WebSocket/SSE
+        // }
+        // --- END PLACEHOLDER ---
+  
+        const stream = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages,
+            stream: true,
+        });
+
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+        });
+  
+        for await (const chunk of stream) {
+            const textChunk = chunk.choices[0]?.delta?.content || '';
+            if (textChunk) {
+                res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+            }
+        }
+  
+        res.write('data: [DONE]\n\n');
+        res.end();
+  
+    } catch (error: any) {
+        console.error('OpenAI chat error:', error);
+        res.status(500).json({ error: 'Failed to get response from AI', details: error.message });
+    }
+});
+
+
+app.post('/api/images/generate', async (req: Request, res: Response) => {
+    if (!openai) {
+        return res.status(503).json({ error: 'OpenAI service not configured.' });
+    }
+
+    const { prompt, inputFile } = req.body;
+    if (!prompt || !inputFile) {
+        return res.status(400).json({ error: 'Prompt and inputFile are required.' });
+    }
+
+    try {
+        // DALL-E image generation with a prompt doesn't directly use an input image in the same way.
+        // We'll use the prompt to guide generation. For variations, you'd need a different flow.
+        const response = await openai.images.generate({
+            model: "dall-e-3",
+            prompt: prompt,
+            n: 1,
+            size: "1024x1024",
+            response_format: 'b64_json'
+        });
+
+        // Add proper type checking for the response
+        if (!response?.data?.[0]?.b64_json) {
+            throw new Error('No image data returned from OpenAI');
+        }
+
+        const b64_json = response.data[0].b64_json;
+        const imageUrl = `data:image/png;base64,${b64_json}`;
+        res.json({ imageUrl });
+
+    } catch (error: any) {
+        console.error('OpenAI image generation error:', error);
+        res.status(500).json({ error: 'Failed to generate image', details: error.message });
+    }
+});
+
 
 function inferImageExtension(mimeType: string): string {
   switch (mimeType) {
@@ -816,254 +924,6 @@ app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
     }
 });
 
-// --- Monaco Protocol ---
-
-const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
-const connection = new Connection(rpcUrl, 'confirmed');
-
-// Initialize the Monaco program
-const wallet = new Wallet(Keypair.generate()); // Using a dummy wallet for read-only operations
-const provider = new AnchorProvider(connection, wallet, {
-  commitment: 'confirmed',
-  preflightCommitment: 'confirmed'
-});
-setProvider(provider);
-
-// Monaco program ID (mainnet)
-const MONACO_PROGRAM_ID = new PublicKey('monacoUXKtUi6vKsQwaLyxmXKSievfNWEcYXTgkbCih');
-
-// Type definitions for Monaco Protocol
-interface MarketAccount {
-    marketStatus: {
-        open?: {};
-        [key: string]: any;
-    };
-    title: string;
-    [key: string]: any;
-}
-
-interface Market {
-    publicKey: PublicKey;
-    account: MarketAccount;
-}
-
-interface OrderAccount {
-    publicKey: PublicKey;
-    account: {
-        purchaser: PublicKey;
-        market: PublicKey;
-        marketOutcomeIndex: number;
-        orderStatus: {
-            [key: string]: any;
-        };
-        stake: { toNumber: () => number };
-        payout: { toNumber: () => number };
-        [key: string]: any;
-    };
-}
-
-// Import Monaco Protocol's MarketPrice type
-import type { MarketPrice } from '@monaco-protocol/client/types/market';
-
-// Extend the MarketPrice interface with any additional properties we need
-interface CustomMarketPrice extends MarketPrice {
-    // Add any additional properties here if needed
-    [key: string]: any;
-}
-
-// Initialize the program using Program.at() which fetches the IDL from the chain
-let monacoProgram: any;
-
-// Initialize the program in an async function
-const initProgram = async () => {
-  try {
-    monacoProgram = await Program.at(MONACO_PROGRAM_ID, provider);
-    console.log('Monaco program initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize Monaco program:', error);
-    throw error;
-  }
-};
-
-// Call the initialization
-initProgram().catch((error: Error) => {
-    console.error('Error initializing Monaco program:', error);
-});
-
-// FIX: Use Request and Response types from express.
-app.get('/api/monaco/markets', async (req: Request, res: Response) => {
-    try {
-        const allMarkets: Market[] = await monacoProgram.account.market.all();
-        const openMarkets = allMarkets.filter((market) => 'open' in market.account.marketStatus);
-        const markets = openMarkets.map((market: Market) => ({
-            id: market.publicKey.toBase58(),
-            ...market.account
-        }));
-        res.json({ markets });
-    } catch (error) {
-        console.error('Failed to fetch Monaco markets:', error);
-        res.status(500).json({ error: 'Failed to fetch markets from Monaco Protocol.' });
-    }
-});
-
-// FIX: Use Request and Response types from express.
-app.get('/api/monaco/market/:marketPk', async (req: Request, res: Response) => {
-    try {
-        const { marketPk } = req.params;
-        const marketPublicKey = new PublicKey(marketPk);
-
-        const marketPromise = getMarket(monacoProgram, marketPublicKey);
-        const pricesPromise = getMarketPrices(monacoProgram, marketPublicKey);
-
-        const [marketResponse, pricesResponse] = await Promise.all([marketPromise, pricesPromise]);
-
-        if (!marketResponse.success || !pricesResponse.success) {
-            throw new Error('Failed to fetch market details or prices.');
-        }
-
-        const { title, ...accountWithoutTitle } = marketResponse.data.account;
-        const market = {
-            id: marketResponse.data.publicKey.toBase58(),
-            title,  // This is the same as title: title
-            ...accountWithoutTitle,
-        };
-
-        const outcomes = pricesResponse.data.marketPrices.map((priceInfo) => ({
-            id: priceInfo.marketOutcomeIndex,
-            title: priceInfo.marketOutcome,
-            odds: (priceInfo as any).againstPrices[0]?.price || 0,
-        }));
-        
-        res.json({ market, outcomes });
-    } catch (error: any) {
-        console.error(`Failed to fetch Monaco market details for ${req.params.marketPk}:`, error);
-        res.status(500).json({ error: 'Failed to fetch market details from Monaco Protocol.', details: error.message });
-    }
-});
-
-
-// FIX: Use Request and Response types from express.
-const placeOrderHandler = async (req: Request, res: Response) => {
-    const { marketPk, outcomeIndex, forAgainst, amount, walletAddress } = req.body;
-    if (marketPk === undefined || outcomeIndex === undefined || forAgainst === undefined || amount === undefined || !walletAddress) {
-        return res.status(400).json({ error: 'Missing required fields for placing an order.' });
-    }
-
-    try {
-        const marketPublicKey = new PublicKey(marketPk);
-        const purchaserPublicKey = new PublicKey(walletAddress);
-        const stake = amount;
-        
-        const marketPrices = await getMarketPrices(monacoProgram, marketPublicKey);
-        const price = forAgainst === 'for' 
-            ? (marketPrices.data.marketPrices[outcomeIndex] as any).againstPrices[0]?.price || 1.1
-            : (marketPrices.data.marketPrices[outcomeIndex] as any).forPrices[0]?.price || 1.1;
-
-        const orderTx = await createOrderUiStake(monacoProgram, marketPublicKey, outcomeIndex, forAgainst === 'for', stake, price, purchaserPublicKey);
-
-        const { blockhash } = await connection.getLatestBlockhash();
-        (orderTx.data as any).transaction.recentBlockhash = blockhash;
-        (orderTx.data as any).transaction.feePayer = purchaserPublicKey;
-
-        const serializedTransaction = (orderTx.data as any).transaction
-            .serialize({ requireAllSignatures: false, verifySignatures: false })
-            .toString('base64');
-        
-        res.json({ serializedTransaction });
-
-    } catch (error: any) {
-        console.error("Order placement error:", error);
-        res.status(500).json({ error: 'Failed to create order transaction.', details: error.message });
-    }
-};
-
-app.post('/api/monaco/orders/place', placeOrderHandler);
-
-// FIX: Use Request and Response types from express.
-app.get('/api/monaco/orders/user/:walletAddress', async (req: Request, res: Response) => {
-    const { walletAddress } = req.params;
-    try {
-        const allOrders: OrderAccount[] = await monacoProgram.account.order.all();
-        const orderAccounts = allOrders.filter((o: OrderAccount) => o.account.purchaser.toBase58() === walletAddress);
-
-        if (orderAccounts.length === 0) {
-            return res.json({ bets: [] });
-        }
-
-        // Get unique market PKs to fetch market details efficiently
-        const marketPks: PublicKey[] = Array.from(
-            new Set(
-                orderAccounts
-                    .map(o => o.account.market)
-                    .filter((market): market is PublicKey => market instanceof PublicKey)
-            )
-        );
-        
-        // Create promises for market details and prices with proper type safety
-        const marketDetailsPromises = marketPks.map((marketPk: PublicKey) => 
-            getMarket(monacoProgram, marketPk)
-        );
-        const marketPricesPromises = marketPks.map((marketPk: PublicKey) => 
-            getMarketPrices(monacoProgram, marketPk)
-        );
-
-        const marketDetailsResponses = await Promise.all(marketDetailsPromises);
-        const marketPricesResponses = await Promise.all(marketPricesPromises);
-        
-        interface MarketData {
-            account: {
-                title: string;
-                [key: string]: any;
-            };
-prices: CustomMarketPrice[];
-        }
-        
-        const marketsMap = new Map<string, MarketData>();
-        marketDetailsResponses.forEach((response: { success: boolean; data: { publicKey: { toBase58: () => string; }; account: any; }; }, index: number) => {
-            if (response.success) {
-                const pk = response.data.publicKey.toBase58();
-                const pricesResponse = marketPricesResponses[index];
-                const prices = pricesResponse.success ? pricesResponse.data.marketPrices : [];
-                marketsMap.set(pk, { account: response.data.account, prices });
-            }
-        });
-
-        // Enrich orders with market details
-        const enrichedBets = orderAccounts.map((order: OrderAccount) => {
-            const marketPk = order.account.market.toBase58();
-            const marketData = marketsMap.get(marketPk);
-            
-            if (!marketData) {
-                return null;
-            }
-
-            const { account: market, prices } = marketData;
-
-            const outcome = prices.find((p: MarketPrice) => p.marketOutcomeIndex === order.account.marketOutcomeIndex);
-            const outcomeTitle = outcome ? outcome.marketOutcome : `Outcome #${order.account.marketOutcomeIndex}`;
-            
-            const stake = order.account.stake.toNumber() / 1_000_000; // Assuming 6 decimals for USDC
-            const payout = order.account.payout.toNumber() / 1_000_000;
-            
-            return {
-                id: order.publicKey.toBase58(),
-                marketTitle: market.title,
-                outcomeTitle: outcomeTitle,
-                stake: stake,
-                payout: payout,
-                status: Object.keys(order.account.orderStatus)[0], // e.g., 'matched', 'open'
-            };
-        }).filter(Boolean);
-
-        res.json({ bets: enrichedBets });
-
-    } catch (err: any) {
-        console.error('Failed to fetch user orders:', err);
-        res.status(500).json({ error: 'Failed to fetch user orders.', details: err.message });
-    }
-});
-
-
 // --- Solana Tools (Solscan-backed) ---
 
 // FIX: Use Request and Response types from express.
@@ -1229,79 +1089,6 @@ app.post('/tools/fetchCandles', async (req: Request, res: Response) => {
     } catch (err: any) {
         console.error('fetchCandles route error:', err.message);
         res.status(500).json({ error: 'Failed to fetch candles' });
-    }
-});
-
-// FIX: Use Request and Response types from express.
-app.post('/tools/listMonacoMarkets', async (req: Request, res: Response) => {
-    try {
-        const { marketStatus = 'open' } = req.body ?? {};
-        const allMarkets = await monacoProgram.account.market.all();
-        const openMarkets = allMarkets.filter((market: Market) => 'open' in market.account.marketStatus);
-        const markets = openMarkets.map((market: Market) => ({
-            id: market.publicKey.toBase58(),
-            ...market.account
-        }));
-        res.json({ data: markets });
-    } catch (err: any) {
-        console.error('listMonacoMarkets tool error:', err);
-        res.status(500).json({ error: 'Failed to fetch markets.' });
-    }
-});
-
-// FIX: Use Request and Response types from express.
-app.post('/tools/getMonacoMarketDetails', async (req: Request, res: Response) => {
-    try {
-        const { marketPk } = req.body ?? {};
-        if (!marketPk) return res.status(400).json({ error: 'Missing marketPk' });
-        
-        const marketPublicKey = new PublicKey(marketPk);
-
-        const marketPromise = getMarket(monacoProgram, marketPublicKey);
-        const pricesPromise = getMarketPrices(monacoProgram, marketPublicKey);
-
-        const [marketResponse, pricesResponse] = await Promise.all([marketPromise, pricesPromise]);
-
-        if (!marketResponse.success || !pricesResponse.success) {
-            throw new Error('Failed to fetch market details or prices.');
-        }
-
-        const { title, ...accountWithoutTitle } = marketResponse.data.account;
-        const market = {
-            id: marketResponse.data.publicKey.toBase58(),
-            title,  // This is the same as title: title
-            ...accountWithoutTitle,
-        };
-
-        const outcomes = pricesResponse.data.marketPrices.map((priceInfo) => ({
-            id: priceInfo.marketOutcomeIndex,
-            title: priceInfo.marketOutcome,
-            odds: (priceInfo as any).againstPrices[0]?.price || 0,
-        }));
-        
-        res.json({ data: { market, outcomes } });
-
-    } catch (err: any) {
-        console.error('getMonacoMarketDetails tool error:', err);
-        res.status(500).json({ error: 'Failed to fetch market details' });
-    }
-});
-
-// This endpoint is for AI tool-based betting
-app.post('/tools/placeMonacoOrder', placeOrderHandler);
-
-// FIX: Use Request and Response types from express.
-app.post('/tools/listUserMonacoOrders', async (req: Request, res: Response) => {
-    try {
-        const { walletAddress } = req.body ?? {};
-        if (!walletAddress) return res.status(400).json({ error: 'Missing walletAddress' });
-        
-        const allOrders = await monacoProgram.account.order.all();
-        const userOrders = allOrders.filter((o: OrderAccount) => o.account.purchaser.toBase58() === walletAddress);
-        res.json({ data: userOrders });
-    } catch (err: any) {
-        console.error('listUserMonacoOrders tool error:', err);
-        res.status(500).json({ error: 'Failed to fetch user orders.' });
     }
 });
 

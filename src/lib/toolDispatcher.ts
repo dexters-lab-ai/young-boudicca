@@ -12,10 +12,6 @@ const serverTools = new Set([
     'getTokenMetadata',
     'getMarketInfo',
     'fetchCandles',
-    'listMonacoMarkets',
-    'getMonacoMarketDetails',
-    'listUserMonacoOrders',
-    'placeMonacoOrder'
 ]);
 
 function mapToolToEndpoint(name: string): { url: string; body: (args: any) => any } | null {
@@ -40,14 +36,6 @@ function mapToolToEndpoint(name: string): { url: string; body: (args: any) => an
                 url: `${baseUrl}/fetchCandles`,
                 body: (a) => ({ address: a?.address, time_from: a?.time_from, time_to: a?.time_to }),
             };
-        case 'listMonacoMarkets':
-            return { url: `${baseUrl}/listMonacoMarkets`, body: (a) => ({ marketStatus: a?.marketStatus }) };
-        case 'getMonacoMarketDetails':
-            return { url: `${baseUrl}/getMonacoMarketDetails`, body: (a) => ({ marketPk: a?.marketPk }) };
-        case 'listUserMonacoOrders':
-            return { url: `${baseUrl}/listUserMonacoOrders`, body: (a) => ({ walletAddress: a?.walletAddress }) };
-        case 'placeMonacoOrder':
-            return { url: `${baseUrl}/placeMonacoOrder`, body: (a) => a };
         default:
             return null;
     }

@@ -118,20 +118,6 @@ export const availableTools: FunctionDeclaration[] = [
     },
   },
   {
-    name: 'getMonacoMarketDetails',
-    description: 'Fetches details for a specific Monaco Protocol betting market, including the possible outcomes and current prices.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        marketPk: {
-          type: Type.STRING,
-          description: 'The public key (address) of the market to fetch details for.',
-        },
-      },
-      required: ['marketPk'],
-    },
-  },
-  {
     name: 'generateSoraVideo',
     description: 'Generates a short video using Sora based on the currently active user image. Requires an uploaded or captured image.',
     parameters: {
@@ -151,50 +137,6 @@ export const availableTools: FunctionDeclaration[] = [
         },
       },
       required: [],
-    },
-  },
-  {
-    name: 'listUserMonacoOrders',
-    description: 'Lists all active and settled orders for a given user wallet address on the Monaco Protocol.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        walletAddress: {
-          type: Type.STRING,
-          description: 'The Solana wallet address of the user.',
-        },
-      },
-      required: ['walletAddress'],
-    },
-  },
-  {
-    name: 'placeMonacoOrder',
-    description: 'Places an order (a bet) on a specific outcome of a Monaco Protocol market.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        marketPk: {
-          type: Type.STRING,
-          description: 'The public key (address) of the market to place an order on.',
-        },
-        outcomeIndex: {
-          type: Type.NUMBER,
-          description: 'The index of the outcome to bet on (e.g., 0 for the first outcome, 1 for the second).',
-        },
-        forAgainst: {
-          type: Type.STRING,
-          description: 'Whether to place a "for" (back) or "against" (lay) order. Must be either "for" or "against".',
-        },
-        amount: {
-          type: Type.NUMBER,
-          description: 'The amount of USDC to stake on the order.',
-        },
-        walletAddress: {
-          type: Type.STRING,
-          description: "The user's Solana wallet address.",
-        },
-      },
-      required: ['marketPk', 'outcomeIndex', 'forAgainst', 'amount', 'walletAddress'],
     },
   },
 ];

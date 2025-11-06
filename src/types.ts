@@ -53,8 +53,6 @@ export interface FavouriteToken {
     logo?: string;
 }
 
-export type AgentName = 'gemini' | 'eliza';
-
 export interface TickerToken {
   tokenAddress: string;
   name: string;
@@ -98,49 +96,6 @@ export interface Environment {
     musicPrompt: string;
 }
 
-// Monaco Protocol Types
-export interface MonacoMarket {
-  id: string; // Public Key as string
-  title: string;
-  marketOutcomes: string[];
-  marketStatus: object; // This is an enum-like object in the SDK
-  marketType: string;
-  marketLockTimestamp: string;
-  // ... other fields from the SDK's MarketAccount
-}
-
-export interface MonacoMarketOutcome {
-  id: number; // Index
-  title: string;
-  odds: number;
-}
-
-export interface MonacoOrder {
-  publicKey: string;
-  account: {
-    purchaser: string;
-    market: string;
-    marketOutcomeIndex: number;
-    forOutcome: boolean;
-    stake: number;
-    payout: number;
-    // ... other fields from the SDK's OrderAccount
-  };
-}
-// FIX: Standardizing on Monaco types and removing Pnp legacy types.
-export interface MonacoUserBet {
-  id: string;
-  marketTitle: string;
-  outcomeTitle: string;
-  stake: number;
-  payout: number;
-  status: string;
-  // Unix timestamp (seconds since epoch) when the bet was placed
-  creationTimestamp?: number;
-  // Unix timestamp (seconds since epoch) when the market locks/closes
-  marketLockTimestamp?: number;
-}
-
 export interface PaywallDetails {
   type: 'chat_credits' | 'agent_unlock' | 'sora_credits' | 'image_credits';
   amount: number;
@@ -150,4 +105,27 @@ export interface PaywallDetails {
   itemDescription: string;
   quantity?: number; // e.g., how many credits are being bought
   originalRequest: () => Promise<any>; // The function to retry after payment
+}
+
+// FIX: Add missing types for the BettingModal component
+export interface MonacoMarket {
+  id: string;
+  title: string;
+  marketLockTimestamp: number | string;
+}
+
+export interface MonacoMarketOutcome {
+  id: number;
+  title: string;
+  odds: number;
+}
+
+export interface MonacoUserBet {
+  id: string;
+  marketTitle: string;
+  creationTimestamp: number;
+  stake: number;
+  outcomeTitle: string;
+  marketLockTimestamp?: number;
+  status?: string;
 }

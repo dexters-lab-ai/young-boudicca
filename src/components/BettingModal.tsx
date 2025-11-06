@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import useStore from '../lib/store';
+// FIX: Correctly import toggleBettingModal action
 import { toggleBettingModal } from '../lib/actions';
+// FIX: Correctly import Monaco types
 import { MonacoMarket, MonacoMarketOutcome, MonacoUserBet } from '../types';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';

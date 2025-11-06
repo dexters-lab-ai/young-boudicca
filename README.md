@@ -34,7 +34,7 @@ AI Dreams isn't just another NFT platform—it's a paradigm shift in digital own
 ### 🤖 Advanced AI Capabilities
 - **Natural Conversations**: Powered by OpenAI's cutting-edge models for realistic, contextual dialogue and tool use, all handled securely on the server.
 - **Voice Synthesis**: High-quality, expressive voice generation with emotional range via ElevenLabs.
-- **On-Chain Awareness**: Agents can access live Solana blockchain data and interact with DeFi protocols like Monaco Protocol.
+- **On-Chain Awareness**: Agents can access live Solana blockchain data via Function Calling.
 - **Multimodal Interaction**: Supports text, voice, and visual interactions, including powerful image-to-video generation with Sora.
 
 ## 🛠️ Technology Stack

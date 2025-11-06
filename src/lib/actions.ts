@@ -5,8 +5,7 @@
 import useStore, { createAssistantMessage } from './store'
 import imageData from './imageData'
 import modes from './modes'
-import { Photo, Agent, Environment, AgentName, PaywallDetails } from '../types'
-// FIX: Added missing import for buildCustomAgentWelcomeMessage.
+import { Photo, Agent, Environment, PaywallDetails } from '../types'
 import { FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants'
 import { pollSoraTask, SoraStatus, PollStatusPayload } from './soraUtils'
 import { fetchApiWith402 } from './fetchApiWith402'
@@ -15,11 +14,6 @@ const get = useStore.getState
 const set = useStore.setState
 const defaultImageId = 'default-image'
  
-// FIX: Add setApiKey action
-export const setApiKey = (key: string) => {
-    set({ apiKey: key });
-};
-
 export const init = () => {
   if (get().didInit) return
 
@@ -27,7 +21,7 @@ export const init = () => {
   const initialPhoto: Photo = { id: defaultImageId, isBusy: false, mode: 'default', isInitial: true, mediaType: 'image' }
   
   set(state => {
-    const defaultModel = state.models.find(m => m.agent === 'gemini') ?? state.models[0] ?? null;
+    const defaultModel = state.models[0] ?? null;
     const welcomeMessage = defaultModel
       ? getWelcomeMessageForModelName(defaultModel.name)
       : FALLBACK_WELCOME_MESSAGE;
@@ -229,34 +223,25 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
     }
 }
 
-export const setActiveModelUrl = ({ url, name, agent, systemInstruction }: { url: string, name: string, agent: AgentName, systemInstruction?: string | null }) => {
+export const setActiveModelUrl = ({ url, name, systemInstruction }: { url: string, name: string, systemInstruction?: string | null }) => {
   const defaultEnv = get().environments[0];
-  get().setActiveModelUrl({ url, name, agent, systemInstruction });
+  get().setActiveModelUrl({ url, name, systemInstruction });
   if (defaultEnv) {
     setActiveEnvironment(defaultEnv);
   }
 }
 
-export const setActiveAgent = (agent: AgentName) => {
-    const newModel = get().models.find(m => m.agent === agent);
-    if (newModel) {
-        setActiveModelUrl(newModel);
-    }
-};
-
 export const toggleAboutModal = (open?: boolean) => {
     set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen }));
 }
 
-// FIX: Add toggleSettingsModal action
-export const toggleSettingsModal = (open?: boolean) => {
-    set(state => ({ isSettingsModalOpen: open ?? !state.isSettingsModalOpen }));
-}
-
-// FIX: Add toggleWelcomeModal action
-export const toggleWelcomeModal = (open?: boolean) => {
-    set(state => ({ isWelcomeModalOpen: open ?? !state.isWelcomeModalOpen }));
-}
+// FIX: Add toggleBettingModal action to fix import error in BettingModal.tsx.
+export const toggleBettingModal = (open?: boolean, marketPk?: string) => {
+    set(state => ({ 
+        isBettingModalOpen: open ?? !state.isBettingModalOpen,
+        bettingModalMarketPk: marketPk || null,
+    }));
+};
 
 export const toggleCreateAgentModal = (open?: boolean) => {
     set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen }));
@@ -268,10 +253,6 @@ export const toggleSubscriptionModal = (open?: boolean, agentId?: string) => {
         subscriptionModalAgentId: agentId || null,
     }));
 };
-
-export const toggleBettingModal = (open?: boolean, marketId?: string) => {
-    get().toggleBettingModal(open, marketId);
-}
 
 export const togglePaywallModal = (open?: boolean, details?: PaywallDetails) => {
     set(state => ({
@@ -288,14 +269,12 @@ export const closeTokenDetailModal = () => {
     set({ isTokenDetailModalOpen: false, tokenDetailModalAddress: null });
 };
 
-// FIX: Corrected implementation to avoid Immer mutation syntax outside of the store creator.
 export const setActiveCustomAgent = (agent: Agent | null) => {
   if (agent) {
     const toastLabel = agent.name;
     set({
       activeCustomAgent: agent,
       activeModelUrl: agent.vrmUrl,
-      activeAgent: 'gemini',
       activeModelToast: toastLabel,
       activePhotoId: 'default-image',
       customPrompt: '',
