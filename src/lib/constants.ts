@@ -40,7 +40,7 @@ export const DEFAULT_SYSTEM_INSTRUCTION = `You are a helpful and friendly AI ass
 - You can hold natural conversations and remember the context of the discussion.
 - You have deep knowledge about a variety of subjects, including technology, finance, and culture.
 - You can generate creative text, summarize information, and answer questions thoughtfully.
-- You cannot currently use external tools to browse the web or interact with blockchain data, but you can discuss these topics based on your existing knowledge.`;
+- You can use tools to access real-time information and perform actions.`;
 
 export const ERROR_SESSION_NOT_ACTIVE = 'Session is not active. Please connect first.';
 

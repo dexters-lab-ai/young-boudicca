@@ -12,7 +12,6 @@ import Filters from './Filters';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import MemeGenerator from './MemeGenerator';
 import AgentSelector from './AgentSelector';
 
 import '../styles/Stage.css';
@@ -32,7 +31,7 @@ export default function Stage() {
   const activeMusic = useStore.use.activeMusic();
   const isMusicMuted = useStore.use.isMusicMuted();
 
-  const [inputSource, _setInputSource] = useState<'default' | 'upload' | 'webcam' | 'generator'>('default');
+  const [inputSource, _setInputSource] = useState<'default' | 'upload' | 'webcam'>('default');
   const [videoActive, setVideoActive] = useState(false);
   const [didJustSnap, setDidJustSnap] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -155,7 +154,7 @@ export default function Stage() {
     }
   }
 
-  const setSource = (source: 'default' | 'upload' | 'webcam' | 'generator') => {
+  const setSource = (source: 'default' | 'upload' | 'webcam') => {
     stopVideo();
     if (source === 'webcam') {
         startVideo();
@@ -210,8 +209,6 @@ export default function Stage() {
 
         {activePhoto?.isBusy && <div className="media-overlay shimmer">Processing...</div>}
 
-        {inputSource === 'generator' && <MemeGenerator onClose={() => setSource('default')} />}
-
         {inputSource === 'webcam' && videoActive && (
           <>
             <video ref={videoRef} muted autoPlay playsInline disablePictureInPicture />
@@ -219,7 +216,7 @@ export default function Stage() {
           </>
         )}
         
-        {inputSource !== 'webcam' && inputSource !== 'generator' && activePhotoId === 'default-image' && activeModelUrl && (
+        {inputSource !== 'webcam' && activePhotoId === 'default-image' && activeModelUrl && (
             <div className="default-image">
                 <Suspense fallback={<div className="media-overlay">Loading 3D Model...</div>}>
                     <Canvas
@@ -261,7 +258,7 @@ export default function Stage() {
             </div>
         )}
 
-        {inputSource !== 'webcam' && inputSource !== 'generator' && activePhotoId !== 'default-image' && (
+        {inputSource !== 'webcam' && activePhotoId !== 'default-image' && (
           isVideo ? (
             <div className="video-player">
               {activeVideoUrl ? (
@@ -337,9 +334,6 @@ export default function Stage() {
       <div className="input-controls">
         <button className="control-button" onClick={() => toggleCreateAgentModal(true)} title="Create a new AI Agent">
           <span className="icon">add_circle</span>
-        </button>
-        <button className={c("control-button", { active: inputSource === 'generator' })} onClick={() => setSource('generator')} title="Meme Generator">
-          <span className="icon">auto_awesome</span>
         </button>
         <button className={c("control-button", { active: inputSource === 'upload' })} onClick={() => setSource('upload')} title="Upload Image">
           <span className="icon">upload</span>

@@ -28,7 +28,6 @@ function AppContent() {
   const isTokenDetailModalOpen = useStore.use.isTokenDetailModalOpen();
   const isSubscriptionModalOpen = useStore.use.isSubscriptionModalOpen();
   const isPaywallModalOpen = useStore.use.isPaywallModalOpen();
-  const tempBackgroundUrl = useStore.use.tempBackgroundUrl();
   const error = useStore.use.error();
   const setError = useStore.use.setError();
   const activeEnvironmentUrl = useStore.use.activeEnvironmentUrl();
@@ -42,12 +41,6 @@ function AppContent() {
   return (
     <>
       <div className="main-background" style={{ backgroundImage: activeEnvironmentUrl ? `url(${activeEnvironmentUrl})` : 'none' }} />
-      {tempBackgroundUrl && (
-        <div 
-          className="temp-background" 
-          style={{ backgroundImage: `url(${tempBackgroundUrl})` }} 
-        />
-      )}
       <div className="app-header">
         <div className="token-ticker-container">
             <TokenTicker />

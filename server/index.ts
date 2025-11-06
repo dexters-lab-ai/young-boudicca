@@ -9,7 +9,8 @@ import process from 'process';
 
 // FIX: Change to named imports to avoid type conflicts with global DOM types.
 // FIX: Import Request, Response, and NextFunction types from express.
-import express, { Request, Response, NextFunction } from 'express';
+// FIX: Changed to namespace import to prevent global type conflicts (e.g., with fetch API's Response).
+import * as express from 'express';
 import cors from 'cors';
 import http from 'http';
 import path from 'path';
@@ -36,7 +37,7 @@ import { buildAgentMetadata } from './utils/agentMetadata';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
+const app = express.default();
 
 const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
@@ -109,7 +110,7 @@ async function getCandyMachineService(): Promise<CandyMachineService> {
 
 // Health check endpoint
 // FIX: Use Request and Response types from express.
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (req: express.Request, res: express.Response) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
     res.status(200).json({
       status: 'ok',
@@ -123,7 +124,7 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 // --- Request Logging Middleware ---
 // FIX: Use Request, Response, and NextFunction types from express.
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
     console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
     if (req.method === 'POST' && req.body && Object.keys(req.body).length > 0) {
@@ -136,7 +137,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // --- AI Endpoints (Server-Side OpenAI) ---
 
-app.post('/api/chat', async (req: Request, res: Response) => {
+app.post('/api/chat', async (req: express.Request, res: express.Response) => {
     if (!openai) {
       return res.status(503).json({ error: 'OpenAI service not configured.' });
     }
@@ -162,9 +163,10 @@ app.post('/api/chat', async (req: Request, res: Response) => {
         ];
 
         // --- AUTONOMOUS AGENT STATE MACHINE PLACEHOLDER ---
-        // Here, you could implement a state machine for the agent.
+        // This is where a state machine for the agent could be implemented.
         // For example, if the last message was a while ago, the agent
-        // could proactively start a monologue.
+        // could proactively start a monologue. This logic does not block
+        // the normal request-response chat flow.
         // const agentState = await getAgentState(req.session.id, agentId);
         // if (agentState.status === 'IDLE' && Date.now() - agentState.lastInteraction > 15000) {
         //   messages.push({ role: 'user', content: 'You have been quiet. What are you thinking about?' });
@@ -201,7 +203,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 });
 
 
-app.post('/api/images/generate', async (req: Request, res: Response) => {
+app.post('/api/images/generate', async (req: express.Request, res: express.Response) => {
     if (!openai) {
         return res.status(503).json({ error: 'OpenAI service not configured.' });
     }
@@ -222,14 +224,13 @@ app.post('/api/images/generate', async (req: Request, res: Response) => {
             response_format: 'b64_json'
         });
 
-        // Add proper type checking for the response
-        if (!response?.data?.[0]?.b64_json) {
-            throw new Error('No image data returned from OpenAI');
-        }
-
         const b64_json = response.data[0].b64_json;
-        const imageUrl = `data:image/png;base64,${b64_json}`;
-        res.json({ imageUrl });
+        if (b64_json) {
+            const imageUrl = `data:image/png;base64,${b64_json}`;
+            res.json({ imageUrl });
+        } else {
+            throw new Error('No image data returned from OpenAI.');
+        }
 
     } catch (error: any) {
         console.error('OpenAI image generation error:', error);
@@ -301,7 +302,7 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 
 // --- Sora Endpoints ---
 // FIX: Use Request and Response types from express.
-app.post('/api/sora/image-to-video', async (req: Request, res: Response) => {
+app.post('/api/sora/image-to-video', async (req: express.Request, res: express.Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -342,7 +343,7 @@ app.post('/api/sora/image-to-video', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.get('/api/sora/image-to-video/:taskId', async (req: Request, res: Response) => {
+app.get('/api/sora/image-to-video/:taskId', async (req: express.Request, res: express.Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -369,7 +370,7 @@ interface Voice {
 
 // Simple TTS voices endpoint that returns a fixed set of voices
 // FIX: Use Request and Response types from express.
-app.get('/api/tts-voices', (req: Request, res: Response) => {
+app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
   const voices: Voice[] = [
     { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
     { value: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi' },
@@ -386,7 +387,7 @@ app.get('/api/tts-voices', (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/api/tts', async (req: Request, res: Response) => {
+app.post('/api/tts', async (req: express.Request, res: express.Response) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
   }
@@ -419,7 +420,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/api/music/compose', async (req: Request, res: Response) => {
+app.post('/api/music/compose', async (req: express.Request, res: express.Response) => {
     if (!elevenlabs) {
         return res.status(503).json({ error: 'Music service not configured on the server.' });
     }
@@ -478,7 +479,7 @@ function verifySignedPayload({ message, signature, walletAddress }: SignedPayloa
 }
 
 // FIX: Use Request and Response types from express.
-app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: Response) => {
+app.post('/api/assets/upload', assetUploadMiddleware, async (req: express.Request, res: express.Response) => {
   if (!backblazeService) {
     return res.status(503).json({ error: 'Asset storage not configured.' });
   }
@@ -539,7 +540,7 @@ app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: 
 
 // --- Candy Machine API ---
 // FIX: Use Request and Response types from express.
-app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/create', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -569,7 +570,7 @@ app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/api/candy-machine/:address/items', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/:address/items', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -609,7 +610,7 @@ app.post('/api/candy-machine/:address/items', async (req: Request, res: Response
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/:address/mint', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -644,7 +645,7 @@ app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response)
 
 // --- Agent Creator API ---
 // FIX: Use Request and Response types from express.
-app.post('/api/agents/create', async (req: Request, res: Response) => {
+app.post('/api/agents/create', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -749,7 +750,7 @@ app.post('/api/agents/create', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) => {
+app.put('/api/agents/:agentId/visibility', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { isPublic, creatorWalletAddress, signature, message } = req.body;
 
@@ -784,7 +785,7 @@ app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) =
 
 
 // FIX: Use Request and Response types from express.
-app.get('/api/agents/list', async (req: Request, res: Response) => {
+app.get('/api/agents/list', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -798,7 +799,7 @@ app.get('/api/agents/list', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.get('/api/agents/creator/:walletAddress', async (req: Request, res: Response) => {
+app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -824,7 +825,7 @@ const findOrCreateUser = async (walletAddress: string) => {
 };
 
 // FIX: Use Request and Response types from express.
-app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
+app.get('/api/users/wallet-balance', async (req: express.Request, res: express.Response) => {
     const { walletAddress } = req.query;
     if (!walletAddress || typeof walletAddress !== 'string') {
         return res.status(400).json({ isSufficient: false, error: 'Wallet address is required.' });
@@ -843,7 +844,7 @@ app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Response) => {
+app.get('/api/users/subscription-status/:agentId', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { walletAddress } = req.query;
 
@@ -875,7 +876,7 @@ app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Res
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
+app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { walletAddress, txSignature } = req.body;
 
@@ -927,7 +928,7 @@ app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
 // --- Solana Tools (Solscan-backed) ---
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
+app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Response) => {
     try {
         const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
         let data;
@@ -952,7 +953,7 @@ app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
 
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 9 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchTrendingTokens with limit: ${limit}`);
@@ -971,7 +972,7 @@ app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchToken', async (req: Request, res: Response) => {
+app.post('/tools/fetchToken', async (req: express.Request, res: express.Response) => {
     try {
         const { mint } = req.body ?? {};
         if (!mint) return res.status(400).json({ error: 'Missing mint' });
@@ -991,7 +992,7 @@ app.post('/tools/fetchToken', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 20, platform } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchLaunchpadTokens (bonding) with limit: ${limit} on platform: ${platform}`);
@@ -1010,7 +1011,7 @@ app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 50 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.getLatestTokens with limit: ${limit}`);
@@ -1029,7 +1030,7 @@ app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
+app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1049,7 +1050,7 @@ app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
+app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1069,7 +1070,7 @@ app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
 });
 
 // FIX: Use Request and Response types from express.
-app.post('/tools/fetchCandles', async (req: Request, res: Response) => {
+app.post('/tools/fetchCandles', async (req: express.Request, res: express.Response) => {
     try {
         const { address, time_from, time_to } = req.body ?? {};
         if (!address || !time_from || !time_to) return res.status(400).json({ error: 'Missing fields' });
@@ -1131,7 +1132,7 @@ if (fs.existsSync(distPath)) {
     
     // Handle SPA routing - return index.html for all other routes
     // FIX: Use Request and Response types from express.
-    app.get('*', (req: Request, res: Response) => {
+    app.get('*', (req: express.Request, res: express.Response) => {
       res.sendFile(path.join(distPath, 'index.html'), (err) => {
         if (err) {
           console.error('Error sending file:', err);

@@ -66,14 +66,14 @@ export default function About() {
                                     <span className="icon">query_stats</span>
                                     <div>
                                         <h5>Live On-Chain Toolkit</h5>
-                                        <p>Access Solana data and betting markets via Function Calling.</p>
+                                        <p>Access live Solana data via Function Calling.</p>
                                     </div>
                                 </li>
                             </ul>
 
                             <h3>The Tech Stack</h3>
                             <p>
-                            This app is built with React, Three.js, and Google's Gemini, using a Node.js server to securely orchestrate AI services like ElevenLabs for voice and Solscan for live blockchain data, with Solana for NFTs.
+                            This app is built with React, Three.js, and a server-side OpenAI engine. It uses a Node.js server to securely orchestrate AI services like ElevenLabs for voice and Solscan for live blockchain data, with Solana for NFTs.
                             </p>
                             <video
                                 className="about-video"

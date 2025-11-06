@@ -19,8 +19,6 @@ export const createAssistantMessage = (text: string): ChatMessage => ({
 interface AppState {
   didInit: boolean;
   isAboutModalOpen: boolean;
-  isBettingModalOpen: boolean;
-  bettingModalMarketPk: string | null;
   isCreateAgentModalOpen: boolean;
   isSubscriptionModalOpen: boolean;
   subscriptionModalAgentId: string | null;
@@ -44,7 +42,6 @@ interface AppState {
   activeCustomAgent: Agent | null;
   kokoroVoices: { value: string; label: string }[];
   favourites: FavouriteToken[];
-  tempBackgroundUrl: string | null;
   error: string | null;
   environments: Environment[];
   activeEnvironmentUrl: string | null;
@@ -74,7 +71,6 @@ interface AppState {
   addReaction: (messageId: string, emoji: string) => void;
   addToolMessage: (toolName: string, data: any, text?: string) => void;
   toggleAboutModal: (open?: boolean) => void;
-  toggleBettingModal: (open?: boolean, marketPk?: string) => void;
   toggleCreateAgentModal: (open?: boolean) => void;
   toggleSubscriptionModal: (open?: boolean, agentId?: string) => void;
   togglePaywallModal: (open?: boolean, details?: PaywallDetails) => void;
@@ -82,7 +78,6 @@ interface AppState {
   closeTokenDetailModal: () => void;
   addFavourite: (token: FavouriteToken) => void;
   removeFavourite: (tokenAddress: string) => void;
-  setTempBackgroundUrl: (url: string | null) => void;
   setError: (error: string | null) => void;
   setCustomAgents: (agents: Agent[]) => void;
   setActiveCustomAgent: (agent: Agent | null) => void;
@@ -100,8 +95,6 @@ const useStore = create(
     immer<AppState>((set, get) => ({
     didInit: false,
     isAboutModalOpen: false,
-    isBettingModalOpen: false,
-    bettingModalMarketPk: null,
     isCreateAgentModalOpen: false,
     isSubscriptionModalOpen: false,
     subscriptionModalAgentId: null,
@@ -136,7 +129,6 @@ const useStore = create(
     activeCustomAgent: null,
     kokoroVoices: [],
     favourites: [],
-    tempBackgroundUrl: null,
     error: null,
     environments: [
         { name: 'Studio', icon: '🏢', url: '/images/environments/studio.png', musicPrompt: 'Lofi hip hop beats for studying or relaxing.' },
@@ -212,7 +204,6 @@ const useStore = create(
       }))
     },
     toggleAboutModal: (open?: boolean) => set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen })),
-    toggleBettingModal: (open?: boolean, marketPk?: string) => set(state => ({ isBettingModalOpen: open ?? !state.isBettingModalOpen, bettingModalMarketPk: marketPk || null })),
     toggleCreateAgentModal: (open?: boolean) => set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen })),
     toggleSubscriptionModal: (open?: boolean, agentId?: string) => {
         set(state => ({ 
@@ -236,7 +227,6 @@ const useStore = create(
     removeFavourite: (tokenAddress: string) => set(state => {
         state.favourites = state.favourites.filter(f => f.address !== tokenAddress);
     }),
-    setTempBackgroundUrl: (url: string | null) => set({ tempBackgroundUrl: url }),
     setError: (error: string | null) => set({ error: error }),
     setCustomAgents: (agents: Agent[]) => set({ customAgents: agents }),
     setActiveCustomAgent: (agent: Agent | null) => {

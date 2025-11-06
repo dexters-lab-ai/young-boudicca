@@ -235,14 +235,6 @@ export const toggleAboutModal = (open?: boolean) => {
     set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen }));
 }
 
-// FIX: Add toggleBettingModal action to fix import error in BettingModal.tsx.
-export const toggleBettingModal = (open?: boolean, marketPk?: string) => {
-    set(state => ({ 
-        isBettingModalOpen: open ?? !state.isBettingModalOpen,
-        bettingModalMarketPk: marketPk || null,
-    }));
-};
-
 export const toggleCreateAgentModal = (open?: boolean) => {
     set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen }));
 }

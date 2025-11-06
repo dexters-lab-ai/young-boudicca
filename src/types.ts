@@ -106,26 +106,3 @@ export interface PaywallDetails {
   quantity?: number; // e.g., how many credits are being bought
   originalRequest: () => Promise<any>; // The function to retry after payment
 }
-
-// FIX: Add missing types for the BettingModal component
-export interface MonacoMarket {
-  id: string;
-  title: string;
-  marketLockTimestamp: number | string;
-}
-
-export interface MonacoMarketOutcome {
-  id: number;
-  title: string;
-  odds: number;
-}
-
-export interface MonacoUserBet {
-  id: string;
-  marketTitle: string;
-  creationTimestamp: number;
-  stake: number;
-  outcomeTitle: string;
-  marketLockTimestamp?: number;
-  status?: string;
-}
