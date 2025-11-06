@@ -7,10 +7,9 @@ import './env';
 // FIX: Import 'process' to provide correct types for process.on() and process.exit().
 import process from 'process';
 
-// FIX: Change to named imports to avoid type conflicts with global DOM types.
-// FIX: Import Request, Response, and NextFunction types from express.
-// FIX: Changed to namespace import to prevent global type conflicts (e.g., with fetch API's Response).
-import * as express from 'express';
+// FIX: Switched to default import for Express. This is the correct way to import CJS modules with a default export in ESM with esModuleInterop.
+// Using `express.Request` and `express.Response` prevents global type conflicts.
+import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import path from 'path';
@@ -37,7 +36,8 @@ import { buildAgentMetadata } from './utils/agentMetadata';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express.default();
+// FIX: Initialize Express app using the default export.
+const app = express();
 
 const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
@@ -823,6 +823,29 @@ const findOrCreateUser = async (walletAddress: string) => {
     }
     return user;
 };
+
+app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
+    if (!process.env.MONGODB_URI) {
+        return res.status(503).json({ error: 'Database not configured.' });
+    }
+    const { walletAddress } = req.query;
+    if (!walletAddress || typeof walletAddress !== 'string') {
+        return res.status(400).json({ error: 'Wallet address is required.' });
+    }
+
+    try {
+        const user = await findOrCreateUser(walletAddress);
+        res.json({
+            paidPromptCredits: user.paidPromptCredits,
+            soraCredits: user.soraCredits,
+            imageCredits: user.imageCredits,
+        });
+    } catch (err: any) {
+        console.error('Fetch user credits error:', err);
+        res.status(500).json({ error: 'Failed to fetch user credits.' });
+    }
+});
+
 
 // FIX: Use Request and Response types from express.
 app.get('/api/users/wallet-balance', async (req: express.Request, res: express.Response) => {

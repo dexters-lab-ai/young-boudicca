@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import modes from '../lib/modes';
-import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, generateSoraVideo } from '../lib/actions';
+import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, generateSoraVideo, toggleSettingsModal } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -110,7 +110,7 @@ export default function Chat() {
   // Determine current agent details (custom takes precedence)
   const currentAgentDetails = activeCustomAgent || models.find(m => m.url === activeModelUrl);
   const systemInstruction = currentAgentDetails?.systemInstruction;
-  const agentName = currentAgentDetails?.name || 'Miko';
+  const agentName = currentAgentDetails?.name || 'AI Companion';
   const agentIcon = activeCustomAgent ? '✨' : '🤖';
 
   const { 
@@ -155,8 +155,15 @@ export default function Chat() {
         <h2>{agentName}</h2>
         <button
             className="header-button"
+            onClick={() => toggleSettingsModal(true)}
+            title="Account & Credits"
+        >
+            <span className="icon">account_circle</span>
+        </button>
+        <button
+            className="header-button"
             onClick={() => toggleAboutModal(true)}
-            title="About Miko AI"
+            title="About AI Dreams"
         >
             <span className="icon">info</span>
         </button>

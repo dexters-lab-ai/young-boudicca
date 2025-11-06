@@ -7,7 +7,7 @@ import {create} from 'zustand'
 import {immer} from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import {createSelectorFunctions} from 'auto-zustand-selectors-hook'
-import { Photo, ChatMessage, FavouriteToken, Agent, Environment, PaywallDetails } from '../types'
+import { Photo, ChatMessage, FavouriteToken, Agent, Environment, PaywallDetails, UserCredits } from '../types'
 import { DEFAULT_SYSTEM_INSTRUCTION, FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants'
 
 export const createAssistantMessage = (text: string): ChatMessage => ({
@@ -20,6 +20,7 @@ interface AppState {
   didInit: boolean;
   isAboutModalOpen: boolean;
   isCreateAgentModalOpen: boolean;
+  isSettingsModalOpen: boolean;
   isSubscriptionModalOpen: boolean;
   subscriptionModalAgentId: string | null;
   isTokenDetailModalOpen: boolean;
@@ -49,6 +50,8 @@ interface AppState {
   isMusicMuted: boolean;
   subscriptionStatus: Record<string, { isSubscribed: boolean; expiresAt?: Date } | undefined>;
   theme: 'light' | 'dark';
+  userCredits: UserCredits | null;
+  isLoadingUserCredits: boolean;
   toggleTheme: () => void;
   playAnimation: (animation: string) => void;
   setActiveAnimation: (animation: string) => void;
@@ -72,6 +75,7 @@ interface AppState {
   addToolMessage: (toolName: string, data: any, text?: string) => void;
   toggleAboutModal: (open?: boolean) => void;
   toggleCreateAgentModal: (open?: boolean) => void;
+  toggleSettingsModal: (open?: boolean) => void;
   toggleSubscriptionModal: (open?: boolean, agentId?: string) => void;
   togglePaywallModal: (open?: boolean, details?: PaywallDetails) => void;
   openTokenDetailModal: (address: string) => void;
@@ -96,6 +100,7 @@ const useStore = create(
     didInit: false,
     isAboutModalOpen: false,
     isCreateAgentModalOpen: false,
+    isSettingsModalOpen: false,
     isSubscriptionModalOpen: false,
     subscriptionModalAgentId: null,
     isTokenDetailModalOpen: false,
@@ -140,6 +145,8 @@ const useStore = create(
     isMusicMuted: false,
     subscriptionStatus: {},
     theme: 'light',
+    userCredits: null,
+    isLoadingUserCredits: false,
     toggleTheme: () => set(state => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
     playAnimation: (animation: string) => {
       set({ activeAnimation: animation });
@@ -205,6 +212,7 @@ const useStore = create(
     },
     toggleAboutModal: (open?: boolean) => set(state => ({ isAboutModalOpen: open ?? !state.isAboutModalOpen })),
     toggleCreateAgentModal: (open?: boolean) => set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen })),
+    toggleSettingsModal: (open?: boolean) => set(state => ({ isSettingsModalOpen: open ?? !state.isSettingsModalOpen })),
     toggleSubscriptionModal: (open?: boolean, agentId?: string) => {
         set(state => ({ 
             isSubscriptionModalOpen: open ?? !state.isSubscriptionModalOpen,

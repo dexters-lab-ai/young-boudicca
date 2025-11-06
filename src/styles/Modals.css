@@ -175,6 +175,90 @@
     line-height: 1.4;
 }
 
+/* Settings / Account Modal */
+.settings-modal .modal-content {
+    max-width: 480px;
+}
+.settings-modal .modal-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+.settings-modal .modal-header h2 {
+    font-size: 1.5rem;
+    margin: 0;
+}
+.settings-modal .modal-header p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+}
+.credits-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.credit-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--background-dark);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+.credit-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.credit-info .icon {
+    font-size: 1.8rem;
+    color: var(--primary-color);
+}
+.credit-info h4 {
+    font-size: 1rem;
+    font-weight: bold;
+}
+.credit-balance {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.credit-balance span {
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: 'Space Mono', monospace;
+}
+.credit-balance button {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    border-radius: 8px;
+    background-color: var(--primary-color-transparent);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+}
+.credit-balance button:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+.settings-modal .spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    animation: spin 1s linear infinite;
+    margin: 2rem auto;
+}
+.settings-modal .wallet-connect-prompt {
+    text-align: center;
+    padding: 1rem;
+}
+.settings-modal .wallet-connect-prompt p {
+    margin-bottom: 1rem;
+}
+
+
 @media (max-width: 900px) {
     .modal-content {
         padding: 1.5rem;

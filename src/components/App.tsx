@@ -17,6 +17,7 @@ import VoiceSelector from './VoiceSelector';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import SubscriptionModal from './SubscriptionModal';
 import PaywallModal from './PaywallModal';
+import SettingsModal from './Settings';
 
 
 import '../styles/App.css';
@@ -25,6 +26,7 @@ import '../styles/Modals.css';
 function AppContent() {
   const isAboutModalOpen = useStore.use.isAboutModalOpen();
   const isCreateAgentModalOpen = useStore.use.isCreateAgentModalOpen();
+  const isSettingsModalOpen = useStore.use.isSettingsModalOpen();
   const isTokenDetailModalOpen = useStore.use.isTokenDetailModalOpen();
   const isSubscriptionModalOpen = useStore.use.isSubscriptionModalOpen();
   const isPaywallModalOpen = useStore.use.isPaywallModalOpen();
@@ -53,6 +55,7 @@ function AppContent() {
       </div>
       {isAboutModalOpen && <About />}
       {isCreateAgentModalOpen && <CreateAgentModal />}
+      {isSettingsModalOpen && <SettingsModal />}
       {isTokenDetailModalOpen && <TokenDetailModal />}
       {isSubscriptionModalOpen && <SubscriptionModal />}
       {isPaywallModalOpen && <PaywallModal />}

@@ -106,3 +106,9 @@ export interface PaywallDetails {
   quantity?: number; // e.g., how many credits are being bought
   originalRequest: () => Promise<any>; // The function to retry after payment
 }
+
+export interface UserCredits {
+  paidPromptCredits: number;
+  soraCredits: number;
+  imageCredits: number;
+}

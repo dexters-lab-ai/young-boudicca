@@ -5,7 +5,7 @@
 import useStore, { createAssistantMessage } from './store'
 import imageData from './imageData'
 import modes from './modes'
-import { Photo, Agent, Environment, PaywallDetails } from '../types'
+import { Photo, Agent, Environment, PaywallDetails, UserCredits } from '../types'
 import { FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants'
 import { pollSoraTask, SoraStatus, PollStatusPayload } from './soraUtils'
 import { fetchApiWith402 } from './fetchApiWith402'
@@ -238,6 +238,26 @@ export const toggleAboutModal = (open?: boolean) => {
 export const toggleCreateAgentModal = (open?: boolean) => {
     set(state => ({ isCreateAgentModalOpen: open ?? !state.isCreateAgentModalOpen }));
 }
+
+export const toggleSettingsModal = (open?: boolean) => {
+    set(state => ({ isSettingsModalOpen: open ?? !state.isSettingsModalOpen }));
+};
+
+export const fetchUserCredits = async (walletAddress: string) => {
+    set({ isLoadingUserCredits: true, userCredits: null });
+    try {
+        const response = await fetch(`/api/user/me?walletAddress=${walletAddress}`);
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to fetch user credits.');
+        }
+        const credits: UserCredits = await response.json();
+        set({ userCredits: credits, isLoadingUserCredits: false });
+    } catch (error: any) {
+        get().setError(error.message);
+        set({ isLoadingUserCredits: false });
+    }
+};
 
 export const toggleSubscriptionModal = (open?: boolean, agentId?: string) => {
     set(state => ({ 
