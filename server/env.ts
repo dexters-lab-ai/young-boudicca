@@ -4,16 +4,31 @@
  */
 // FIX: Explicitly import `process` to ensure the correct Node.js types are used.
 import process from 'process';
-import path from 'path';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const root = process.cwd();
-const baseEnvPath = path.resolve(root, '.env');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '../../');
+
+// Load environment variables based on NODE_ENV
+const envPath = process.env.NODE_ENV === 'production' 
+  ? '/app/.env.production' 
+  : path.resolve(__dirname, '../../.env');
+
+try {
+  dotenv.config({ path: envPath });
+} catch (error) {
+  console.log(`[env] No .env file found at ${envPath}, using environment variables from system`);
+}
+
 // Respect existing NODE_ENV; default to development
 const envName = process.env.NODE_ENV === 'production' ? 'production' : (process.env.NODE_ENV || 'development');
 const envSpecificPath = path.resolve(root, `.env.${envName}`);
 
 // Load base first (no override)
+const baseEnvPath = path.resolve(root, '.env');
 const base = dotenv.config({ path: baseEnvPath, override: false });
 // Then environment-specific (override base)
 const specific = dotenv.config({ path: envSpecificPath, override: true });

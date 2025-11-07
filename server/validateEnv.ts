@@ -5,8 +5,16 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Load environment variables from .env file if it exists (for local development)
+const envPath = process.env.NODE_ENV === 'production' 
+  ? '/app/.env.production' 
+  : path.resolve(__dirname, '../../.env');
+
+try {
+  dotenv.config({ path: envPath });
+} catch (error) {
+  console.log(`[env] No .env file found at ${envPath}, using environment variables from system`);
+}
 
 // List of required environment variables
 const requiredEnvVars = [
@@ -29,8 +37,17 @@ export function validateEnv() {
   if (missingVars.length > 0) {
     console.error('❌ Missing required environment variables:');
     missingVars.forEach(varName => console.error(`  - ${varName}`));
-    console.error('\nPlease add them to your .env file and restart the server.');
-    process.exit(1);
+    
+    if (process.env.NODE_ENV === 'production') {
+      console.error('\nPlease add these variables to your Sliplane environment variables.');
+    } else {
+      console.error('\nPlease add them to your .env file and restart the server.');
+    }
+    
+    // Only exit in production to prevent deployment loops
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
   }
 
   // Log environment status
