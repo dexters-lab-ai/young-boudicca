@@ -546,8 +546,6 @@ app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
 
     res.status(isHealthy ? 200 : 503).json(healthCheck);
 });
-    });
-  });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
 app.get('/api/sora/image-to-video/:taskId', async (req: ExpressRequest, res: ExpressResponse) => {
