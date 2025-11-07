@@ -20,23 +20,30 @@ try {
 const requiredEnvVars = [
   'MONGODB_URI',
   'SOLSCAN_API_KEY',
+  'FACILITATOR_URL',
+  'MERCHANT_WALLET_ADDRESS'
+];
+
+// List of optional but recommended environment variables
+const optionalEnvVars = [
   'OPENAI_API_KEY',
   'ELEVENLABS_API_KEY',
-  'BACKBLAZE_APPLICATION_KEY_ID',
+  'REDIS_URL',
+  'BACKBLAZE_KEY_ID',
   'BACKBLAZE_APPLICATION_KEY',
   'BACKBLAZE_BUCKET_ID',
-  'FACILITATOR_URL',
-  'MERCHANT_WALLET_ADDRESS',
-  'REDIS_URL'
+  'BACKBLAZE_BUCKET_NAME'
 ];
 
 // Validate required environment variables
 export function validateEnv() {
-  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  const missingRequired = requiredEnvVars.filter(varName => !process.env[varName]);
+  const missingOptional = optionalEnvVars.filter(varName => !process.env[varName]);
   
-  if (missingVars.length > 0) {
+  // Always show missing required variables as errors
+  if (missingRequired.length > 0) {
     console.error('❌ Missing required environment variables:');
-    missingVars.forEach(varName => console.error(`  - ${varName}`));
+    missingRequired.forEach(varName => console.error(`  - ${varName}`));
     
     if (process.env.NODE_ENV === 'production') {
       console.error('\nPlease add these variables to your Sliplane environment variables.');
@@ -48,6 +55,12 @@ export function validateEnv() {
     if (process.env.NODE_ENV === 'production') {
       process.exit(1);
     }
+  }
+  
+  // Show missing optional variables as warnings
+  if (missingOptional.length > 0) {
+    console.warn('\n⚠️  Missing optional environment variables (some features may be disabled):');
+    missingOptional.forEach(varName => console.warn(`  - ${varName}`));
   }
 
   // Log environment status
