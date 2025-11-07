@@ -7,9 +7,14 @@ import './env';
 import process from 'process';
 
 // FIX: Explicitly import and alias Express types to avoid conflicts with global DOM types.
+// Using 'import type' ensures we only import the type definitions, preventing runtime conflicts
+// and helping TypeScript resolve the correct types from the 'express' package.
 import express from 'express';
-// FIX: Explicitly import Express types to avoid conflicts with global DOM types.
-import type { Request, Response, NextFunction } from 'express';
+import type {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+  NextFunction as ExpressNextFunction,
+} from 'express';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -177,7 +182,7 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: ExpressRequest, res: ExpressResponse, next: ExpressNextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
     console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
     if (req.method === 'POST' && req.body && Object.keys(req.body).length > 0) {
@@ -189,7 +194,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // --- Payment Middleware (x402) ---
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-const paywallMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+const paywallMiddleware = async (req: ExpressRequest, res: ExpressResponse, next: ExpressNextFunction) => {
     const { walletAddress, agentId } = req.body;
     const { API_KEY, MERCHANT_WALLET_ADDRESS, FACILITATOR_URL, NETWORK } = process.env;
 
@@ -237,7 +242,7 @@ const paywallMiddleware = async (req: Request, res: Response, next: NextFunction
 
 // --- AI Endpoints (Server-Side & Paywalled) ---
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/chat', paywallMiddleware, async (req: Request, res: Response) => {
+app.post('/api/chat', paywallMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
     const { message, history, agentId } = req.body;
     const user = (req as any).user;
     let fullResponseText = '';
@@ -326,7 +331,7 @@ app.post('/api/chat', paywallMiddleware, async (req: Request, res: Response) => 
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/images/generate', paywallMiddleware, async (req: Request, res: Response) => {
+app.post('/api/images/generate', paywallMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
     const user = (req as any).user;
     const { prompt, inputFile } = req.body;
     let responseSent = false;
@@ -382,7 +387,7 @@ app.post('/api/images/generate', paywallMiddleware, async (req: Request, res: Re
 
 // --- Sora Endpoints (Paywalled) ---
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/sora/image-to-video', paywallMiddleware, async (req: Request, res: Response) => {
+app.post('/api/sora/image-to-video', paywallMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
   const user = (req as any).user;
   let responseSent = false;
 
@@ -493,7 +498,7 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 // --- Other Endpoints ---
 // Health check endpoint
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
     res.status(200).json({
       status: 'ok',
@@ -504,7 +509,7 @@ app.get('/health', (req: Request, res: Response) => {
   });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/sora/image-to-video/:taskId', async (req: Request, res: Response) => {
+app.get('/api/sora/image-to-video/:taskId', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -530,7 +535,7 @@ interface Voice {
 }
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/tts-voices', (req: Request, res: Response) => {
+app.get('/api/tts-voices', (req: ExpressRequest, res: ExpressResponse) => {
   const voices: Voice[] = [
     { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
     { value: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi' },
@@ -547,7 +552,7 @@ app.get('/api/tts-voices', (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/tts', async (req: Request, res: Response) => {
+app.post('/api/tts', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
   }
@@ -579,7 +584,7 @@ app.post('/api/tts', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/music/compose', async (req: Request, res: Response) => {
+app.post('/api/music/compose', async (req: ExpressRequest, res: ExpressResponse) => {
     if (!elevenlabs) {
         return res.status(503).json({ error: 'Music service not configured on the server.' });
     }
@@ -638,7 +643,7 @@ function verifySignedPayload({ message, signature, walletAddress }: SignedPayloa
 }
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: Response) => {
+app.post('/api/assets/upload', assetUploadMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
   if (!backblazeService) {
     return res.status(503).json({ error: 'Asset storage not configured.' });
   }
@@ -699,7 +704,7 @@ app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: 
 
 // --- Candy Machine API ---
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/create', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -729,7 +734,7 @@ app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/candy-machine/:address/items', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/:address/items', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -769,7 +774,7 @@ app.post('/api/candy-machine/:address/items', async (req: Request, res: Response
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response) => {
+app.post('/api/candy-machine/:address/mint', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -804,7 +809,7 @@ app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response)
 
 // --- Agent Creator API ---
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/agents/create', async (req: Request, res: Response) => {
+app.post('/api/agents/create', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -909,7 +914,7 @@ app.post('/api/agents/create', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) => {
+app.put('/api/agents/:agentId/visibility', async (req: ExpressRequest, res: ExpressResponse) => {
     const { agentId } = req.params;
     const { isPublic, creatorWalletAddress, signature, message } = req.body;
 
@@ -944,7 +949,7 @@ app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) =
 
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/agents/list', async (req: Request, res: Response) => {
+app.get('/api/agents/list', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -958,7 +963,7 @@ app.get('/api/agents/list', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/agents/creator/:walletAddress', async (req: Request, res: Response) => {
+app.get('/api/agents/creator/:walletAddress', async (req: ExpressRequest, res: ExpressResponse) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -984,7 +989,7 @@ const findOrCreateUser = async (walletAddress: string) => {
 };
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/user/me', async (req: Request, res: Response) => {
+app.get('/api/user/me', async (req: ExpressRequest, res: ExpressResponse) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1009,7 +1014,7 @@ app.get('/api/user/me', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.put('/api/user/autonomy', async (req: Request, res: Response) => {
+app.put('/api/user/autonomy', async (req: ExpressRequest, res: ExpressResponse) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1039,7 +1044,7 @@ app.put('/api/user/autonomy', async (req: Request, res: Response) => {
 
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/user/autonomy-logs', async (req: Request, res: Response) => {
+app.get('/api/user/autonomy-logs', async (req: ExpressRequest, res: ExpressResponse) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1062,7 +1067,7 @@ app.get('/api/user/autonomy-logs', async (req: Request, res: Response) => {
 
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
+app.get('/api/users/wallet-balance', async (req: ExpressRequest, res: ExpressResponse) => {
     const { walletAddress } = req.query;
     if (!walletAddress || typeof walletAddress !== 'string') {
         return res.status(400).json({ isSufficient: false, error: 'Wallet address is required.' });
@@ -1081,7 +1086,7 @@ app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Response) => {
+app.get('/api/users/subscription-status/:agentId', async (req: ExpressRequest, res: ExpressResponse) => {
     const { agentId } = req.params;
     const { walletAddress } = req.query;
 
@@ -1113,7 +1118,7 @@ app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Res
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
+app.post('/api/subscribe/:agentId', async (req: ExpressRequest, res: ExpressResponse) => {
     const { agentId } = req.params;
     const { walletAddress, txSignature } = req.body;
 
@@ -1159,7 +1164,7 @@ app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
 // --- Solana Tools (Solscan-backed) ---
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
+app.post('/tools/fetchTokenList', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
         let data;
@@ -1184,7 +1189,7 @@ app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
 
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchTrendingTokens', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { limit = 9 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchTrendingTokens with limit: ${limit}`);
@@ -1203,7 +1208,7 @@ app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchToken', async (req: Request, res: Response) => {
+app.post('/tools/fetchToken', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { mint } = req.body ?? {};
         if (!mint) return res.status(400).json({ error: 'Missing mint' });
@@ -1223,7 +1228,7 @@ app.post('/tools/fetchToken', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchBondingTokens', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { limit = 20, platform } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchLaunchpadTokens (bonding) with limit: ${limit} on platform: ${platform}`);
@@ -1242,7 +1247,7 @@ app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
+app.post('/tools/fetchLatestTokens', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { limit = 50 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.getLatestTokens with limit: ${limit}`);
@@ -1261,7 +1266,7 @@ app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
+app.post('/tools/getTokenMetadata', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1281,7 +1286,7 @@ app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
+app.post('/tools/getMarketInfo', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1301,7 +1306,7 @@ app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
 });
 
 // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.post('/tools/fetchCandles', async (req: Request, res: Response) => {
+app.post('/tools/fetchCandles', async (req: ExpressRequest, res: ExpressResponse) => {
     try {
         const { address, time_from, time_to } = req.body ?? {};
         if (!address || !time_from || !time_to) return res.status(400).json({ error: 'Missing fields' });
@@ -1354,7 +1359,7 @@ if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
     
     // FIX: Use aliased Express types to prevent conflicts with global DOM types.
-    app.get('*', (req: Request, res: Response) => {
+    app.get('*', (req: ExpressRequest, res: ExpressResponse) => {
       res.sendFile(path.join(distPath, 'index.html'), (err) => {
         if (err) {
           console.error('Error sending file:', err);
