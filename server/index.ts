@@ -4,14 +4,14 @@
  */
 // Load environment variables BEFORE anything else
 import './env';
-// FIX: Import 'process' to provide correct types for process.on() and process.exit().
 import process from 'process';
 
-// FIX: Switched to default import for Express. This is the correct way to import CJS modules with a default export in ESM with esModuleInterop.
-// Using `express.Request` and `express.Response` prevents global type conflicts.
-import express from 'express';
+// FIX: Explicitly import Express types to avoid conflicts with global types.
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
+import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import path from 'path';
 import fs from 'fs';
 import mongoose from 'mongoose';
@@ -21,34 +21,96 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import crypto from 'crypto';
-import OpenAI from 'openai';
+import { GoogleGenAI, Modality } from '@google/genai';
+import { paymentMiddleware, Resource } from 'x402-express';
 
 import { solscanService } from './services/solscan';
-import Agent from './models/Agent';
+import Agent, { IAgent } from './models/Agent';
 import User from './models/User';
 import Asset, { IAsset } from './models/Asset';
+import AutonomyLog from './models/AutonomyLog';
+import ChatHistory from './models/ChatHistory';
 import { BackblazeService, createBackblazeServiceFromEnv } from './services/backblaze';
 import { ArweavePublisher, createArweavePublisherFromEnv } from './services/arweave';
 import { createCandyMachineConfigFromEnv, CandyMachineService } from './services/candyMachine';
 import { createImageToVideoTask, getImageToVideoTask } from './services/sora';
 import { buildAgentMetadata } from './utils/agentMetadata';
+import { pubClient, subClient, redis } from './queue';
+import { AgentLifecycleService } from './services/agentLifecycleService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// FIX: Initialize Express app using the default export.
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: { origin: '*' }
+});
+
+// Use Redis adapter for Socket.IO to enable multi-process communication
+io.adapter(createAdapter(pubClient, subClient));
+
+const agentLifecycleService = new AgentLifecycleService();
+
+// Robust socket connection mapping using Redis
+io.on('connection', (socket) => {
+    console.log('[Socket.IO] A user connected with socket ID:', socket.id);
+    
+    socket.on('authenticate', async (walletAddress) => {
+        if (walletAddress) {
+            console.log(`[Socket.IO] Authenticating socket ${socket.id} for wallet ${walletAddress}`);
+            await redis.set(`socket:${walletAddress}`, socket.id);
+            await redis.set(`socket_reverse:${socket.id}`, walletAddress);
+        }
+    });
+
+    socket.on('disconnect', async () => {
+        console.log('[Socket.IO] User disconnected with socket ID:', socket.id);
+        const walletAddress = await redis.get(`socket_reverse:${socket.id}`);
+        if (walletAddress) {
+            console.log(`[Socket.IO] Cleaning up mappings for wallet ${walletAddress}`);
+            await redis.del(`socket:${walletAddress}`);
+        }
+        await redis.del(`socket_reverse:${socket.id}`);
+    });
+});
+
+
+// Listen on the Redis channel for messages from the worker
+subClient.subscribe('agent-monologues', (err) => {
+    if (err) {
+        console.error('[Redis Sub] Failed to subscribe:', err.message);
+        return;
+    }
+    console.log('[Redis Sub] Subscribed to agent-monologues channel');
+});
+
+subClient.on('message', async (channel, message) => {
+    if (channel === 'agent-monologues') {
+        try {
+            const { walletAddress, text, agentName } = JSON.parse(message);
+            const socketId = await redis.get(`socket:${walletAddress}`);
+            if (socketId) {
+                console.log(`[Redis Sub] Pushing monologue to wallet ${walletAddress} via socket ${socketId}`);
+                io.to(socketId).emit('autonomy:monologue', { text, agentName });
+            }
+        } catch (e) {
+            console.error('[Redis Sub] Error processing message:', e);
+        }
+    }
+});
+
 
 const backblazeService = createBackblazeServiceFromEnv();
 const arweavePublisher = createArweavePublisherFromEnv();
 const candyMachineConfig = createCandyMachineConfigFromEnv();
 
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+// DOC: Use API_KEY for Gemini API key
+const ai = process.env.API_KEY ? new GoogleGenAI({ apiKey: process.env.API_KEY }) : null;
 
-if (!openai) {
-    console.warn('[Server] OPENAI_API_KEY not set. AI endpoints will be disabled.');
+if (!ai) {
+    // DOC: Use API_KEY for Gemini API key
+    console.warn('[Server] API_KEY not set for Google GenAI. AI endpoints will be disabled.');
 }
 
 const elevenlabs = process.env.ELEVENLABS_API_KEY
@@ -108,22 +170,12 @@ async function getCandyMachineService(): Promise<CandyMachineService> {
   return candyMachineServicePromise;
 }
 
-// Health check endpoint
-// FIX: Use Request and Response types from express.
-app.get('/health', (req: express.Request, res: express.Response) => {
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      database: dbStatus,
-      environment: process.env.NODE_ENV || 'development'
-    });
-  });
-  
+// --- App Setup & Middleware ---
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
-// --- Request Logging Middleware ---
-// FIX: Use Request, Response, and NextFunction types from express.
+
+// FIX: Add explicit types to middleware to prevent conflicts with global types.
+// FIX: Changed Request, Response, NextFunction to express.Request, express.Response, express.NextFunction to resolve type conflicts.
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
     console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
@@ -134,15 +186,69 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
   next();
 });
 
+// --- Payment Middleware (x402) ---
+// FIX: Changed Request, Response, NextFunction to express.Request, express.Response, express.NextFunction to resolve type conflicts.
+const paywallMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const { walletAddress, agentId } = req.body;
+    const { API_KEY, MERCHANT_WALLET_ADDRESS, FACILITATOR_URL, NETWORK } = process.env;
 
-// --- AI Endpoints (Server-Side OpenAI) ---
-
-app.post('/api/chat', async (req: express.Request, res: express.Response) => {
-    if (!openai) {
-      return res.status(503).json({ error: 'OpenAI service not configured.' });
+    if (!API_KEY) return res.status(503).json({ error: 'AI service not configured.' });
+    if (!MERCHANT_WALLET_ADDRESS || !FACILITATOR_URL || !NETWORK) {
+        return res.status(503).json({ error: 'Payment facilitator not configured.' });
     }
-  
+    if (!walletAddress) return res.status(401).json({ error: 'Wallet address required.' });
+
+    const user = await findOrCreateUser(walletAddress);
+    
+    // Check for free prompts
+    if (user.freePromptUsage < 5) {
+        // Attach user to request so we can increment usage on success
+        (req as any).user = user;
+        return next();
+    }
+
+    let agent: IAgent | null = null;
+    if (agentId) {
+        agent = await Agent.findById(agentId);
+    }
+
+    const price = agent?.unlockAmountUSDC ?? 0.1;
+    const payTo = agent?.payoutWalletAddress ?? MERCHANT_WALLET_ADDRESS;
+    const network = agent?.network.toLowerCase() ?? NETWORK;
+    const description = `Chat with ${agent?.name ?? 'AI Companion'}`;
+
+    const pathKey = req.path.replace(/^\/api/, '');
+    const middleware = paymentMiddleware(
+        payTo as `0x${string}`, // Type assertion for x402
+        {
+            [pathKey]: {
+                price: `$${price}`,
+                network: network,
+                description
+            }
+        },
+        { url: FACILITATOR_URL as Resource }
+    );
+    
+    middleware(req, res, next);
+};
+
+
+// --- AI Endpoints (Server-Side & Paywalled) ---
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.post('/api/chat', paywallMiddleware, async (req: express.Request, res: express.Response) => {
     const { message, history, agentId } = req.body;
+    const user = (req as any).user;
+    let fullResponseText = '';
+    let responseSent = false;
+    
+    if (user) {
+        agentLifecycleService.recordInteraction(user.walletAddress);
+        if (agentId) {
+            await User.updateOne({ walletAddress: user.walletAddress }, { $set: { activeAgentId: agentId } });
+        }
+    }
   
     try {
         let systemInstruction = 'You are a helpful AI assistant.';
@@ -153,33 +259,23 @@ app.post('/api/chat', async (req: express.Request, res: express.Response) => {
             }
         }
 
-        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-            { role: 'system', content: systemInstruction },
+        const contents = [
             ...(history || []).map((msg: any) => ({
-                role: msg.role,
-                content: msg.text,
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.text }],
             })),
-            { role: 'user', content: message },
+            { role: 'user', parts: [{ text: message }] },
         ];
 
-        // --- AUTONOMOUS AGENT STATE MACHINE PLACEHOLDER ---
-        // This is where a state machine for the agent could be implemented.
-        // For example, if the last message was a while ago, the agent
-        // could proactively start a monologue. This logic does not block
-        // the normal request-response chat flow.
-        // const agentState = await getAgentState(req.session.id, agentId);
-        // if (agentState.status === 'IDLE' && Date.now() - agentState.lastInteraction > 15000) {
-        //   messages.push({ role: 'user', content: 'You have been quiet. What are you thinking about?' });
-        //   // The server could send a { type: 'MONOLOGUE_START' } event here via WebSocket/SSE
-        // }
-        // --- END PLACEHOLDER ---
-  
-        const stream = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages,
-            stream: true,
+        const stream = await ai!.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: contents,
+            config: {
+                systemInstruction: systemInstruction,
+            },
         });
-
+        
+        responseSent = true;
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
@@ -187,8 +283,9 @@ app.post('/api/chat', async (req: express.Request, res: express.Response) => {
         });
   
         for await (const chunk of stream) {
-            const textChunk = chunk.choices[0]?.delta?.content || '';
+            const textChunk = chunk.text;
             if (textChunk) {
+                fullResponseText += textChunk;
                 res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
             }
         }
@@ -197,45 +294,139 @@ app.post('/api/chat', async (req: express.Request, res: express.Response) => {
         res.end();
   
     } catch (error: any) {
-        console.error('OpenAI chat error:', error);
-        res.status(500).json({ error: 'Failed to get response from AI', details: error.message });
+        console.error('Google GenAI chat error:', error);
+        if (!res.headersSent) {
+           res.status(500).json({ error: 'Failed to get response from AI', details: error.message });
+        } else {
+           res.end();
+        }
+    } finally {
+        if (user && responseSent) {
+            user.freePromptUsage += 1;
+            await user.save();
+        }
+        if (user?.walletAddress) {
+             await ChatHistory.findOneAndUpdate(
+                { walletAddress: user.walletAddress },
+                { 
+                    $push: { 
+                        history: { 
+                            $each: [
+                                { role: 'user', text: message },
+                                { role: 'model', text: fullResponseText }
+                            ],
+                            $slice: -20 // Keep only the last 20 messages
+                        }
+                    }
+                },
+                { upsert: true, new: true }
+            );
+        }
     }
 });
 
-
-app.post('/api/images/generate', async (req: express.Request, res: express.Response) => {
-    if (!openai) {
-        return res.status(503).json({ error: 'OpenAI service not configured.' });
-    }
-
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.post('/api/images/generate', paywallMiddleware, async (req: express.Request, res: express.Response) => {
+    const user = (req as any).user;
     const { prompt, inputFile } = req.body;
+    let responseSent = false;
     if (!prompt || !inputFile) {
-        return res.status(400).json({ error: 'Prompt and inputFile are required.' });
+        return res.status(400).json({ error: 'Prompt and inputFile (base64 data URL) are required.' });
     }
 
     try {
-        // DALL-E image generation with a prompt doesn't directly use an input image in the same way.
-        // We'll use the prompt to guide generation. For variations, you'd need a different flow.
-        const response = await openai.images.generate({
-            model: "dall-e-3",
-            prompt: prompt,
-            n: 1,
-            size: "1024x1024",
-            response_format: 'b64_json'
-        });
+        const match = inputFile.match(/^data:(.+);base64,(.+)$/);
+        if (!match) {
+            return res.status(400).json({ error: 'Invalid inputFile format. Expected a data URL.' });
+        }
+        const mimeType = match[1];
+        const base64Data = match[2];
 
-        const b64_json = response.data[0].b64_json;
-        if (b64_json) {
-            const imageUrl = `data:image/png;base64,${b64_json}`;
+        const imagePart = {
+            inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+            },
+        };
+        const textPart = { text: prompt };
+
+        const response = await ai!.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [imagePart, textPart] },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        
+        responseSent = true;
+        const imagePartResponse = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+        if (imagePartResponse?.inlineData) {
+            const base64ImageBytes = imagePartResponse.inlineData.data;
+            const responseMimeType = imagePartResponse.inlineData.mimeType;
+            const imageUrl = `data:${responseMimeType};base64,${base64ImageBytes}`;
             res.json({ imageUrl });
         } else {
-            throw new Error('No image data returned from OpenAI.');
+            throw new Error('No image data returned from Gemini.');
         }
 
     } catch (error: any) {
-        console.error('OpenAI image generation error:', error);
+        console.error('Gemini image generation error:', error);
         res.status(500).json({ error: 'Failed to generate image', details: error.message });
+    } finally {
+        if (user && responseSent) {
+            user.freePromptUsage += 1;
+            await user.save();
+        }
     }
+});
+
+// --- Sora Endpoints (Paywalled) ---
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.post('/api/sora/image-to-video', paywallMiddleware, async (req: express.Request, res: express.Response) => {
+  const user = (req as any).user;
+  let responseSent = false;
+
+  const { prompt, imageUrls, aspectRatio, removeWatermark = true } = req.body ?? {};
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'prompt is required.' });
+  }
+  if (!Array.isArray(imageUrls) || !imageUrls.length) {
+    return res.status(400).json({ error: 'imageUrls must be a non-empty array of URLs.' });
+  }
+  if (aspectRatio && !['portrait', 'landscape'].includes(aspectRatio)) {
+    return res.status(400).json({ error: 'aspectRatio must be "portrait" or "landscape" if provided.' });
+  }
+
+  const clientKey = req.ip ?? req.headers['x-forwarded-for']?.toString() ?? 'unknown';
+  const { allowed, release } = registerSoraUsage(clientKey);
+  if (!allowed) {
+    return res.status(429).json({ error: 'Hourly generation limit reached. Please try again later.' });
+  }
+
+  try {
+    const hostedImageUrls = await ensureHostedImageUrls(imageUrls);
+    const task = await createImageToVideoTask({
+      apiKey: soraConfig.apiKey!,
+      prompt: prompt.trim(),
+      imageUrls: hostedImageUrls,
+      aspectRatio,
+      removeWatermark,
+    });
+    
+    responseSent = true;
+    res.status(202).json({ taskId: task.taskId });
+  } catch (error: any) {
+    release();
+    console.error('[Server] Sora task creation failed:', error);
+    res.status(502).json({ error: 'Failed to create Sora task.', details: error?.message ?? 'Unknown error' });
+  } finally {
+      if (user && responseSent) {
+          user.freePromptUsage += 1;
+          await user.save();
+      }
+  }
 });
 
 
@@ -300,49 +491,23 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
   return hostedUrls;
 }
 
-// --- Sora Endpoints ---
-// FIX: Use Request and Response types from express.
-app.post('/api/sora/image-to-video', async (req: express.Request, res: express.Response) => {
-  if (!soraConfig.apiKey) {
-    return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
-  }
 
-  const { prompt, imageUrls, aspectRatio, removeWatermark = true } = req.body ?? {};
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    return res.status(400).json({ error: 'prompt is required.' });
-  }
-  if (!Array.isArray(imageUrls) || !imageUrls.length) {
-    return res.status(400).json({ error: 'imageUrls must be a non-empty array of URLs.' });
-  }
-  if (aspectRatio && !['portrait', 'landscape'].includes(aspectRatio)) {
-    return res.status(400).json({ error: 'aspectRatio must be "portrait" or "landscape" if provided.' });
-  }
-
-  const clientKey = req.ip ?? req.headers['x-forwarded-for']?.toString() ?? 'unknown';
-  const { allowed, release } = registerSoraUsage(clientKey);
-  if (!allowed) {
-    return res.status(429).json({ error: 'Hourly generation limit reached. Please try again later.' });
-  }
-
-  try {
-    const hostedImageUrls = await ensureHostedImageUrls(imageUrls);
-    const task = await createImageToVideoTask({
-      apiKey: soraConfig.apiKey,
-      prompt: prompt.trim(),
-      imageUrls: hostedImageUrls,
-      aspectRatio,
-      removeWatermark,
+// --- Other Endpoints ---
+// Health check endpoint
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.get('/health', (req: express.Request, res: express.Response) => {
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+      environment: process.env.NODE_ENV || 'development'
     });
+  });
 
-    res.status(202).json({ taskId: task.taskId });
-  } catch (error: any) {
-    release();
-    console.error('[Server] Sora task creation failed:', error);
-    res.status(502).json({ error: 'Failed to create Sora task.', details: error?.message ?? 'Unknown error' });
-  }
-});
-
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/sora/image-to-video/:taskId', async (req: express.Request, res: express.Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
@@ -368,8 +533,8 @@ interface Voice {
   label: string;
 }
 
-// Simple TTS voices endpoint that returns a fixed set of voices
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
   const voices: Voice[] = [
     { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
@@ -386,7 +551,8 @@ app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
   res.json({ voices, lastLoaded: Date.now() });
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/tts', async (req: express.Request, res: express.Response) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
@@ -405,7 +571,6 @@ app.post('/api/tts', async (req: express.Request, res: express.Response) => {
 
     res.setHeader('Content-Type', 'audio/mpeg');
     
-    // Pipe the stream to the response
     const reader = audioStream.getReader();
     while (true) {
       const { done, value } = await reader.read();
@@ -419,7 +584,8 @@ app.post('/api/tts', async (req: express.Request, res: express.Response) => {
   }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/music/compose', async (req: express.Request, res: express.Response) => {
     if (!elevenlabs) {
         return res.status(503).json({ error: 'Music service not configured on the server.' });
@@ -478,7 +644,8 @@ function verifySignedPayload({ message, signature, walletAddress }: SignedPayloa
   }
 }
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/assets/upload', assetUploadMiddleware, async (req: express.Request, res: express.Response) => {
   if (!backblazeService) {
     return res.status(503).json({ error: 'Asset storage not configured.' });
@@ -539,7 +706,8 @@ app.post('/api/assets/upload', assetUploadMiddleware, async (req: express.Reques
 });
 
 // --- Candy Machine API ---
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/candy-machine/create', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
@@ -569,7 +737,8 @@ app.post('/api/candy-machine/create', async (req: express.Request, res: express.
   }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/candy-machine/:address/items', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
@@ -609,7 +778,8 @@ app.post('/api/candy-machine/:address/items', async (req: express.Request, res: 
   }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/candy-machine/:address/mint', async (req: express.Request, res: express.Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
@@ -644,7 +814,8 @@ app.post('/api/candy-machine/:address/mint', async (req: express.Request, res: e
 });
 
 // --- Agent Creator API ---
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/agents/create', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
@@ -749,7 +920,8 @@ app.post('/api/agents/create', async (req: express.Request, res: express.Respons
   }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.put('/api/agents/:agentId/visibility', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { isPublic, creatorWalletAddress, signature, message } = req.body;
@@ -784,7 +956,8 @@ app.put('/api/agents/:agentId/visibility', async (req: express.Request, res: exp
 });
 
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/agents/list', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
@@ -798,7 +971,8 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
   }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
@@ -824,6 +998,8 @@ const findOrCreateUser = async (walletAddress: string) => {
     return user;
 };
 
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
@@ -835,10 +1011,12 @@ app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
 
     try {
         const user = await findOrCreateUser(walletAddress);
+        user.lastSeen = new Date();
+        await user.save();
+        
         res.json({
-            paidPromptCredits: user.paidPromptCredits,
-            soraCredits: user.soraCredits,
-            imageCredits: user.imageCredits,
+            freePromptUsage: user.freePromptUsage,
+            autonomyEnabled: user.autonomyEnabled,
         });
     } catch (err: any) {
         console.error('Fetch user credits error:', err);
@@ -846,8 +1024,63 @@ app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
     }
 });
 
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.put('/api/user/autonomy', async (req: express.Request, res: express.Response) => {
+    if (!process.env.MONGODB_URI) {
+        return res.status(503).json({ error: 'Database not configured.' });
+    }
+    const { walletAddress, enabled, signature, message } = req.body;
+    if (!walletAddress || enabled === undefined || !signature || !message) {
+        return res.status(400).json({ error: 'Missing required fields.' });
+    }
 
-// FIX: Use Request and Response types from express.
+    try {
+        verifySignedPayload({ message, signature, walletAddress });
+        const user = await findOrCreateUser(walletAddress);
+        user.autonomyEnabled = !!enabled;
+        await user.save();
+
+        if (enabled) {
+            await agentLifecycleService.initializeAutonomy(walletAddress);
+        } else {
+            await agentLifecycleService.decommissionAutonomy(walletAddress);
+        }
+
+        res.json({ success: true, autonomyEnabled: user.autonomyEnabled });
+    } catch (err: any) {
+        console.error('Update autonomy error:', err);
+        res.status(500).json({ error: 'Failed to update autonomy status.', details: err.message });
+    }
+});
+
+
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
+app.get('/api/user/autonomy-logs', async (req: express.Request, res: express.Response) => {
+    if (!process.env.MONGODB_URI) {
+        return res.status(503).json({ error: 'Database not configured.' });
+    }
+    const { walletAddress } = req.query;
+    if (!walletAddress || typeof walletAddress !== 'string') {
+        return res.status(400).json({ error: 'Wallet address is required.' });
+    }
+
+    try {
+        const logs = await AutonomyLog.find({ walletAddress }).sort({ createdAt: 'asc' });
+        if (logs.length > 0) {
+            await AutonomyLog.deleteMany({ walletAddress });
+        }
+        res.json(logs);
+    } catch (err: any) {
+        console.error('Fetch autonomy logs error:', err);
+        res.status(500).json({ error: 'Failed to fetch autonomy logs.' });
+    }
+});
+
+
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/users/wallet-balance', async (req: express.Request, res: express.Response) => {
     const { walletAddress } = req.query;
     if (!walletAddress || typeof walletAddress !== 'string') {
@@ -866,7 +1099,8 @@ app.get('/api/users/wallet-balance', async (req: express.Request, res: express.R
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.get('/api/users/subscription-status/:agentId', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { walletAddress } = req.query;
@@ -898,7 +1132,8 @@ app.get('/api/users/subscription-status/:agentId', async (req: express.Request, 
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Response) => {
     const { agentId } = req.params;
     const { walletAddress, txSignature } = req.body;
@@ -907,9 +1142,6 @@ app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Re
         return res.status(400).json({ error: 'Wallet address and transaction signature are required.' });
     }
     
-    // In a real application, you would use the txSignature to query the Solana RPC
-    // and verify the transaction details (sender, receiver, amount, token).
-    // For this simulation, we assume the transaction is valid.
     console.log(`[Server] Simulating verification for tx: ${txSignature}`);
     const isTxVerified = true; 
     
@@ -930,12 +1162,9 @@ app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Re
         const existingSubIndex = user.subscribedAgents.findIndex(sub => sub.agent.toString() === agentId);
 
         if (existingSubIndex > -1) {
-            // Extend existing subscription
             user.subscribedAgents[existingSubIndex].expiresAt = expiresAt;
         } else {
-            // Add new subscription
             user.subscribedAgents.push({ agent: agent._id as mongoose.Types.ObjectId, expiresAt });
-            // Increment the agent's subscriber count
             agent.subscriptionCount = (agent.subscriptionCount || 0) + 1;
             await agent.save();
         }
@@ -950,7 +1179,8 @@ app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Re
 
 // --- Solana Tools (Solscan-backed) ---
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Response) => {
     try {
         const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
@@ -975,7 +1205,8 @@ app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Resp
 });
 
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 9 } = req.body ?? {};
@@ -994,7 +1225,8 @@ app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchToken', async (req: express.Request, res: express.Response) => {
     try {
         const { mint } = req.body ?? {};
@@ -1014,7 +1246,8 @@ app.post('/tools/fetchToken', async (req: express.Request, res: express.Response
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 20, platform } = req.body ?? {};
@@ -1033,7 +1266,8 @@ app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.Response) => {
     try {
         const { limit = 50 } = req.body ?? {};
@@ -1052,7 +1286,8 @@ app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.R
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Response) => {
     try {
         const { address } = req.body ?? {};
@@ -1072,7 +1307,8 @@ app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Re
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Response) => {
     try {
         const { address } = req.body ?? {};
@@ -1092,7 +1328,8 @@ app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Respo
     }
 });
 
-// FIX: Use Request and Response types from express.
+// FIX: Add explicit types to route handlers to prevent conflicts with global types.
+// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
 app.post('/tools/fetchCandles', async (req: express.Request, res: express.Response) => {
     try {
         const { address, time_from, time_to } = req.body ?? {};
@@ -1117,7 +1354,6 @@ app.post('/tools/fetchCandles', async (req: express.Request, res: express.Respon
 });
 
 const PORT = process.env.PORT || 8787;
-const server = http.createServer(app);
 
 server.listen(PORT, () => {
     const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
@@ -1126,35 +1362,28 @@ server.listen(PORT, () => {
     console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
 });
 
-// Add error handling for uncaught exceptions
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     process.exit(1);
   });
   
-  // Add error handling for unhandled promise rejections
-  process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);
   });
   
-  // Add error handling for the server
-  server.on('error', (error) => {
+server.on('error', (error) => {
     console.error('Server error:', error);
     process.exit(1);
   });
 
-  
-// Serve static files from the 'dist' directory (Vite's default output directory)
-// Serve static files from the 'dist' directory (Vite's default output directory)
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {
   try {
-    // Serve static files
     app.use(express.static(distPath));
     
-    // Handle SPA routing - return index.html for all other routes
-    // FIX: Use Request and Response types from express.
+    // FIX: Add explicit types to route handlers to prevent conflicts with global types.
+    // FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
     app.get('*', (req: express.Request, res: express.Response) => {
       res.sendFile(path.join(distPath, 'index.html'), (err) => {
         if (err) {
@@ -1165,7 +1394,6 @@ if (fs.existsSync(distPath)) {
     });
   } catch (error) {
     console.error('Error setting up static file serving:', error);
-    // Don't exit, let the server continue running
   }
 } else {
   console.warn('Frontend build not found. Run `npm run build` in the frontend directory.');

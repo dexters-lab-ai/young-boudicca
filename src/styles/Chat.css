@@ -16,19 +16,6 @@
   position: relative;
   flex: 0 1 38%;
   align-self: stretch;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--primary-color) transparent;
-}
-.chat-container::-webkit-scrollbar {
-  width: 6px;
-}
-.chat-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-.chat-container::-webkit-scrollbar-thumb {
-  background: var(--primary-color);
-  border-radius: 999px;
 }
 .chat-header {
   display: flex;

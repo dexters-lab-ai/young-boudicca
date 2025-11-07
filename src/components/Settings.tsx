@@ -1,12 +1,12 @@
 import React, { useEffect } from 'react';
 import useStore from '../lib/store';
-import { toggleSettingsModal, fetchUserCredits, togglePaywallModal } from '../lib/actions';
+import { toggleSettingsModal, fetchUserCredits, toggleAutonomy } from '../lib/actions';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { PaywallDetails } from '../types';
 
 export default function SettingsModal() {
-    const { publicKey } = useWallet();
+    const wallet = useWallet();
+    const { publicKey, signMessage } = wallet;
     const userCredits = useStore.use.userCredits();
     const isLoading = useStore.use.isLoadingUserCredits();
 
@@ -16,67 +16,23 @@ export default function SettingsModal() {
         }
     }, [publicKey]);
 
-    const handleBuyCredits = (type: PaywallDetails['type']) => {
-        if (!publicKey) return;
-
-        let details: PaywallDetails | undefined;
-        const recipient = process.env.MERCHANT_WALLET_ADDRESS;
-        if (!recipient) {
-            useStore.getState().setError("The creator has not set up a payment wallet.");
-            return;
-        }
-
-        const commonRequest = async () => {
-            if (publicKey) {
-                await fetchUserCredits(publicKey.toBase58());
-            }
-        };
-
-        if (type === 'chat_credits') {
-            details = {
-                type: 'chat_credits',
-                amount: 1,
-                currency: 'USDC',
-                network: 'Solana',
-                itemDescription: '50 Chat Credits',
-                quantity: 50,
-                recipient,
-                originalRequest: commonRequest,
-            };
-        } else if (type === 'sora_credits') {
-             details = {
-                type: 'sora_credits',
-                amount: 1,
-                currency: 'USDC',
-                network: 'Solana',
-                itemDescription: '3 Sora Videos',
-                quantity: 3,
-                recipient,
-                originalRequest: commonRequest,
-            };
-        } else if (type === 'image_credits') {
-             details = {
-                type: 'image_credits',
-                amount: 1,
-                currency: 'USDC',
-                network: 'Solana',
-                itemDescription: '10 Image Generations',
-                quantity: 10,
-                recipient,
-                originalRequest: commonRequest,
-            };
-        }
-
-        if (details) {
-            togglePaywallModal(true, details);
-        }
+    const handleAutonomyToggle = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const enabled = event.target.checked;
+        // Optimistically update the UI
+        // FIX: Changed from immer-style mutation to returning a new state object to satisfy TypeScript.
+        useStore.setState((state) => ({
+            userCredits: state.userCredits
+              ? { ...state.userCredits, autonomyEnabled: enabled }
+              : state.userCredits,
+          }));
+        await toggleAutonomy(enabled, { publicKey, signMessage });
     };
 
     const renderContent = () => {
         if (!publicKey) {
             return (
                 <div className="wallet-connect-prompt">
-                    <p>Connect your wallet to manage your account and credits.</p>
+                    <p>Connect your wallet to manage your account.</p>
                     <WalletMultiButton />
                 </div>
             );
@@ -87,42 +43,43 @@ export default function SettingsModal() {
         }
 
         if (!userCredits) {
-            return <p style={{textAlign: 'center'}}>Could not load your credit balance. Please try again later.</p>;
+            return <p style={{textAlign: 'center'}}>Could not load your account details. Please try again later.</p>;
         }
 
+        const freePromptsRemaining = Math.max(0, 5 - userCredits.freePromptUsage);
+
         return (
-            <div className="credits-list">
-                <div className="credit-item">
-                    <div className="credit-info">
-                        <span className="icon">chat</span>
-                        <h4>Chat Credits</h4>
-                    </div>
-                    <div className="credit-balance">
-                        <span>{userCredits.paidPromptCredits}</span>
-                        <button onClick={() => handleBuyCredits('chat_credits')}>Buy More</button>
-                    </div>
-                </div>
-                <div className="credit-item">
-                    <div className="credit-info">
-                        <span className="icon">movie</span>
-                        <h4>Sora Generations</h4>
-                    </div>
-                    <div className="credit-balance">
-                        <span>{userCredits.soraCredits}</span>
-                        <button onClick={() => handleBuyCredits('sora_credits')}>Buy More</button>
+            <>
+                <div className="credits-list">
+                    <div className="credit-item">
+                        <div className="credit-info">
+                            <span className="icon">chat</span>
+                            <h4>Free Prompts Remaining</h4>
+                        </div>
+                        <div className="credit-balance">
+                            <span>{freePromptsRemaining}</span>
+                        </div>
                     </div>
                 </div>
-                <div className="credit-item">
-                    <div className="credit-info">
-                        <span className="icon">image</span>
-                        <h4>Image Generations</h4>
-                    </div>
-                    <div className="credit-balance">
-                        <span>{userCredits.imageCredits}</span>
-                        <button onClick={() => handleBuyCredits('image_credits')}>Buy More</button>
+                <p style={{textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '1rem 0 0 0'}}>
+                    After your free prompts are used, features are unlocked via small, on-demand payments.
+                </p>
+
+                <div className="form-section autonomy-section">
+                    <h4>Autonomous Behavior</h4>
+                     <div className="autonomy-toggle">
+                        <p>Enable your agent to think and act on its own, even when you're away.</p>
+                        <label className="switch">
+                            <input 
+                                type="checkbox" 
+                                checked={userCredits.autonomyEnabled} 
+                                onChange={handleAutonomyToggle} 
+                            />
+                            <span className="slider round"></span>
+                        </label>
                     </div>
                 </div>
-            </div>
+            </>
         );
     };
 
@@ -133,8 +90,8 @@ export default function SettingsModal() {
                     <span className="icon">close</span>
                 </button>
                 <div className="modal-header">
-                    <h2>Account & Credits</h2>
-                    <p>Track your balances and purchase more credits to use with our default AI agents.</p>
+                    <h2>Account</h2>
+                    <p>Manage your free prompt usage and agent settings.</p>
                 </div>
                 {renderContent()}
             </div>

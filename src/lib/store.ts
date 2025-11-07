@@ -35,6 +35,7 @@ interface AppState {
   realtimeModel: string;
   preferredVoiceName: string | null;
   preferredLanguage: string;
+  walletAddress: string | null;
   models: { name: string; url: string; systemInstruction: string | null }[];
   activeModelUrl: string | null;
   activeModelToast: string | null;
@@ -52,6 +53,7 @@ interface AppState {
   theme: 'light' | 'dark';
   userCredits: UserCredits | null;
   isLoadingUserCredits: boolean;
+  setWalletAddress: (address: string | null) => void;
   toggleTheme: () => void;
   playAnimation: (animation: string) => void;
   setActiveAnimation: (animation: string) => void;
@@ -115,7 +117,7 @@ const useStore = create(
     realtimeModel: 'gemini-2.5-flash',
     preferredVoiceName: 'en-US-Studio-O',
     preferredLanguage: 'en-us',
-    
+    walletAddress: null,
     models: [
       { name: 'Gemini', url: '/models/gemini.vrm', systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
       { name: 'Mico', url: '/models/frankenstein.vrm', systemInstruction: "You are Mico, a helpful super assistant who scares easy. Scared, spooked, funny, weird but intelligent." },
@@ -147,6 +149,7 @@ const useStore = create(
     theme: 'light',
     userCredits: null,
     isLoadingUserCredits: false,
+    setWalletAddress: (address: string | null) => set({ walletAddress: address }),
     toggleTheme: () => set(state => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
     playAnimation: (animation: string) => {
       set({ activeAnimation: animation });

@@ -1,47 +1,84 @@
-import React from 'react';
+import React, { useState } from 'react';
 import useStore from '../lib/store';
 import { togglePaywallModal } from '../lib/actions';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { createAssociatedTokenAccountInstruction, createTransferInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
 import '../styles/PaywallModal.css';
 
-// This is a placeholder for the client-side x402 payment flow.
-// In a real implementation with the PayAI SDK, you would use their
-// client library (e.g., x402-fetch or x402-axios) which handles
-// the wallet interaction and retries automatically.
-async function handlePayment(paywallDetails: any) {
-    // 1. Prompt user to sign a message using their wallet.
-    // This would be handled by the x402 client library.
-    console.log("Simulating payment signature for:", paywallDetails);
-    
-    // 2. The client library would then automatically retry the original request
-    // with the signature in the Authorization header.
-    // We'll simulate this by calling the originalRequest function.
-    await paywallDetails.originalRequest();
-}
-
+// Mainnet USDC mint address on Solana
+const USDC_MINT_ADDRESS = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7u63';
 
 export default function PaywallModal() {
-    const { publicKey } = useWallet();
+    const { publicKey, sendTransaction } = useWallet();
+    const { connection } = useConnection();
     const paywallDetails = useStore.use.paywallDetails();
-    const [status, setStatus] = React.useState<'idle' | 'paying' | 'success' | 'error'>('idle');
-    const [error, setError] = React.useState<string | null>(null);
+    const [status, setStatus] = useState<'idle' | 'paying' | 'success' | 'error'>('idle');
+    const [error, setError] = useState<string | null>(null);
 
     const handleConfirmPayment = async () => {
-        if (!paywallDetails) return;
+        if (!publicKey || !paywallDetails || !sendTransaction) return;
         setStatus('paying');
         setError(null);
+
         try {
-            // Simulate the payment and retry flow
-            await handlePayment(paywallDetails);
+            const { recipient, amount, currency, network } = paywallDetails;
+
+            if (network.toLowerCase() !== 'solana') {
+                throw new Error(`This wallet only supports Solana payments. Network required: ${network}`);
+            }
+            if (currency.toUpperCase() !== 'USDC') {
+                throw new Error(`Unsupported currency: ${currency}. Only USDC is supported.`);
+            }
+
+            const usdcMint = new PublicKey(USDC_MINT_ADDRESS);
+            // Convert dollar amount to smallest USDC unit (6 decimals)
+            const lamports = Math.round(amount * Math.pow(10, 6)); 
+            const recipientPk = new PublicKey(recipient);
+
+            const fromAta = await getAssociatedTokenAddress(usdcMint, publicKey);
+            const toAta = await getAssociatedTokenAddress(usdcMint, recipientPk);
+            
+            const toAccount = await connection.getAccountInfo(toAta);
+            const transaction = new Transaction();
+
+            // If recipient doesn't have an associated token account, create one for them
+            if (!toAccount) {
+                transaction.add(
+                    createAssociatedTokenAccountInstruction(
+                        publicKey, // Payer
+                        toAta,
+                        recipientPk,
+                        usdcMint
+                    )
+                );
+            }
+            
+            transaction.add(
+                createTransferInstruction(
+                    fromAta,
+                    toAta,
+                    publicKey,
+                    lamports
+                )
+            );
+            
+            const signature = await sendTransaction(transaction, connection);
+            await connection.confirmTransaction(signature, 'processed');
+
+            // Retry original request with the signature as proof of payment
+            await paywallDetails.originalRequest(signature);
+            
             setStatus('success');
             setTimeout(() => {
                 togglePaywallModal(false);
             }, 2000);
+
         } catch (err: any) {
             console.error("Payment failed:", err);
             setStatus('error');
-            setError(err.message || 'Payment failed. Please try again.');
+            setError(err.message || 'Payment failed. Please check your wallet and try again.');
         }
     };
     
@@ -52,7 +89,7 @@ export default function PaywallModal() {
             return (
                 <div className="paywall-status">
                     <span className="icon success">check_circle</span>
-                    <p>Payment successful! Unlocking content...</p>
+                    <p>Payment successful! Unlocking feature...</p>
                 </div>
             );
         }

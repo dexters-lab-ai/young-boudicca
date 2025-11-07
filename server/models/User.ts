@@ -11,9 +11,9 @@ export interface IUser extends Document {
   subscribedAgents: ISubscribedAgent[];
   unlockedAgents: mongoose.Types.ObjectId[];
   freePromptUsage: number;
-  paidPromptCredits: number;
-  soraCredits: number;
-  imageCredits: number;
+  autonomyEnabled: boolean;
+  lastSeen: Date;
+  activeAgentId?: mongoose.Types.ObjectId;
 }
 
 const SubscribedAgentSchema: Schema = new Schema({
@@ -27,9 +27,9 @@ const UserSchema: Schema = new Schema({
   subscribedAgents: [SubscribedAgentSchema],
   unlockedAgents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Agent' }],
   freePromptUsage: { type: Number, default: 0 },
-  paidPromptCredits: { type: Number, default: 0 },
-  soraCredits: { type: Number, default: 0 },
-  imageCredits: { type: Number, default: 0 },
+  autonomyEnabled: { type: Boolean, default: false },
+  lastSeen: { type: Date, default: Date.now },
+  activeAgentId: { type: Schema.Types.ObjectId, ref: 'Agent', required: false },
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);

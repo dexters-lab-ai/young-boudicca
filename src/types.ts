@@ -97,18 +97,26 @@ export interface Environment {
 }
 
 export interface PaywallDetails {
-  type: 'chat_credits' | 'agent_unlock' | 'sora_credits' | 'image_credits';
+  type: 'generic' | 'chat' | 'sora' | 'image';
   amount: number;
   recipient: string;
-  currency: 'USDC';
-  network: 'Solana' | 'Base' | 'BSC';
+  currency: string;
+  network: string;
   itemDescription: string;
-  quantity?: number; // e.g., how many credits are being bought
-  originalRequest: () => Promise<any>; // The function to retry after payment
+  quantity?: number;
+  originalRequest: (txSignature?: string) => Promise<any>;
 }
 
 export interface UserCredits {
-  paidPromptCredits: number;
-  soraCredits: number;
-  imageCredits: number;
+  freePromptUsage: number;
+  autonomyEnabled: boolean;
+}
+
+export interface AutonomyLog {
+    _id: string;
+    walletAddress: string;
+    agentId: string;
+    actionType: 'MONOLOGUE' | 'TOOL_CALL';
+    text: string;
+    createdAt: string;
 }

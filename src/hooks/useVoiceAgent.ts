@@ -1,7 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { ChatMessage } from '../types';
 import useStore from '../lib/store';
-import { DEFAULT_SYSTEM_INSTRUCTION } from '../lib/constants';
 import { errorService } from '../lib/ErrorService';
 import { fetchApiWith402 } from '../lib/fetchApiWith402';
 
@@ -31,14 +29,14 @@ interface UseVoiceAgentProps {
 /**
  * A comprehensive voice agent hook that manages the entire conversation flow:
  * 1. Speech-to-Text (STT) via the browser's SpeechRecognition API.
- * 2. Language Model (LLM) interaction with a server-side OpenAI engine for text responses.
+ * 2. Language Model (LLM) interaction with a server-side Gemini engine for text responses.
  * 3. Text-to-Speech (TTS) via a secure backend endpoint for ElevenLabs, with high-precision scheduling.
  */
 export function useVoiceAgent(props: UseVoiceAgentProps) {
     const { systemInstruction } = props;
 
     // --- Global State ---
-    const { addMessage, addToolMessage, chatHistory, preferredVoiceName: preferredVoiceId, setIsTextStreaming, activeCustomAgent } = useStore.getState();
+    const { addMessage, chatHistory, preferredVoiceName: preferredVoiceId, setIsTextStreaming, activeCustomAgent, walletAddress } = useStore.getState();
 
     // --- Local State and Refs ---
     const [streamingSummary, setStreamingSummary] = useState('');
@@ -97,22 +95,26 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
         }
     }, [preferredVoiceId]);
     
-    // Send text to our server-side OpenAI endpoint
+    // Send text to our server-side Gemini endpoint
     const sendText = useCallback(async (text: string) => {
+        if (!walletAddress) {
+            errorService.dispatchError("Please connect your wallet to chat.");
+            return;
+        }
         addMessage(text, 'user');
         setIsTextStreaming(true);
 
         try {
-            // The `fetchApiWith402` wrapper will handle payment requirements automatically.
-            const response = await fetchApiWith402(() => fetch('/api/chat', {
+            const response = await fetchApiWith402('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: text,
                     history: chatHistory,
-                    agentId: activeCustomAgent?._id
+                    agentId: activeCustomAgent?._id,
+                    walletAddress: walletAddress,
                 })
-            }));
+            });
 
             if (!response.body) {
                 throw new Error("The response body is empty.");
@@ -148,10 +150,10 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
                                 if (sentences.length > 1) {
                                     const completeSentences = sentences.slice(0, -1);
                                     audioQueue.current.push(...completeSentences);
-                                    currentMessage = sentences[sentences.length - 1];
                                     if (!isPlayingAudio.current) {
                                         playNextAudio();
                                     }
+                                    currentMessage = sentences[sentences.length - 1];
                                 }
                             }
                         } catch (e) {
@@ -176,12 +178,14 @@ export function useVoiceAgent(props: UseVoiceAgentProps) {
 
         } catch (err: any) {
             console.error("Error sending message to backend:", err);
-            errorService.dispatchError(`Failed to get response from the server. ${err.message}`);
+            const friendlyError = err.message.includes('402') ? 'Payment required to continue.' : (err.message || 'Failed to get response from the server.');
+            errorService.dispatchError(friendlyError);
+            addMessage(`Sorry, I ran into an issue: ${friendlyError}`, 'assistant');
         } finally {
             setStreamingSummary('');
             setIsTextStreaming(false);
         }
-    }, [addMessage, playNextAudio, setIsTextStreaming, chatHistory, activeCustomAgent]);
+    }, [addMessage, playNextAudio, setIsTextStreaming, chatHistory, activeCustomAgent, walletAddress, systemInstruction]);
 
 
     // --- Speech Recognition ---

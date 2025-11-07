@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useStore from '../lib/store';
 import modes from '../lib/modes';
-import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, generateSoraVideo, toggleSettingsModal } from '../lib/actions';
+import { handleFilterClick, setCustomPrompt, toggleAboutModal, openTokenDetailModal, toggleSubscriptionModal, generateSoraVideo, toggleSettingsModal, fetchAutonomyLogs } from '../lib/actions';
 import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import VoiceActivityIndicator from './VoiceActivityIndicator';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -52,6 +52,12 @@ export default function Chat() {
   const soraButtonTitle = hasUserImage ? 'Use the current uploaded image to generate a video in Sora.' : 'Upload or capture an image first.';
 
   useSoraPolling();
+
+  useEffect(() => {
+    if (publicKey) {
+      fetchAutonomyLogs(publicKey.toBase58());
+    }
+  }, [publicKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

@@ -5,10 +5,11 @@
 import useStore, { createAssistantMessage } from './store'
 import imageData from './imageData'
 import modes from './modes'
-import { Photo, Agent, Environment, PaywallDetails, UserCredits } from '../types'
+import { Photo, Agent, Environment, PaywallDetails, UserCredits, AutonomyLog } from '../types'
 import { FALLBACK_WELCOME_MESSAGE, getWelcomeMessageForModelName, buildCustomAgentWelcomeMessage } from './constants'
 import { pollSoraTask, SoraStatus, PollStatusPayload } from './soraUtils'
 import { fetchApiWith402 } from './fetchApiWith402'
+import bs58 from 'bs58';
 
 const get = useStore.getState
 const set = useStore.setState
@@ -196,6 +197,7 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
 
     if (source === 'default') {
         setActivePhoto(defaultImageId)
+        // FIX: The 'addMessage' function requires a role.
         addMessage('Back to the default avatar. Good choice.', 'assistant');
         return;
     }
@@ -208,6 +210,7 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
             photos: [...state.photos, newPhoto],
             activePhotoId: newId
         }));
+        // FIX: The 'addMessage' function requires a role.
         addMessage("Image uploaded. What're we doing with it then?", 'assistant');
     }
     
@@ -219,6 +222,7 @@ export const setInputSource = async (source: 'default' | 'upload' | 'webcam', da
             photos: [...state.photos, newPhoto],
             activePhotoId: newId
         }));
+        // FIX: The 'addMessage' function requires a role.
         addMessage("Decent photo. Now, let's make it better.", 'assistant');
     }
 }
@@ -258,6 +262,73 @@ export const fetchUserCredits = async (walletAddress: string) => {
         set({ isLoadingUserCredits: false });
     }
 };
+
+export const toggleAutonomy = async (enabled: boolean, wallet: { publicKey: any, signMessage: any }) => {
+    const { publicKey, signMessage } = wallet;
+    if (!publicKey || !signMessage) {
+        get().setError('Wallet not connected or does not support message signing.');
+        return;
+    }
+
+    try {
+        const message = `Set autonomous behavior to ${enabled ? 'ON' : 'OFF'} at ${new Date().toISOString()}`;
+        const encodedMessage = new TextEncoder().encode(message);
+        const signature = await signMessage(encodedMessage);
+        const signatureBase58 = bs58.encode(signature);
+
+        const response = await fetch('/api/user/autonomy', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                walletAddress: publicKey.toBase58(),
+                enabled,
+                signature: signatureBase58,
+                message,
+            }),
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to update setting.');
+        }
+
+        const { autonomyEnabled } = await response.json();
+        // FIX: Changed from immer-style mutation to returning a new state object to satisfy TypeScript.
+        set((state) => ({
+            userCredits: state.userCredits
+              ? { ...state.userCredits, autonomyEnabled: autonomyEnabled }
+              : state.userCredits,
+        }));
+    } catch (error: any) {
+        get().setError(error.message);
+        // Revert UI on failure
+        // FIX: Changed from immer-style mutation to returning a new state object to satisfy TypeScript.
+        set((state) => ({
+            userCredits: state.userCredits
+              ? { ...state.userCredits, autonomyEnabled: !enabled }
+              : state.userCredits,
+        }));
+    }
+};
+
+export const fetchAutonomyLogs = async (walletAddress: string) => {
+    try {
+        const response = await fetch(`/api/user/autonomy-logs?walletAddress=${walletAddress}`);
+        if (!response.ok) {
+            // Don't throw error on 404 or empty, just fail silently
+            return;
+        }
+        const logs: AutonomyLog[] = await response.json();
+        if (logs && logs.length > 0) {
+            const logSummary = logs.map(log => `- ${log.text}`).join('\n');
+            const message = `**While you were away...**\n\nI did a few things:\n${logSummary}`;
+            addMessage(message, 'assistant');
+        }
+    } catch (error) {
+        console.error('Failed to fetch autonomy logs:', error);
+    }
+};
+
 
 export const toggleSubscriptionModal = (open?: boolean, agentId?: string) => {
     set(state => ({ 

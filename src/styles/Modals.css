@@ -258,6 +258,78 @@
     margin-bottom: 1rem;
 }
 
+.autonomy-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+.autonomy-section h4 {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+}
+.autonomy-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--background-dark);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+.autonomy-toggle p {
+    text-align: left;
+    margin: 0;
+    max-width: 75%;
+}
+
+/* Generic switch component styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--background-darker);
+  border: 1px solid var(--border-color);
+  transition: .4s;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+}
+input:checked + .slider {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+.slider.round {
+  border-radius: 28px;
+}
+.slider.round:before {
+  border-radius: 50%;
+}
+
 
 @media (max-width: 900px) {
     .modal-content {

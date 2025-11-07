@@ -14,16 +14,21 @@ import CreateAgentModal from './CreateAgentModal';
 import WalletContextProvider from './WalletProvider';
 import TokenDetailModal from './TokenDetailModal';
 import VoiceSelector from './VoiceSelector';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import SubscriptionModal from './SubscriptionModal';
 import PaywallModal from './PaywallModal';
 import SettingsModal from './Settings';
+import useSocketManager from '../hooks/useSocketManager';
 
 
 import '../styles/App.css';
 import '../styles/Modals.css';
 
 function AppContent() {
+  const { publicKey } = useWallet();
+  const setWalletAddress = useStore.use.setWalletAddress();
+
   const isAboutModalOpen = useStore.use.isAboutModalOpen();
   const isCreateAgentModalOpen = useStore.use.isCreateAgentModalOpen();
   const isSettingsModalOpen = useStore.use.isSettingsModalOpen();
@@ -36,9 +41,16 @@ function AppContent() {
   const theme = useStore.use.theme();
   const toggleTheme = useStore.use.toggleTheme();
 
+  // Initialize the socket manager to handle real-time agent events
+  useSocketManager();
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    setWalletAddress(publicKey ? publicKey.toBase58() : null);
+  }, [publicKey, setWalletAddress]);
 
   return (
     <>

@@ -27,7 +27,8 @@ console.log(`[env] Loaded base: ${base.error ? 'NO' : 'YES'} (${baseEnvPath})`);
 // eslint-disable-next-line no-console
 console.log(`[env] Loaded specific: ${specific.error ? 'NO' : 'YES'} (${envSpecificPath})`);
 // eslint-disable-next-line no-console
-console.log(`[env] OPENAI_API_KEY present: ${process.env.OPENAI_API_KEY ? 'YES' : 'NO'}`);
+// DOC: Use API_KEY for Gemini API key
+console.log(`[env] API_KEY present: ${process.env.API_KEY ? 'YES' : 'NO'}`);
 // eslint-disable-next-line no-console
 console.log(`[env] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
 // eslint-disable-next-line no-console
@@ -36,5 +37,22 @@ console.log(`[env] MONGODB_URI present: ${process.env.MONGODB_URI ? 'YES' : 'NO'
 console.log(`[env] MERCHANT_WALLET_ADDRESS present: ${process.env.MERCHANT_WALLET_ADDRESS ? 'YES' : 'NO'}`);
 // eslint-disable-next-line no-console
 console.log(`[env] FACILITATOR_URL present: ${process.env.FACILITATOR_URL ? 'YES' : 'NO'}`);
+
+// Redis connection logging
+if (process.env.REDIS_URL) {
+    // eslint-disable-next-line no-console
+    console.log('[env] Redis configured via REDIS_URL: YES');
+} else if (process.env.REDIS_HOST && process.env.REDIS_PORT) {
+    // eslint-disable-next-line no-console
+    console.log('[env] Redis configured via REDIS_HOST/PORT: YES');
+    // eslint-disable-next-line no-console
+    console.log(`[env]   - REDIS_USERNAME present: ${process.env.REDIS_USERNAME ? 'YES' : 'NO'}`);
+    // eslint-disable-next-line no-console
+    console.log(`[env]   - REDIS_PASSWORD present: ${process.env.REDIS_PASSWORD ? 'YES' : 'NO'}`);
+} else {
+    // eslint-disable-next-line no-console
+    console.log('[env] Redis configured: NO');
+}
+
 // eslint-disable-next-line no-console
 console.log(`[env] Backblaze configured: ${process.env.BACKBLAZE_KEY_ID && process.env.BACKBLAZE_APPLICATION_KEY && process.env.BACKBLAZE_BUCKET_ID ? 'YES' : 'NO'}`);
