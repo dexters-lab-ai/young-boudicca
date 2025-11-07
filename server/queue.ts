@@ -1,4 +1,4 @@
-import { Queue, QueueScheduler } from 'bullmq';
+import { Queue } from 'bullmq';
 import { createClient } from 'redis';
 
 // Create Redis client with the recommended configuration from your Redis provider
@@ -59,22 +59,12 @@ export { redis, pubClient, subClient };
 
 // For BullMQ, we need to use a compatible client
 // You might need to adjust this part based on your BullMQ version
-export const agentQueue = new Queue('agent-jobs', { 
+export const agentQueue = new Queue('agent-jobs', {
     connection: {
         host: process.env.REDIS_HOST || 'redis-10026.crce219.us-east-1-4.ec2.redns.redis-cloud.com',
         port: Number(process.env.REDIS_PORT || 10026),
         username: process.env.REDIS_USERNAME || 'default',
-        password: process.env.REDIS_PASSWORD || 'UXmJv2kSrN38JGvO1KkYpm30xhiT0Wvb',
-    }
-});
-
-// Add queue scheduler for BullMQ
-const queueScheduler = new QueueScheduler('agent-jobs', {
-    connection: {
-        host: process.env.REDIS_HOST || 'redis-10026.crce219.us-east-1-4.ec2.redns.redis-cloud.com',
-        port: Number(process.env.REDIS_PORT || 10026),
-        username: process.env.REDIS_USERNAME || 'default',
-        password: process.env.REDIS_PASSWORD || 'UXmJv2kSrN38JGvO1KkYpm30xhiT0Wvb',
+        password: process.env.REDIS_PASSWORD || 'UXmJv2kSrN38JGvO1KkYpm30xhiT0Wvb'
     }
 });
 

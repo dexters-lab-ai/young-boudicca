@@ -2421,10 +2421,19 @@
     suspend-react "^0.0.8"
     zustand "^3.7.1"
 
-"@redis/bloom@1.2.0":
+"@redis/bloom@^1.0.3", "@redis/bloom@1.2.0":
   version "1.2.0"
   resolved "https://registry.npmjs.org/@redis/bloom/-/bloom-1.2.0.tgz"
   integrity sha512-HG2DFjYKbpNmVXsa0keLHp/3leGJz1mjh09f2RLGGLQZzSHpkmZWuwJbAvo3QcRY8p80m5+ZdXZdYOSBLlp7Cg==
+
+"@redis/client@^1.6.1":
+  version "1.6.1"
+  resolved "https://registry.npmjs.org/@redis/client/-/client-1.6.1.tgz"
+  integrity sha512-/KCsg3xSlR+nCK8/8ZYSknYxvXHwubJrU82F3Lm1Fp6789VQ0/3RJKfsmRXjqfaTA++23CvC3hqmqe/2GEt6Kw==
+  dependencies:
+    cluster-key-slot "1.1.2"
+    generic-pool "3.9.0"
+    yallist "4.0.0"
 
 "@redis/client@1.5.14":
   version "1.5.14"
@@ -2435,22 +2444,22 @@
     generic-pool "3.9.0"
     yallist "4.0.0"
 
-"@redis/graph@1.1.1":
+"@redis/graph@^1.0.3", "@redis/graph@1.1.1":
   version "1.1.1"
   resolved "https://registry.npmjs.org/@redis/graph/-/graph-1.1.1.tgz"
   integrity sha512-FEMTcTHZozZciLRl6GiiIB4zGm5z5F3F6a6FZCyrfxdKOhFlGkiAqlexWMBzCi4DcRoyiOsuLfW+cjlGWyExOw==
 
-"@redis/json@1.0.6":
+"@redis/json@^1.0.5", "@redis/json@1.0.6":
   version "1.0.6"
   resolved "https://registry.npmjs.org/@redis/json/-/json-1.0.6.tgz"
   integrity sha512-rcZO3bfQbm2zPRpqo82XbW8zg4G/w4W3tI7X8Mqleq9goQjAGLL7q/1n1ZX4dXEAmORVZ4s1+uKLaUOg7LrUhw==
 
-"@redis/search@1.1.6":
+"@redis/search@^1.0.5", "@redis/search@1.1.6":
   version "1.1.6"
   resolved "https://registry.npmjs.org/@redis/search/-/search-1.1.6.tgz"
   integrity sha512-mZXCxbTYKBQ3M2lZnEddwEAks0Kc7nauire8q20oA0oA/LoA+E/b5Y5KZn232ztPb1FkIGqo12vh3Lf+Vw5iTw==
 
-"@redis/time-series@1.0.5":
+"@redis/time-series@^1.0.5", "@redis/time-series@1.0.5":
   version "1.0.5"
   resolved "https://registry.npmjs.org/@redis/time-series/-/time-series-1.0.5.tgz"
   integrity sha512-IFjIgTusQym2B5IZJG3XKr5llka7ey84fw/NOYqESP5WUfQs9zz1ww/9+qoz4ka/S6KcGBodzlCeZ5UImKbscg==
@@ -6436,7 +6445,7 @@ bufferutil@^4.0.1:
   dependencies:
     node-gyp-build "^4.3.0"
 
-bullmq@^5.10.3:
+bullmq@^5.63.0:
   version "5.63.0"
   resolved "https://registry.npmjs.org/bullmq/-/bullmq-5.63.0.tgz"
   integrity sha512-HT1iM3Jt4bZeg3Ru/MxrOy2iIItxcl1Pz5Ync1Vrot70jBpVguMxFEiSaDU57BwYwR4iwnObDnzct2lirKkX5A==
