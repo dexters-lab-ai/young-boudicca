@@ -6,8 +6,10 @@
 import './env';
 import process from 'process';
 
-// FIX: Explicitly import Express types to avoid conflicts with global types.
-import express, { Request, Response, NextFunction } from 'express';
+// FIX: Explicitly import and alias Express types to avoid conflicts with global DOM types.
+import express from 'express';
+// FIX: Explicitly import Express types to avoid conflicts with global DOM types.
+import type { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -174,9 +176,8 @@ async function getCandyMachineService(): Promise<CandyMachineService> {
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
-// FIX: Add explicit types to middleware to prevent conflicts with global types.
-// FIX: Changed Request, Response, NextFunction to express.Request, express.Response, express.NextFunction to resolve type conflicts.
-app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.originalUrl.startsWith('/tools') || req.originalUrl.startsWith('/api')) {
     console.log(`[Server] Incoming Request -> ${req.method} ${req.originalUrl}`);
     if (req.method === 'POST' && req.body && Object.keys(req.body).length > 0) {
@@ -187,8 +188,8 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 });
 
 // --- Payment Middleware (x402) ---
-// FIX: Changed Request, Response, NextFunction to express.Request, express.Response, express.NextFunction to resolve type conflicts.
-const paywallMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+const paywallMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     const { walletAddress, agentId } = req.body;
     const { API_KEY, MERCHANT_WALLET_ADDRESS, FACILITATOR_URL, NETWORK } = process.env;
 
@@ -235,9 +236,8 @@ const paywallMiddleware = async (req: express.Request, res: express.Response, ne
 
 
 // --- AI Endpoints (Server-Side & Paywalled) ---
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/chat', paywallMiddleware, async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/chat', paywallMiddleware, async (req: Request, res: Response) => {
     const { message, history, agentId } = req.body;
     const user = (req as any).user;
     let fullResponseText = '';
@@ -325,9 +325,8 @@ app.post('/api/chat', paywallMiddleware, async (req: express.Request, res: expre
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/images/generate', paywallMiddleware, async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/images/generate', paywallMiddleware, async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { prompt, inputFile } = req.body;
     let responseSent = false;
@@ -382,9 +381,8 @@ app.post('/api/images/generate', paywallMiddleware, async (req: express.Request,
 });
 
 // --- Sora Endpoints (Paywalled) ---
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/sora/image-to-video', paywallMiddleware, async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/sora/image-to-video', paywallMiddleware, async (req: Request, res: Response) => {
   const user = (req as any).user;
   let responseSent = false;
 
@@ -494,9 +492,8 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 
 // --- Other Endpoints ---
 // Health check endpoint
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/health', (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/health', (req: Request, res: Response) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
     res.status(200).json({
       status: 'ok',
@@ -506,9 +503,8 @@ app.get('/health', (req: express.Request, res: express.Response) => {
     });
   });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/sora/image-to-video/:taskId', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/sora/image-to-video/:taskId', async (req: Request, res: Response) => {
   if (!soraConfig.apiKey) {
     return res.status(503).json({ error: 'Sora integration is not configured on the server.' });
   }
@@ -533,9 +529,8 @@ interface Voice {
   label: string;
 }
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/tts-voices', (req: Request, res: Response) => {
   const voices: Voice[] = [
     { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
     { value: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi' },
@@ -551,9 +546,8 @@ app.get('/api/tts-voices', (req: express.Request, res: express.Response) => {
   res.json({ voices, lastLoaded: Date.now() });
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/tts', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/tts', async (req: Request, res: Response) => {
   if (!elevenlabs) {
     return res.status(503).json({ error: 'TTS service not configured on the server.' });
   }
@@ -584,9 +578,8 @@ app.post('/api/tts', async (req: express.Request, res: express.Response) => {
   }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/music/compose', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/music/compose', async (req: Request, res: Response) => {
     if (!elevenlabs) {
         return res.status(503).json({ error: 'Music service not configured on the server.' });
     }
@@ -644,9 +637,8 @@ function verifySignedPayload({ message, signature, walletAddress }: SignedPayloa
   }
 }
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/assets/upload', assetUploadMiddleware, async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/assets/upload', assetUploadMiddleware, async (req: Request, res: Response) => {
   if (!backblazeService) {
     return res.status(503).json({ error: 'Asset storage not configured.' });
   }
@@ -706,9 +698,8 @@ app.post('/api/assets/upload', assetUploadMiddleware, async (req: express.Reques
 });
 
 // --- Candy Machine API ---
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/candy-machine/create', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/candy-machine/create', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -737,9 +728,8 @@ app.post('/api/candy-machine/create', async (req: express.Request, res: express.
   }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/candy-machine/:address/items', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/candy-machine/:address/items', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -778,9 +768,8 @@ app.post('/api/candy-machine/:address/items', async (req: express.Request, res: 
   }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/candy-machine/:address/mint', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/candy-machine/:address/mint', async (req: Request, res: Response) => {
   if (!candyMachineConfig) {
     return res.status(503).json({ error: 'Candy Machine not configured.' });
   }
@@ -814,9 +803,8 @@ app.post('/api/candy-machine/:address/mint', async (req: express.Request, res: e
 });
 
 // --- Agent Creator API ---
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/agents/create', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/agents/create', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -920,9 +908,8 @@ app.post('/api/agents/create', async (req: express.Request, res: express.Respons
   }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.put('/api/agents/:agentId/visibility', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.put('/api/agents/:agentId/visibility', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { isPublic, creatorWalletAddress, signature, message } = req.body;
 
@@ -956,9 +943,8 @@ app.put('/api/agents/:agentId/visibility', async (req: express.Request, res: exp
 });
 
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/agents/list', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/agents/list', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -971,9 +957,8 @@ app.get('/api/agents/list', async (req: express.Request, res: express.Response) 
   }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/agents/creator/:walletAddress', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/agents/creator/:walletAddress', async (req: Request, res: Response) => {
   if (!process.env.MONGODB_URI) {
     return res.status(503).json({ error: 'Database not configured.' });
   }
@@ -998,9 +983,8 @@ const findOrCreateUser = async (walletAddress: string) => {
     return user;
 };
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/user/me', async (req: Request, res: Response) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1024,9 +1008,8 @@ app.get('/api/user/me', async (req: express.Request, res: express.Response) => {
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.put('/api/user/autonomy', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.put('/api/user/autonomy', async (req: Request, res: Response) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1055,9 +1038,8 @@ app.put('/api/user/autonomy', async (req: express.Request, res: express.Response
 });
 
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/user/autonomy-logs', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/user/autonomy-logs', async (req: Request, res: Response) => {
     if (!process.env.MONGODB_URI) {
         return res.status(503).json({ error: 'Database not configured.' });
     }
@@ -1079,9 +1061,8 @@ app.get('/api/user/autonomy-logs', async (req: express.Request, res: express.Res
 });
 
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/users/wallet-balance', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/users/wallet-balance', async (req: Request, res: Response) => {
     const { walletAddress } = req.query;
     if (!walletAddress || typeof walletAddress !== 'string') {
         return res.status(400).json({ isSufficient: false, error: 'Wallet address is required.' });
@@ -1099,9 +1080,8 @@ app.get('/api/users/wallet-balance', async (req: express.Request, res: express.R
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.get('/api/users/subscription-status/:agentId', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.get('/api/users/subscription-status/:agentId', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { walletAddress } = req.query;
 
@@ -1132,9 +1112,8 @@ app.get('/api/users/subscription-status/:agentId', async (req: express.Request, 
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/api/subscribe/:agentId', async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const { walletAddress, txSignature } = req.body;
 
@@ -1179,9 +1158,8 @@ app.post('/api/subscribe/:agentId', async (req: express.Request, res: express.Re
 
 // --- Solana Tools (Solscan-backed) ---
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchTokenList', async (req: Request, res: Response) => {
     try {
         const { type = 'trending', platform = 'pumpfun' } = req.body ?? {};
         let data;
@@ -1205,9 +1183,8 @@ app.post('/tools/fetchTokenList', async (req: express.Request, res: express.Resp
 });
 
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchTrendingTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 9 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchTrendingTokens with limit: ${limit}`);
@@ -1225,9 +1202,8 @@ app.post('/tools/fetchTrendingTokens', async (req: express.Request, res: express
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchToken', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchToken', async (req: Request, res: Response) => {
     try {
         const { mint } = req.body ?? {};
         if (!mint) return res.status(400).json({ error: 'Missing mint' });
@@ -1246,9 +1222,8 @@ app.post('/tools/fetchToken', async (req: express.Request, res: express.Response
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchBondingTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 20, platform } = req.body ?? {};
         console.log(`[Server] Calling solscanService.fetchLaunchpadTokens (bonding) with limit: ${limit} on platform: ${platform}`);
@@ -1266,9 +1241,8 @@ app.post('/tools/fetchBondingTokens', async (req: express.Request, res: express.
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchLatestTokens', async (req: Request, res: Response) => {
     try {
         const { limit = 50 } = req.body ?? {};
         console.log(`[Server] Calling solscanService.getLatestTokens with limit: ${limit}`);
@@ -1286,9 +1260,8 @@ app.post('/tools/fetchLatestTokens', async (req: express.Request, res: express.R
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/getTokenMetadata', async (req: Request, res: Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1307,9 +1280,8 @@ app.post('/tools/getTokenMetadata', async (req: express.Request, res: express.Re
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/getMarketInfo', async (req: Request, res: Response) => {
     try {
         const { address } = req.body ?? {};
         if (!address) return res.status(400).json({ error: 'Missing address' });
@@ -1328,9 +1300,8 @@ app.post('/tools/getMarketInfo', async (req: express.Request, res: express.Respo
     }
 });
 
-// FIX: Add explicit types to route handlers to prevent conflicts with global types.
-// FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-app.post('/tools/fetchCandles', async (req: express.Request, res: express.Response) => {
+// FIX: Use aliased Express types to prevent conflicts with global DOM types.
+app.post('/tools/fetchCandles', async (req: Request, res: Response) => {
     try {
         const { address, time_from, time_to } = req.body ?? {};
         if (!address || !time_from || !time_to) return res.status(400).json({ error: 'Missing fields' });
@@ -1382,9 +1353,8 @@ if (fs.existsSync(distPath)) {
   try {
     app.use(express.static(distPath));
     
-    // FIX: Add explicit types to route handlers to prevent conflicts with global types.
-    // FIX: Changed Request, Response to express.Request, express.Response to resolve type conflicts.
-    app.get('*', (req: express.Request, res: express.Response) => {
+    // FIX: Use aliased Express types to prevent conflicts with global DOM types.
+    app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'), (err) => {
         if (err) {
           console.error('Error sending file:', err);
