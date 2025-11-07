@@ -5,6 +5,10 @@
 // Load environment variables BEFORE anything else
 import './env';
 import process from 'process';
+import { validateEnv } from './validateEnv';
+
+// Validate environment variables before proceeding
+validateEnv();
 
 // FIX: Explicitly import and alias Express types to avoid conflicts with global DOM types.
 // Using 'import type' ensures we only import the type definitions, preventing runtime conflicts
@@ -49,9 +53,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Create HTTP server
 const server = http.createServer(app);
+
+// Initialize Socket.IO with Redis adapter
 const io = new Server(server, {
-    cors: { origin: '*' }
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  },
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  maxHttpBufferSize: 1e8, // 100MB
+  connectTimeout: 45000, // 45 seconds
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true
+});
+
+// Error handling for WebSocket server
+io.engine.on('connection_error', (err: any) => {
+  console.error('WebSocket connection error:', err);
 });
 
 // Use Redis adapter for Socket.IO to enable multi-process communication
@@ -496,15 +517,35 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 
 
 // --- Other Endpoints ---
-// Health check endpoint
-// FIX: Use aliased Express types to prevent conflicts with global DOM types.
-app.get('/health', (req: ExpressRequest, res: ExpressResponse) => {
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      database: dbStatus,
-      environment: process.env.NODE_ENV || 'development'
+// Health check endpoint with detailed status
+app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
+    const healthCheck = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        database: {
+            status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+            dbState: mongoose.STATES[mongoose.connection.readyState]
+        },
+        redis: {
+            status: redis?.status === 'ready' ? 'connected' : 'disconnected',
+            pubClient: pubClient?.isOpen ? 'connected' : 'disconnected',
+            subClient: subClient?.isOpen ? 'connected' : 'disconnected'
+        },
+        environment: process.env.NODE_ENV || 'development',
+        nodeVersion: process.version,
+        platform: process.platform,
+        cpuUsage: process.cpuUsage()
+    };
+
+    // Check if all critical services are healthy
+    const isHealthy = 
+        healthCheck.database.status === 'connected' && 
+        healthCheck.redis.status === 'connected';
+
+    res.status(isHealthy ? 200 : 503).json(healthCheck);
+});
     });
   });
 
@@ -1331,11 +1372,103 @@ app.post('/tools/fetchCandles', async (req: ExpressRequest, res: ExpressResponse
 
 const PORT = process.env.PORT || 8787;
 
-server.listen(PORT, () => {
-    const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
-    console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-    console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-    console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n[${new Date().toISOString()}] Received ${signal}. Starting graceful shutdown...`);
+  
+  try {
+    // Close HTTP server
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      
+      // Close WebSocket connections
+      io.close(() => {
+        console.log('WebSocket server closed.');
+      });
+      
+      // Close Redis connections
+      if (pubClient && pubClient.isOpen) {
+        await pubClient.quit();
+        console.log('Redis publisher connection closed.');
+      }
+      
+      if (subClient && subClient.isOpen) {
+        await subClient.quit();
+        console.log('Redis subscriber connection closed.');
+      }
+      
+      // Close MongoDB connection
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.close();
+        console.log('MongoDB connection closed.');
+      }
+      
+      console.log('Graceful shutdown complete.');
+      process.exit(0);
+    });
+    
+    // Force shutdown after 10 seconds
+    setTimeout(() => {
+      console.error('Could not close connections in time, forcefully shutting down');
+      process.exit(1);
+    }, 10000);
+  } catch (error) {
+    console.error('Error during graceful shutdown:', error);
+    process.exit(1);
+  }
+};
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit immediately, give time for the server to handle existing requests
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit immediately, give time for the server to handle existing requests
+});
+
+// Listen for shutdown signals
+['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
+
+// Start the server
+server.listen(PORT, '0.0.0.0', () => {
+  const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
+  console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+  console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
+  console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
+  
+  // Signal PM2 that the app is ready
+  if (process.send) {
+    process.send('ready');
+  }
+});
+
+// Handle server errors
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  const bind = typeof PORT === 'string' ? 'Pipe ' + PORT : 'Port ' + PORT;
+
+  // Handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
 });
 
 process.on('uncaughtException', (error) => {
