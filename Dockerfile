@@ -56,26 +56,29 @@ FROM node:22-alpine AS production
 
 ENV NODE_ENV=production
 
-# Install only the necessary runtime OS dependencies
-RUN apk add --no-cache \
-    libusb \
-    udev \
-    curl \
+# Install build dependencies
+RUN apk add --no-cache --virtual .build-deps \
     python3 \
     make \
     g++ \
-    pkgconfig
+    pkgconfig \
+    udev \
+    eudev-dev \
+    libusb-dev \
+    && npm install -g node-gyp
 
 WORKDIR /app
 
 # Copy package files and install only PRODUCTION dependencies
 COPY --from=build /app/package*.json ./
 
-# Install production dependencies including TypeScript and tsx
-RUN npm install --omit=dev --legacy-peer-deps \
+# Install production dependencies
+RUN npm install --omit=dev --legacy-peer-deps --build-from-source \
     tsx \
     typescript \
-    @types/node
+    @types/node \
+    && npm rebuild usb --update-binary \
+    && npm cache clean --force
 
 # Copy the built frontend assets from the 'build' stage
 COPY --from=build /app/dist ./dist
@@ -86,6 +89,10 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/ecosystem.config.cjs .
 COPY --from=build /app/tsconfig.json .
 COPY --from=build /app/tsconfig.node.json .
+
+# Clean up build dependencies
+RUN apk del .build-deps \
+    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp
 
 # Ensure the logs directory exists
 RUN mkdir -p /app/logs
