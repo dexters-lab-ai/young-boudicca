@@ -165,6 +165,10 @@ const startWorker = async () => {
     });
 
     console.log('[Worker] Agent worker started and listening for jobs...');
+  } catch (error) {
+    console.error('[Worker] Failed to start worker:', error);
+    throw error; // Re-throw to be caught by the outer catch
+  }
 };
 
 // Graceful shutdown handler
