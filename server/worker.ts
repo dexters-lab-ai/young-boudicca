@@ -9,6 +9,7 @@ console.log(`[${new Date().toISOString()}] [Worker] Process ID: ${process.pid}`)
 console.log(`[${new Date().toISOString()}] [Worker] Node.js version: ${process.version}`);
 
 // Track worker metrics
+let worker: Worker | null = null;
 const workerMetrics = {
   jobsProcessed: 0,
   jobsFailed: 0,
@@ -145,7 +146,7 @@ const startWorker = async () => {
         process.exit(1);
     }
 
-    const worker = new Worker('agent-jobs', processJob, {
+    worker = new Worker('agent-jobs', processJob, {
         connection: redisConnection,
         concurrency: 5, // Process up to 5 jobs concurrently
         removeOnComplete: { count: 1000 },
