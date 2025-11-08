@@ -68,7 +68,7 @@ RUN apk add --no-cache --virtual .build-deps \
     linux-headers \
     bash \
     git \
-    && npm install -g node-gyp@9.4.0 npm@10.2.0
+    && npm install -g node-gyp@9.4.0 npm@10.2.0 vite@5.0.0
 
 WORKDIR /app
 
@@ -78,6 +78,7 @@ COPY --from=build /app/package*.json ./
 # Install production dependencies and handle usb module
 RUN npm install --omit=dev --legacy-peer-deps \
     && npm rebuild usb --update-binary \
+    && npm install -g vite@5.0.0 \
     && npm cache clean --force
 
 # Copy the built frontend assets from the 'build' stage
