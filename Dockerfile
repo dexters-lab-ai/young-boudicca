@@ -56,8 +56,8 @@ WORKDIR /app
 # Copy package files and install only PRODUCTION dependencies for a smaller image size.
 # Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
 COPY --from=deps /app/package*.json ./
-# Install tsx as a production dependency since we need it to run TypeScript files
-RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx
+# Install required runtime dependencies for TypeScript execution
+RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx ts-node typescript @types/node
 
 # Copy the built frontend assets from the 'build' stage.
 COPY --from=build /app/dist ./dist
