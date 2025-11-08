@@ -65,19 +65,20 @@ RUN apk add --no-cache --virtual .build-deps \
     udev \
     eudev-dev \
     libusb-dev \
-    && npm install -g node-gyp
+    linux-headers \
+    bash \
+    git \
+    && npm install -g node-gyp@9.4.0 npm@10.2.0
 
 WORKDIR /app
 
 # Copy package files and install only PRODUCTION dependencies
 COPY --from=build /app/package*.json ./
 
-# Install production dependencies
-RUN npm install --omit=dev --legacy-peer-deps --build-from-source \
-    tsx \
-    typescript \
-    @types/node \
-    && npm rebuild usb --update-binary \
+# Install production dependencies with specific flags for usb
+RUN npm config set unsafe-perm true \
+    && npm install --omit=dev --legacy-peer-deps \
+    && npm rebuild usb --build-from-source=usb \
     && npm cache clean --force
 
 # Copy the built frontend assets from the 'build' stage
@@ -92,7 +93,9 @@ COPY --from=build /app/tsconfig.node.json .
 
 # Clean up build dependencies
 RUN apk del .build-deps \
-    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp
+    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp \
+    && find / -name "*.pyc" -delete \
+    && find / -name "*.o" -delete
 
 # Ensure the logs directory exists
 RUN mkdir -p /app/logs
