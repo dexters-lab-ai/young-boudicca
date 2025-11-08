@@ -75,10 +75,9 @@ WORKDIR /app
 # Copy package files and install only PRODUCTION dependencies
 COPY --from=build /app/package*.json ./
 
-# Install production dependencies with specific flags for usb
-RUN npm config set unsafe-perm true \
-    && npm install --omit=dev --legacy-peer-deps \
-    && npm rebuild usb --build-from-source=usb \
+# Install production dependencies and handle usb module
+RUN npm install --omit=dev --legacy-peer-deps \
+    && npm rebuild usb --update-binary \
     && npm cache clean --force
 
 # Copy the built frontend assets from the 'build' stage
