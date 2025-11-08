@@ -65,16 +65,18 @@ RUN apk add --no-cache --virtual .build-deps \
     udev \
     eudev-dev \
     libusb-dev \
-    && npm install -g node-gyp npm
+    && npm install -g node-gyp npm \
+    && npm install -g vite@5.0.0
 
 WORKDIR /app
 
 # Copy package files and install only PRODUCTION dependencies
 COPY --from=build /app/package*.json ./
 
-# Install production dependencies
+# Install production dependencies and ensure Vite is available
 RUN npm install --omit=dev --legacy-peer-deps \
     && npm rebuild usb --update-binary \
+    && npm install -g vite@5.0.0 \
     && npm cache clean --force
 
 # Copy the built frontend assets from the 'build' stage
