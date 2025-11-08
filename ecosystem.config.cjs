@@ -1,13 +1,11 @@
 // PM2 Configuration for TypeScript
-require('ts-node/register');
-
 module.exports = {
   apps: [
     {
       name: 'backend',
       script: 'server/index.ts',
-      interpreter: './node_modules/.bin/node',
-      interpreter_args: '-r ts-node/register --loader tsx',
+      interpreter: 'node',
+      interpreter_args: '--loader tsx',
       env: {
         NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=4096 --unhandled-rejections=strict',
@@ -34,8 +32,8 @@ module.exports = {
     {
       name: 'worker',
       script: 'server/worker.ts',
-      interpreter: './node_modules/.bin/node',
-      interpreter_args: '-r ts-node/register --loader tsx',
+      interpreter: 'node',
+      interpreter_args: '--loader tsx',
       watch: false,
       autorestart: true,
       instances: 1,

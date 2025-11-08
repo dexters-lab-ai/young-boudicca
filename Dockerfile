@@ -57,9 +57,13 @@ WORKDIR /app
 # Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
 COPY --from=deps /app/package*.json ./
 # Install required runtime dependencies for TypeScript execution
-# Install ts-node both globally and locally to ensure PM2 can find it
-RUN npm install -g ts-node typescript && \
-    npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx @types/node ts-node
+# Install required dependencies for production
+RUN npm install -g tsx && \
+    npm install --omit=dev --legacy-peer-deps --ignore-scripts \
+        @types/node \
+        typescript \
+        ts-node@10.9.1 \
+        tsx@3.12.0
 
 # Copy the built frontend assets from the 'build' stage.
 COPY --from=build /app/dist ./dist
