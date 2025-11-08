@@ -27,9 +27,11 @@ RUN npm install --legacy-peer-deps --ignore-scripts
 # This is the key change that addresses the persistent "Cannot find module" error.
 RUN npm install --legacy-peer-deps @rollup/rollup-linux-x64-musl
 
-# Copy the rest of the application source code.
+# Copy the rest of the application source code
 COPY . .
 
+# Install production dependencies and build the application
+RUN npm run build:prod
 
 # ---- Build Stage ----
 # This stage builds the frontend assets. It inherits everything from the 'deps' stage.
@@ -37,7 +39,14 @@ FROM deps AS build
 
 WORKDIR /app
 
-# Run the production build script. This will now finally succeed.
+# Copy package files and install dependencies
+COPY --from=deps /app/package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy the rest of the application source code
+COPY . .
+
+# Run the production build script
 RUN npm run build:prod
 
 
@@ -47,28 +56,40 @@ FROM node:22-alpine AS production
 
 ENV NODE_ENV=production
 
-# Install only the necessary runtime OS dependencies.
+# Install only the necessary runtime OS dependencies
 RUN apk add --no-cache \
     libusb \
     udev \
-    curl
+    curl \
+    python3 \
+    make \
+    g++ \
+    pkgconfig
 
 WORKDIR /app
 
-# Copy package files and install only PRODUCTION dependencies for a smaller image size.
-# Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
-COPY --from=deps /app/package*.json ./
-# Install tsx as a production dependency since we need it to run TypeScript files
-RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx
+# Copy package files and install only PRODUCTION dependencies
+COPY --from=build /app/package*.json ./
 
-# Copy the built frontend assets from the 'build' stage.
+# Install production dependencies including TypeScript and tsx
+RUN npm install --omit=dev --legacy-peer-deps \
+    tsx \
+    typescript \
+    @types/node \
+    @types/bullmq@3.27.0
+
+# Copy the built frontend assets from the 'build' stage
 COPY --from=build /app/dist ./dist
 
-# Copy the server, public folder, and other necessary config files from the 'deps' stage.
-COPY --from=deps /app/server ./server
-COPY --from=deps /app/public ./public
-COPY --from=deps /app/ecosystem.config.cjs .
-COPY --from=deps /app/tsconfig.json .
+# Copy the server, public folder, and other necessary config files
+COPY --from=build /app/server ./server
+COPY --from=build /app/public ./public
+COPY --from=build /app/ecosystem.config.cjs .
+COPY --from=build /app/tsconfig.json .
+COPY --from=build /app/tsconfig.node.json .
+
+# Ensure the logs directory exists
+RUN mkdir -p /app/logs
 
 # Expose the port your application will run on.
 EXPOSE 3000
