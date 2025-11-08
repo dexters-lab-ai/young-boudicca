@@ -72,8 +72,11 @@ RUN apk add --no-cache --virtual .build-deps \
 
 WORKDIR /app
 
-# Copy package files and install only PRODUCTION dependencies
+# Copy necessary files for the build
 COPY --from=build /app/package*.json ./
+COPY --from=build /app/tsconfig.json .
+COPY --from=build /app/tsconfig.node.json .
+COPY --from=build /app/vite.config.ts .
 
 # Install production dependencies and handle usb module
 RUN npm install --omit=dev --legacy-peer-deps \
@@ -88,8 +91,6 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/public ./public
 COPY --from=build /app/ecosystem.config.cjs .
-COPY --from=build /app/tsconfig.json .
-COPY --from=build /app/tsconfig.node.json .
 
 # Clean up build dependencies
 RUN apk del .build-deps \
