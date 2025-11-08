@@ -523,13 +523,14 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 }
 
 
-// --- Other Endpoints ---
 // Health check endpoint with detailed status
-app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
+app.get(['/health', '/api/health'], async (req: ExpressRequest, res: ExpressResponse) => {
+  const startTime = Date.now();
   const healthCheck = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    responseTime: 0,
     memory: {
       rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
       heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
@@ -540,11 +541,13 @@ app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
     database: {
       mongo: {
         status: 'checking...',
-        version: 'unknown'
+        version: 'unknown',
+        responseTime: 0
       },
       redis: {
         status: 'checking...',
-        version: 'unknown'
+        version: 'unknown',
+        responseTime: 0
       }
     },
     services: {
@@ -559,38 +562,68 @@ app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
 
   try {
     // Check MongoDB connection
-    if (mongoose.connection.readyState === 1) {
-      healthCheck.database.mongo.status = 'connected';
-      healthCheck.database.mongo.version = (await mongoose.connection.db.admin().serverStatus()).version;
-    } else {
-      healthCheck.database.mongo.status = 'disconnected';
+    const mongoStart = Date.now();
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const adminDb = mongoose.connection.db.admin();
+        const serverStatus = await adminDb.serverStatus();
+        healthCheck.database.mongo.status = 'connected';
+        healthCheck.database.mongo.version = serverStatus.version;
+      } else {
+        healthCheck.database.mongo.status = 'disconnected';
+      }
+    } catch (mongoError) {
+      console.error('MongoDB health check error:', mongoError);
+      healthCheck.database.mongo.status = 'error';
+      healthCheck.database.mongo.error = mongoError.message;
+    } finally {
+      healthCheck.database.mongo.responseTime = Date.now() - mongoStart;
     }
 
     // Check Redis connection
+    const redisStart = Date.now();
     try {
-      await redis.ping();
-      healthCheck.database.redis.status = 'connected';
-    } catch (error) {
+      if (redis && typeof redis.ping === 'function') {
+        await redis.ping();
+        healthCheck.database.redis.status = 'connected';
+      } else {
+        healthCheck.database.redis.status = 'disconnected';
+        healthCheck.database.redis.error = 'Redis client not properly initialized';
+      }
+    } catch (redisError) {
+      console.error('Redis health check error:', redisError);
       healthCheck.database.redis.status = 'error';
-      healthCheck.database.redis.error = error.message;
+      healthCheck.database.redis.error = redisError.message;
+    } finally {
+      healthCheck.database.redis.responseTime = Date.now() - redisStart;
     }
 
-    const isHealthy = healthCheck.database.mongo.status === 'connected';
+    // Determine overall status
+    const isMongoHealthy = healthCheck.database.mongo.status === 'connected';
+    const isRedisHealthy = healthCheck.database.redis.status === 'connected';
     
-    // Return 200 if DB is connected, even if Redis is down
-    res.status(200).json({
+    healthCheck.status = isMongoHealthy ? (isRedisHealthy ? 'ok' : 'degraded') : 'down';
+    healthCheck.responseTime = Date.now() - startTime;
+    
+    // Return appropriate status code based on health
+    const statusCode = isMongoHealthy ? 200 : 503;
+    
+    res.status(statusCode).json({
       ...healthCheck,
-      status: isHealthy ? 'ok' : 'degraded',
-      message: isHealthy ? 'Service is healthy' : 'Service is running in degraded mode (Redis not available)'
+      message: isMongoHealthy 
+        ? (isRedisHealthy ? 'All systems operational' : 'Service is running in degraded mode (Redis not available)')
+        : 'Service unavailable (MongoDB connection failed)'
     });
   } catch (error) {
     console.error('Health check error:', error);
-    res.status(200).json({
-      status: 'degraded',
+    res.status(503).json({
+      status: 'error',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      error: 'Health check partially failed',
-      details: error.message
+      responseTime: Date.now() - startTime,
+      error: 'Health check failed',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
     }
 });

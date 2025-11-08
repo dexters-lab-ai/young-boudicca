@@ -1,30 +1,38 @@
 import './env'; // Ensure env vars are loaded first
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, QueueEvents } from 'bullmq';
 import mongoose from 'mongoose';
 import { GoogleGenAI } from '@google/genai';
-
-// Add worker startup logging
-console.log(`[${new Date().toISOString()}] [Worker] Starting worker process...`);
-console.log(`[${new Date().toISOString()}] [Worker] Process ID: ${process.pid}`);
-console.log(`[${new Date().toISOString()}] [Worker] Node.js version: ${process.version}`);
+import { redis as redisConnection, pubClient, agentQueue } from './queue';
 
 // Track worker metrics
 let worker: Worker | null = null;
+let queueEvents: QueueEvents | null = null;
+
 const workerMetrics = {
   jobsProcessed: 0,
   jobsFailed: 0,
   lastJobTime: null as Date | null,
   startTime: new Date(),
+  isShuttingDown: false,
 };
 
-// Log memory usage periodically
-setInterval(() => {
-  const memory = process.memoryUsage();
-  console.log(`[${new Date().toISOString()}] [Worker] Memory: RSS=${Math.round(memory.rss / 1024 / 1024)}MB, ` +
-    `Heap=${Math.round(memory.heapUsed / 1024 / 1024)}MB/${Math.round(memory.heapTotal / 1024 / 1024)}MB`);
-}, 30000);
+// Add worker startup logging
+console.log(`[${new Date().toISOString()}] [Worker] Starting worker process...`);
+console.log(`[${new Date().toISOString()}] [Worker] Process ID: ${process.pid}`);
+console.log(`[${new Date().toISOString()}] [Worker] Node.js version: ${process.version}`);
+console.log(`[${new Date().toISOString()}] [Worker] NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 
-import { redis as redisConnection, pubClient } from './queue';
+// Log memory usage periodically
+const memoryInterval = setInterval(() => {
+  if (workerMetrics.isShuttingDown) return;
+  
+  const memory = process.memoryUsage();
+  console.log(`[${new Date().toISOString()}] [Worker] Memory: ` +
+    `RSS=${Math.round(memory.rss / 1024 / 1024)}MB, ` +
+    `Heap=${Math.round(memory.heapUsed / 1024 / 1024)}MB/${Math.round(memory.heapTotal / 1024 / 1024)}MB, ` +
+    `External=${Math.round(memory.external / 1024 / 1024)}MB`
+  );
+}, 30000);
 import User from './models/User';
 import Agent from './models/Agent';
 import AutonomyLog from './models/AutonomyLog';
@@ -46,8 +54,14 @@ const ai = process.env.API_KEY ? new GoogleGenAI({ apiKey: process.env.API_KEY }
 const IDLE_THRESHOLD_SECONDS = 30; // 30 seconds
 const ONLINE_THRESHOLD_MINUTES = 2;
 
-const processJob = async (job: Job) => {
+const processJob = async (job: Job): Promise<void> => {
+    if (workerMetrics.isShuttingDown) {
+        console.log(`[${new Date().toISOString()}] [Worker] Skipping job ${job.id} - worker is shutting down`);
+        throw new Error('Worker is shutting down');
+    }
+    
     const jobStart = Date.now();
+    console.log(`[${new Date().toISOString()}] [Worker] Starting job ${job.id} (attempt ${job.attemptsMade + 1})`);
     const { walletAddress } = job.data;
     
     workerMetrics.jobsProcessed++;
@@ -134,114 +148,162 @@ const processJob = async (job: Job) => {
 const startWorker = async () => {
   try {
     // Close existing worker if any
-    if (worker) {
-      await worker.close();
-      worker = null;
-    }
-    if (process.env.MONGODB_URI) {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('[Worker] MongoDB connected.');
-    } else {
-        console.error('[Worker] MONGODB_URI not found. Worker cannot start.');
-        process.exit(1);
     }
 
-    worker = new Worker('agent-jobs', processJob, {
-        connection: redisConnection,
-        concurrency: 5, // Process up to 5 jobs concurrently
-        removeOnComplete: { count: 1000 },
-        removeOnFail: { count: 5000 },
+    console.log(`[${new Date().toISOString()}] [Worker] Connecting to MongoDB...`);
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+    });
+    
+    console.log(`[${new Date().toISOString()}] [Worker] MongoDB connected successfully`);
+
+    // Initialize QueueEvents for monitoring
+    queueEvents = new QueueEvents('agent-jobs', {
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_PORT || 10026),
+        username: process.env.REDIS_USERNAME,
+        password: process.env.REDIS_PASSWORD,
+        tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+      }
     });
 
-    worker.on('completed', job => {
-        if(job) {
-            console.log(`[Worker] Job ${job.id} has completed for ${job.data.walletAddress}`);
-        }
+    // Create the worker
+    worker = new Worker('agent-jobs', processJob, {
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_PORT || 10026),
+        username: process.env.REDIS_USERNAME,
+        password: process.env.REDIS_PASSWORD,
+        tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+      },
+      concurrency: 5, // Process up to 5 jobs concurrently
+      removeOnComplete: { count: 100 }, // Keep last 100 completed jobs
+      removeOnFail: { count: 1000 },    // Keep last 1000 failed jobs
+      lockDuration: 30000, // 30 seconds to process a job
+      lockRenewTime: 10000, // Renew lock every 10 seconds
+    });
+
+    // Worker event handlers
+    worker.on('completed', (job) => {
+      if (workerMetrics.isShuttingDown) return;
+      
+      workerMetrics.jobsProcessed++;
+      workerMetrics.lastJobTime = new Date();
+      const duration = job.processedOn ? Date.now() - job.processedOn : 0;
+      console.log(`[${new Date().toISOString()}] [Worker] Job ${job.id} completed in ${duration}ms`);
     });
 
     worker.on('failed', (job, err) => {
-        if (job) {
-            console.error(`[Worker] Job ${job.id} for ${job.data.walletAddress} failed with error: ${err.message}`);
-        }
+      if (workerMetrics.isShuttingDown) return;
+      
+      workerMetrics.jobsFailed++;
+      const jobId = job?.id || 'unknown';
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[${new Date().toISOString()}] [Worker] Job ${jobId} failed:`, errorMsg);
+      
+      if (job && job.attemptsMade >= (job.opts?.attempts || 3)) {
+        console.error(`[${new Date().toISOString()}] [Worker] Job ${jobId} failed after ${job.attemptsMade} attempts`);
+      }
     });
 
-    console.log('[Worker] Agent worker started and listening for jobs...');
+    worker.on('error', (err) => {
+      if (workerMetrics.isShuttingDown) return;
+      console.error(`[${new Date().toISOString()}] [Worker] Worker error:`, err);
+    });
+
+    worker.on('stalled', (jobId) => {
+      console.warn(`[${new Date().toISOString()}] [Worker] Job ${jobId} stalled and will be reprocessed`);
+    });
+
+    console.log(`[${new Date().toISOString()}] [Worker] Worker started and listening for jobs`);
+    
+    // Emit ready event
+    if (process.send) {
+      process.send('ready');
+    }
   } catch (error) {
-    console.error('[Worker] Failed to start worker:', error);
-    throw error; // Re-throw to be caught by the outer catch
+    console.error(`[${new Date().toISOString()}] [Worker] Failed to start worker:`, error);
+    await gracefulShutdown('startup-failure');
+    process.exit(1);
   }
 };
 
-// Graceful shutdown handler
-const gracefulShutdown = async (signal: string) => {
+const gracefulShutdown = async (signal: string): Promise<void> => {
+  if (workerMetrics.isShuttingDown) {
+    console.log(`[${new Date().toISOString()}] [Worker] Shutdown already in progress, ignoring signal: ${signal}`);
+    return;
+  }
+  
+  workerMetrics.isShuttingDown = true;
   console.log(`[${new Date().toISOString()}] [Worker] Received ${signal}. Starting graceful shutdown...`);
   
-  const shutdownStart = Date.now();
-  const shutdownTimeout = 10000; // 10 seconds max for shutdown
+  // Clear intervals
+  clearInterval(memoryInterval);
   
-  const shutdownTimer = setTimeout(() => {
-    console.error(`[${new Date().toISOString()}] [Worker] Shutdown timed out after ${shutdownTimeout}ms. Forcing exit.`);
+  const shutdownPromises: Promise<unknown>[] = [];
+  const shutdownTimeout = setTimeout(() => {
+    console.error(`[${new Date().toISOString()}] [Worker] Forcing shutdown after timeout`);
     process.exit(1);
-  }, shutdownTimeout);
+  }, 30000); // Force exit after 30 seconds
   
   try {
-    // Close worker
+    // Close the worker first to stop accepting new jobs
     if (worker) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing worker...`);
-      try {
-        await worker.close(true); // true = wait for active jobs to complete
-        console.log(`[${new Date().toISOString()}] [Worker] Worker closed successfully`);
-      } catch (error) {
-        console.error(`[${new Date().toISOString()}] [Worker] Error closing worker:`, error);
-      }
+      shutdownPromises.push(
+        worker.close(true) // Force close any active jobs
+          .then(() => {
+            console.log(`[${new Date().toISOString()}] [Worker] Worker closed`);
+            worker = null;
+          })
+          .catch((err) => {
+            console.error(`[${new Date().toISOString()}] [Worker] Error closing worker:`, err);
+          })
+      );
     }
     
-    // Close Redis connection
-    if (pubClient && pubClient.isReady) {
-      console.log(`[${new Date().toISOString()}] [Worker] Closing Redis connection...`);
-      try {
-        await pubClient.quit();
-        console.log(`[${new Date().toISOString()}] [Worker] Redis connection closed`);
-      } catch (error) {
-        // Ignore errors if client is already closed
-        if (!error.message.includes('The client is closed')) {
-          console.error(`[${new Date().toISOString()}] [Worker] Error closing Redis connection:`, error);
-        } else {
-          console.log(`[${new Date().toISOString()}] [Worker] Redis connection already closed`);
-        }
-      }
-    } else {
-      console.log(`[${new Date().toISOString()}] [Worker] Redis connection not available or already closed`);
+    // Close QueueEvents
+    if (queueEvents) {
+      shutdownPromises.push(
+        queueEvents.close()
+          .then(() => {
+            console.log(`[${new Date().toISOString()}] [Worker] Queue events closed`);
+            queueEvents = null;
+          })
+          .catch((err) => {
+            console.error(`[${new Date().toISOString()}] [Worker] Error closing queue events:`, err);
+          })
+      );
     }
     
     // Close MongoDB connection
     if (mongoose.connection.readyState === 1) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing MongoDB connection...`);
-      try {
-        await mongoose.connection.close();
-        console.log(`[${new Date().toISOString()}] [Worker] MongoDB connection closed`);
-      } catch (error) {
-        console.error(`[${new Date().toISOString()}] [Worker] Error closing MongoDB connection:`, error);
-      }
+      shutdownPromises.push(
+        mongoose.connection.close(false) // Don't force close to allow in-progress operations to complete
+          .then(() => {
+            console.log(`[${new Date().toISOString()}] [Worker] MongoDB connection closed`);
+          })
+          .catch((err) => {
+            console.error(`[${new Date().toISOString()}] [Worker] Error closing MongoDB connection:`, err);
+          })
+      );
     }
     
-    const shutdownTime = Date.now() - shutdownStart;
-    console.log(`[${new Date().toISOString()}] [Worker] Shutdown completed in ${shutdownTime}ms`);
+    // Wait for all shutdown operations to complete or timeout
+    await Promise.allSettled(shutdownPromises);
     
-    // Log final metrics
-    console.log(`[${new Date().toISOString()}] [Worker] Final metrics:`, JSON.stringify({
-      totalJobs: workerMetrics.jobsProcessed,
-      failedJobs: workerMetrics.jobsFailed,
-      successRate: ((workerMetrics.jobsProcessed - workerMetrics.jobsFailed) / (workerMetrics.jobsProcessed || 1) * 100).toFixed(2) + '%',
-      uptime: Math.round((Date.now() - workerMetrics.startTime.getTime()) / 1000) + 's',
-      lastJobTime: workerMetrics.lastJobTime?.toISOString() || 'N/A'
-    }, null, 2));
-    
-    clearTimeout(shutdownTimer);
+    console.log(`[${new Date().toISOString()}] [Worker] Shutdown complete`);
+    clearTimeout(shutdownTimeout);
     process.exit(0);
   } catch (error) {
-    console.error(`[${new Date().toISOString()}] [Worker] Fatal error during shutdown:`, error);
-    clearTimeout(shutdownTimer);
+    console.error(`[${new Date().toISOString()}] [Worker] Error during shutdown:`, error);
+    clearTimeout(shutdownTimeout);
     process.exit(1);
   }
 };
@@ -250,24 +312,36 @@ const gracefulShutdown = async (signal: string) => {
 process.on('uncaughtException', (error) => {
   console.error(`[${new Date().toISOString()}] [Worker] Uncaught Exception:`, error);
   // Don't exit immediately to allow for cleanup
-  setTimeout(() => process.exit(1), 5000);
+  gracefulShutdown('uncaught-exception').catch(() => {
+    process.exit(1);
+  });
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error(`[${new Date().toISOString()}] [Worker] Unhandled Rejection at:`, promise, 'reason:', reason);
-  workerMetrics.jobsFailed++;
+  // Convert unhandled rejections to exceptions to be caught by uncaughtException
+  throw reason instanceof Error ? reason : new Error(String(reason));
 });
 
-// Handle shutdown signals
-['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
-  process.on(signal, () => {
-    console.log(`[${new Date().toISOString()}] [Worker] Received ${signal}`);
-    gracefulShutdown(signal).catch(err => {
-      console.error(`[${new Date().toISOString()}] [Worker] Error during shutdown:`, err);
-      process.exit(1);
-    });
+// Handle process signals
+const handleSignal = (signal: string) => {
+  console.log(`[${new Date().toISOString()}] [Worker] Received ${signal} signal`);
+  gracefulShutdown(signal).catch((error) => {
+    console.error(`[${new Date().toISOString()}] [Worker] Error during ${signal} shutdown:`, error);
+    process.exit(1);
   });
+};
+
+process.on('SIGTERM', () => handleSignal('SIGTERM'));
+process.on('SIGINT', () => handleSignal('SIGINT'));
+
+// Handle PM2 graceful shutdown (listen for the shutdown message)
+process.on('message', (msg) => {
+  if (msg === 'shutdown') {
+    console.log(`[${new Date().toISOString()}] [Worker] Received shutdown message`);
+    handleSignal('pm2-shutdown');
+  }
 });
 
 // Start the worker
