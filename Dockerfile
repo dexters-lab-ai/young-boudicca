@@ -75,8 +75,7 @@ COPY --from=build /app/package*.json ./
 RUN npm install --omit=dev --legacy-peer-deps \
     tsx \
     typescript \
-    @types/node \
-    @types/bullmq@3.27.0
+    @types/node
 
 # Copy the built frontend assets from the 'build' stage
 COPY --from=build /app/dist ./dist
