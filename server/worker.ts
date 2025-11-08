@@ -154,13 +154,25 @@ const startWorker = async (): Promise<void> => {
     }
 
     console.log(`[${new Date().toISOString()}] [Worker] Connecting to MongoDB...`);
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000,
-    });
     
-    console.log(`[${new Date().toISOString()}] [Worker] MongoDB connected successfully`);
+    // Ensure MONGODB_URI is defined
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      throw new Error('MONGODB_URI environment variable is not defined');
+    }
+
+    try {
+      await mongoose.connect(mongoUri, {
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 10000,
+      });
+      
+      console.log(`[${new Date().toISOString()}] [Worker] MongoDB connected successfully`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] [Worker] Failed to connect to MongoDB:`, error);
+      throw error; // Re-throw to be caught by the outer try-catch
+    }
 
     // Initialize QueueEvents for monitoring
     queueEvents = new QueueEvents('agent-jobs', {
