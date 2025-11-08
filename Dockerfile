@@ -27,69 +27,46 @@ RUN npm install --legacy-peer-deps --ignore-scripts
 # This is the key change that addresses the persistent "Cannot find module" error.
 RUN npm install --legacy-peer-deps @rollup/rollup-linux-x64-musl
 
-# Copy the rest of the application source code
+# Copy the rest of the application source code.
 COPY . .
-
-# Install production dependencies and build the application
-RUN npm run build:prod
 
 # ---- Build Stage ----
 # This stage builds the frontend assets. It inherits everything from the 'deps' stage.
-FROM node:20-alpine AS build
+FROM deps AS build
 
 WORKDIR /app
 
-# Copy all source files
-COPY . .
-
-# Copy node_modules from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-
-# Build the application
-RUN npm run build
+# Run the production build script. This will now finally succeed.
+RUN npm run build:prod
 
 # ---- Production Stage ----
 # This is the final, lean image that will run the application.
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 ENV NODE_ENV=production
 
+# Install only the necessary runtime OS dependencies.
+RUN apk add --no-cache \
+    libusb \
+    udev \
+    curl
+
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache udev eudev
-
-# Copy package files
+# Copy package files and install only PRODUCTION dependencies for a smaller image size.
+# Using `npm install --omit=dev` is safer than `npm ci` if a lockfile isn't guaranteed.
 COPY --from=deps /app/package*.json ./
+# Install tsx as a production dependency since we need it to run TypeScript files
+RUN npm install --omit=dev --legacy-peer-deps --ignore-scripts tsx
 
-# Install production dependencies
-RUN npm install --omit=dev --legacy-peer-deps \
-    && npm rebuild usb --update-binary \
-    && npm cache clean --force
-
-# Copy built files from build stage
+# Copy the built frontend assets from the 'build' stage.
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/server ./server
-COPY --from=build /app/public ./public
 
-# Copy config files
-COPY --from=build /app/ecosystem.config.cjs .
-COPY --from=build /app/tsconfig.json .
-COPY --from=build /app/tsconfig.node.json .
-COPY --from=build /app/vite.config.ts .
-
-# Create logs directory
-RUN mkdir -p /app/logs
-
-# Clean up
-RUN apk del .build-deps || true \
-    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp
-
-# Clean up build dependencies
-RUN apk del .build-deps \
-    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp \
-    && find / -name "*.pyc" -delete \
-    && find / -name "*.o" -delete
+# Copy the server, public folder, and other necessary config files from the 'deps' stage.
+COPY --from=deps /app/server ./server
+COPY --from=deps /app/public ./public
+COPY --from=deps /app/ecosystem.config.cjs .
+COPY --from=deps /app/tsconfig.json .
 
 # Ensure the logs directory exists
 RUN mkdir -p /app/logs
