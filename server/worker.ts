@@ -129,7 +129,14 @@ const processJob = async (job: Job) => {
     }
 };
 
+// Initialize and start the worker
 const startWorker = async () => {
+  try {
+    // Close existing worker if any
+    if (worker) {
+      await worker.close();
+      worker = null;
+    }
     if (process.env.MONGODB_URI) {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log('[Worker] MongoDB connected.');
@@ -164,35 +171,65 @@ const startWorker = async () => {
 const gracefulShutdown = async (signal: string) => {
   console.log(`[${new Date().toISOString()}] [Worker] Received ${signal}. Starting graceful shutdown...`);
   
+  const shutdownStart = Date.now();
+  const shutdownTimeout = 10000; // 10 seconds max for shutdown
+  
+  const shutdownTimer = setTimeout(() => {
+    console.error(`[${new Date().toISOString()}] [Worker] Shutdown timed out after ${shutdownTimeout}ms. Forcing exit.`);
+    process.exit(1);
+  }, shutdownTimeout);
+  
   try {
     // Close worker
     if (worker) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing worker...`);
-      await worker.close();
+      try {
+        await worker.close(true); // true = wait for active jobs to complete
+        console.log(`[${new Date().toISOString()}] [Worker] Worker closed successfully`);
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] [Worker] Error closing worker:`, error);
+      }
     }
     
     // Close Redis connection
     if (pubClient) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing Redis connection...`);
-      await pubClient.quit();
+      try {
+        await pubClient.quit();
+        console.log(`[${new Date().toISOString()}] [Worker] Redis connection closed`);
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] [Worker] Error closing Redis connection:`, error);
+      }
     }
     
     // Close MongoDB connection
     if (mongoose.connection.readyState === 1) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing MongoDB connection...`);
-      await mongoose.connection.close();
+      try {
+        await mongoose.connection.close();
+        console.log(`[${new Date().toISOString()}] [Worker] MongoDB connection closed`);
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] [Worker] Error closing MongoDB connection:`, error);
+      }
     }
     
-    console.log(`[${new Date().toISOString()}] [Worker] Shutdown complete. Metrics: ${JSON.stringify({
+    const shutdownTime = Date.now() - shutdownStart;
+    console.log(`[${new Date().toISOString()}] [Worker] Shutdown completed in ${shutdownTime}ms`);
+    
+    // Log final metrics
+    console.log(`[${new Date().toISOString()}] [Worker] Final metrics:`, JSON.stringify({
       totalJobs: workerMetrics.jobsProcessed,
       failedJobs: workerMetrics.jobsFailed,
-      successRate: ((workerMetrics.jobsProcessed - workerMetrics.jobsFailed) / workerMetrics.jobsProcessed * 100).toFixed(2) + '%',
-      uptime: Math.round((Date.now() - workerMetrics.startTime.getTime()) / 1000) + 's'
-    }, null, 2)}`);
+      successRate: ((workerMetrics.jobsProcessed - workerMetrics.jobsFailed) / (workerMetrics.jobsProcessed || 1) * 100).toFixed(2) + '%',
+      uptime: Math.round((Date.now() - workerMetrics.startTime.getTime()) / 1000) + 's',
+      lastJobTime: workerMetrics.lastJobTime?.toISOString() || 'N/A'
+    }, null, 2));
     
+    clearTimeout(shutdownTimer);
     process.exit(0);
   } catch (error) {
-    console.error(`[${new Date().toISOString()}] [Worker] Error during shutdown:`, error);
+    console.error(`[${new Date().toISOString()}] [Worker] Fatal error during shutdown:`, error);
+    clearTimeout(shutdownTimer);
     process.exit(1);
   }
 };

@@ -526,34 +526,21 @@ async function ensureHostedImageUrls(imageUrls: string[]): Promise<string[]> {
 // --- Other Endpoints ---
 // Health check endpoint with detailed status
 app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
-    try {
-        const healthCheck = {
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            memoryUsage: process.memoryUsage(),
-            database: {
-                status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-                dbState: mongoose.STATES[mongoose.connection.readyState]
-            },
-            redis: {
-                // Make Redis optional for health check
-                status: redis && redis.status === 'ready' ? 'connected' : 'disconnected',
-                pubClient: pubClient?.isOpen ? 'connected' : 'disconnected',
-                subClient: subClient?.isOpen ? 'connected' : 'disconnected'
-            },
-            environment: process.env.NODE_ENV || 'development',
-            nodeVersion: process.version,
-            platform: process.platform,
-            cpuUsage: process.cpuUsage()
-        };
-
-        // Only check database connection, make Redis optional
-        const isHealthy = healthCheck.database.status === 'connected';
-        
-        // Log health check status for debugging
-        console.log(`[Health Check] Status: ${isHealthy ? 'healthy' : 'degraded'}, ` +
-                   `DB: ${healthCheck.database.status}, ` +
+  const healthCheck = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: {
+      rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
+      heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
+      heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+      external: `${Math.round(process.memoryUsage().external / 1024 / 1024)}MB`,
+      arrayBuffers: `${Math.round(process.memoryUsage().arrayBuffers / 1024 / 1024)}MB`,
+    },
+    database: {
+      mongo: {
+        status: 'checking...',
+        version: 'unknown',
                    `Redis: ${healthCheck.redis.status}`);
 
         // Return 200 if DB is connected, even if Redis is down

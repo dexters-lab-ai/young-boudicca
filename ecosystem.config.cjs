@@ -1,13 +1,18 @@
+// PM2 Configuration for TypeScript
+require('ts-node/register');
+
 module.exports = {
   apps: [
     {
       name: 'backend',
       script: 'server/index.ts',
       interpreter: 'node',
-      interpreter_args: '--import tsx',
+      interpreter_args: '--loader tsx',
       env: {
         NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=4096 --unhandled-rejections=strict',
+        TS_NODE_PROJECT: './tsconfig.json',
+        TS_NODE_TRANSPILE_ONLY: 'true'
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
