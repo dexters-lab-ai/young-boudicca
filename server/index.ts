@@ -7,6 +7,13 @@ import './env';
 import process from 'process';
 import { validateEnv } from './validateEnv';
 
+// Add startup logging
+console.log(`[${new Date().toISOString()}] Starting server...`);
+console.log(`[${new Date().toISOString()}] Process ID: ${process.pid}`);
+console.log(`[${new Date().toISOString()}] Node.js version: ${process.version}`);
+console.log(`[${new Date().toISOString()}] Platform: ${process.platform} ${process.arch}`);
+console.log(`[${new Date().toISOString()}] Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB used`);
+
 // Validate environment variables before proceeding
 validateEnv();
 
@@ -1385,67 +1392,102 @@ app.post('/tools/fetchCandles', async (req: ExpressRequest, res: ExpressResponse
     } catch (err: any) {
         console.error('fetchCandles route error:', err.message);
         res.status(500).json({ error: 'Failed to fetch candles' });
-    }
-});
 
 const PORT = process.env.PORT || 8787;
 
-// Graceful shutdown handler
+// Enhanced graceful shutdown handler
 const gracefulShutdown = async (signal: string) => {
-  console.log(`\n[${new Date().toISOString()}] Received ${signal}. Starting graceful shutdown...`);
+  const shutdownStart = Date.now();
+  console.log(`[${new Date().toISOString()}] Received ${signal}. Starting graceful shutdown...`);
   
   try {
-    // Close HTTP server
-    server.close(async () => {
-      console.log('HTTP server closed.');
+    // 1. Stop accepting new connections
+    console.log('[Shutdown] Closing HTTP server to new connections...');
+    await new Promise<void>((resolve, reject) => {
+      if (!server) return resolve();
       
-      // Close WebSocket connections
+      server.close((err) => {
+        if (err) {
+          console.error('[Shutdown] Error closing HTTP server:', err);
+          reject(err);
+        } else {
+          console.log('[Shutdown] HTTP server closed to new connections');
+          resolve();
+        }
+      });
+    });
+
+    // 2. Close WebSocket connections
+    if (io) {
+      console.log('[Shutdown] Closing WebSocket connections...');
       io.close(() => {
-        console.log('WebSocket server closed.');
+        console.log('[Shutdown] WebSocket server closed');
       });
       
-      // Close Redis connections
-      if (pubClient && pubClient.isOpen) {
-        await pubClient.quit();
-        console.log('Redis publisher connection closed.');
+      // Force close any remaining WebSocket connections after a timeout
+      setTimeout(() => {
+        if (io.sockets.sockets.size > 0) {
+          console.log(`[Shutdown] Force closing ${io.sockets.sockets.size} remaining WebSocket connections`);
+          io.sockets.sockets.forEach(socket => socket.disconnect(true));
+        }
+      }, 5000);
+    }
+
+    // 3. Close Redis connections
+    if (redis) {
+      console.log('[Shutdown] Closing Redis connections...');
+      try {
+        await redis.quit();
+        console.log('[Shutdown] Redis connections closed');
+      } catch (err) {
+        console.error('[Shutdown] Error closing Redis connections:', err);
       }
-      
-      if (subClient && subClient.isOpen) {
-        await subClient.quit();
-        console.log('Redis subscriber connection closed.');
-      }
-      
-      // Close MongoDB connection
-      if (mongoose.connection.readyState === 1) {
+    }
+
+    // 4. Close MongoDB connection
+    if (mongoose.connection.readyState === 1) {
+      console.log('[Shutdown] Closing MongoDB connection...');
+      try {
         await mongoose.connection.close();
-        console.log('MongoDB connection closed.');
+        console.log('[Shutdown] MongoDB connection closed');
+      } catch (err) {
+        console.error('[Shutdown] Error closing MongoDB connection:', err);
       }
-      
-      console.log('Graceful shutdown complete.');
-      process.exit(0);
-    });
+    }
+
+    const shutdownTime = Date.now() - shutdownStart;
+    console.log(`[Shutdown] Graceful shutdown completed in ${shutdownTime}ms`);
+    process.exit(0);
     
-    // Force shutdown after 10 seconds
-    setTimeout(() => {
-      console.error('Could not close connections in time, forcefully shutting down');
-      process.exit(1);
-    }, 10000);
   } catch (error) {
-    console.error('Error during graceful shutdown:', error);
-    process.exit(1);
+    console.error('[Shutdown] Error during graceful shutdown:', error);
+    // Force exit after a short delay if something goes wrong
+    setTimeout(() => process.exit(1), 1000);
   }
 };
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  console.error(`[${new Date().toISOString()}] [FATAL] Uncaught Exception:`, error);
+  // Log the full error stack
+  console.error(error.stack);
   // Don't exit immediately, give time for the server to handle existing requests
+  // but schedule a forced exit if needed
+  setTimeout(() => {
+    console.error(`[${new Date().toISOString()}] [FATAL] Forcing process exit due to uncaught exception`);
+    process.exit(1);
+  }, 5000);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit immediately, give time for the server to handle existing requests
+  console.error(`[${new Date().toISOString()}] [FATAL] Unhandled Rejection at:`, promise, 'reason:', reason);
+  // Log the full error if available
+  if (reason instanceof Error) {
+    console.error(reason.stack);
+  }
+  // Don't exit immediately, but log the issue
+  console.error(`[${new Date().toISOString()}] [WARN] Unhandled rejection detected, but continuing execution`);
 });
 
 // Listen for shutdown signals
@@ -1456,9 +1498,17 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the server
 server.listen(PORT, '0.0.0.0', () => {
   const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
-  console.log(`[server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-  console.log(`[server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-  console.log(`[server] Server is listening on http://0.0.0.0:${PORT}`);
+  console.log(`[${new Date().toISOString()}] [Server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+  console.log(`[${new Date().toISOString()}] [Server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
+  console.log(`[${new Date().toISOString()}] [Server] Server is listening on http://0.0.0.0:${PORT}`);
+  console.log(`[${new Date().toISOString()}] [Server] Health check: http://0.0.0.0:${PORT}/health`);
+  
+  // Log memory usage every 30 seconds
+  setInterval(() => {
+    const memory = process.memoryUsage();
+    console.log(`[${new Date().toISOString()}] [Memory] RSS: ${Math.round(memory.rss / 1024 / 1024)}MB, ` +
+      `Heap: ${Math.round(memory.heapUsed / 1024 / 1024)}MB / ${Math.round(memory.heapTotal / 1024 / 1024)}MB`);
+  }, 30000);
   
   // Signal PM2 that the app is ready
   if (process.send) {

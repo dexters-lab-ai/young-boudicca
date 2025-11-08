@@ -1,8 +1,27 @@
-import './env'; // Ensure env vars are loaded
+import './env'; // Ensure env vars are loaded first
 import { Worker, Job } from 'bullmq';
 import mongoose from 'mongoose';
-// DOC: Use GoogleGenAI instead of GoogleGenerativeAI
 import { GoogleGenAI } from '@google/genai';
+
+// Add worker startup logging
+console.log(`[${new Date().toISOString()}] [Worker] Starting worker process...`);
+console.log(`[${new Date().toISOString()}] [Worker] Process ID: ${process.pid}`);
+console.log(`[${new Date().toISOString()}] [Worker] Node.js version: ${process.version}`);
+
+// Track worker metrics
+const workerMetrics = {
+  jobsProcessed: 0,
+  jobsFailed: 0,
+  lastJobTime: null as Date | null,
+  startTime: new Date(),
+};
+
+// Log memory usage periodically
+setInterval(() => {
+  const memory = process.memoryUsage();
+  console.log(`[${new Date().toISOString()}] [Worker] Memory: RSS=${Math.round(memory.rss / 1024 / 1024)}MB, ` +
+    `Heap=${Math.round(memory.heapUsed / 1024 / 1024)}MB/${Math.round(memory.heapTotal / 1024 / 1024)}MB`);
+}, 30000);
 
 import { redis as redisConnection, pubClient } from './queue';
 import User from './models/User';
@@ -27,12 +46,20 @@ const IDLE_THRESHOLD_SECONDS = 30; // 30 seconds
 const ONLINE_THRESHOLD_MINUTES = 2;
 
 const processJob = async (job: Job) => {
+    const jobStart = Date.now();
     const { walletAddress } = job.data;
-    console.log(`[Worker] Processing job for wallet: ${walletAddress}`);
+    
+    workerMetrics.jobsProcessed++;
+    workerMetrics.lastJobTime = new Date();
+    
+    console.log(`[${new Date().toISOString()}] [Worker] Starting job #${workerMetrics.jobsProcessed} for wallet: ${walletAddress}`);
+    console.log(`[${new Date().toISOString()}] [Worker] Job data:`, JSON.stringify(job.data, null, 2));
 
     if (!ai) {
-        console.error('[Worker] AI not initialized. Skipping job.');
-        return;
+        const errorMsg = 'AI not initialized. Check API_KEY environment variable.';
+        console.error(`[${new Date().toISOString()}] [Worker] ${errorMsg}`);
+        workerMetrics.jobsFailed++;
+        throw new Error(errorMsg);
     }
 
     try {
@@ -133,7 +160,69 @@ const startWorker = async () => {
     console.log('[Worker] Agent worker started and listening for jobs...');
 };
 
-startWorker().catch(err => {
-    console.error('[Worker] Failed to start:', err);
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  console.log(`[${new Date().toISOString()}] [Worker] Received ${signal}. Starting graceful shutdown...`);
+  
+  try {
+    // Close worker
+    if (worker) {
+      console.log(`[${new Date().toISOString()}] [Worker] Closing worker...`);
+      await worker.close();
+    }
+    
+    // Close Redis connection
+    if (pubClient) {
+      console.log(`[${new Date().toISOString()}] [Worker] Closing Redis connection...`);
+      await pubClient.quit();
+    }
+    
+    // Close MongoDB connection
+    if (mongoose.connection.readyState === 1) {
+      console.log(`[${new Date().toISOString()}] [Worker] Closing MongoDB connection...`);
+      await mongoose.connection.close();
+    }
+    
+    console.log(`[${new Date().toISOString()}] [Worker] Shutdown complete. Metrics: ${JSON.stringify({
+      totalJobs: workerMetrics.jobsProcessed,
+      failedJobs: workerMetrics.jobsFailed,
+      successRate: ((workerMetrics.jobsProcessed - workerMetrics.jobsFailed) / workerMetrics.jobsProcessed * 100).toFixed(2) + '%',
+      uptime: Math.round((Date.now() - workerMetrics.startTime.getTime()) / 1000) + 's'
+    }, null, 2)}`);
+    
+    process.exit(0);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] [Worker] Error during shutdown:`, error);
     process.exit(1);
+  }
+};
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error(`[${new Date().toISOString()}] [Worker] Uncaught Exception:`, error);
+  // Don't exit immediately to allow for cleanup
+  setTimeout(() => process.exit(1), 5000);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error(`[${new Date().toISOString()}] [Worker] Unhandled Rejection at:`, promise, 'reason:', reason);
+  workerMetrics.jobsFailed++;
+});
+
+// Handle shutdown signals
+['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
+  process.on(signal, () => {
+    console.log(`[${new Date().toISOString()}] [Worker] Received ${signal}`);
+    gracefulShutdown(signal).catch(err => {
+      console.error(`[${new Date().toISOString()}] [Worker] Error during shutdown:`, err);
+      process.exit(1);
+    });
+  });
+});
+
+// Start the worker
+startWorker().catch(err => {
+  console.error(`[${new Date().toISOString()}] [Worker] Failed to start:`, err);
+  process.exit(1);
 });
