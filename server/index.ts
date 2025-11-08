@@ -1549,13 +1549,19 @@ process.on('unhandledRejection', (reason, promise) => {
   process.on(signal, () => gracefulShutdown(signal));
 });
 
+// Ensure PORT is properly parsed as a number
+const PORT_NUMBER = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT || 8787;
+const HOST = process.env.HOST || '0.0.0.0';
+
 // Start the server
-server.listen(PORT, '0.0.0.0', () => {
+console.log(`[${new Date().toISOString()}] [Server] Starting server on ${HOST}:${PORT_NUMBER}...`);
+server.listen(PORT_NUMBER, HOST, () => {
   const redact = (v?: string) => (v ? `${v.slice(0, 6)}...(${v.length})` : 'undefined');
   console.log(`[${new Date().toISOString()}] [Server] Startup. NODE_ENV=${process.env.NODE_ENV || 'development'}`);
   console.log(`[${new Date().toISOString()}] [Server] SOLSCAN_API_KEY present: ${process.env.SOLSCAN_API_KEY ? 'YES' : 'NO'} (${redact(process.env.SOLSCAN_API_KEY)})`);
-  console.log(`[${new Date().toISOString()}] [Server] Server is listening on http://0.0.0.0:${PORT}`);
-  console.log(`[${new Date().toISOString()}] [Server] Health check: http://0.0.0.0:${PORT}/health`);
+  const hostname = HOST === '0.0.0.0' ? 'localhost' : HOST;
+  console.log(`[${new Date().toISOString()}] [Server] Server is listening on http://${hostname}:${PORT_NUMBER}`);
+  console.log(`[${new Date().toISOString()}] [Server] Health check: http://${hostname}:${PORT_NUMBER}/health`);
   
   // Log memory usage every 30 seconds
   setInterval(() => {

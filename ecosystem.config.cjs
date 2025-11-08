@@ -10,7 +10,9 @@ module.exports = {
         NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=4096 --unhandled-rejections=strict',
         TS_NODE_PROJECT: './tsconfig.json',
-        TS_NODE_TRANSPILE_ONLY: 'true'
+        TS_NODE_TRANSPILE_ONLY: 'true',
+        PORT: '8787',
+        HOST: '0.0.0.0'
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
@@ -46,7 +48,9 @@ module.exports = {
         NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=1024 --unhandled-rejections=warn',
         TS_NODE_PROJECT: './tsconfig.json',
-        TS_NODE_TRANSPILE_ONLY: 'true'
+        TS_NODE_TRANSPILE_ONLY: 'true',
+        PORT: '8787',
+        HOST: '0.0.0.0'
       },
       error_file: './logs/worker-error.log',
       out_file: './logs/worker-out.log',
