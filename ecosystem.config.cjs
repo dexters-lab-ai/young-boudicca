@@ -33,8 +33,9 @@ module.exports = {
     },
     {
       name: 'worker',
-      script: 'npx',
-      args: 'tsx server/worker.ts',
+      script: 'server/worker.ts',
+      interpreter: 'node',
+      interpreter_args: '--loader tsx',
       watch: false,
       autorestart: true,
       instances: 1,
@@ -46,9 +47,12 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         NODE_OPTIONS: '--max-old-space-size=1024 --unhandled-rejections=warn',
+        TS_NODE_PROJECT: './tsconfig.json',
+        TS_NODE_TRANSPILE_ONLY: 'true'
       },
       error_file: './logs/worker-error.log',
       out_file: './logs/worker-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
       time: true,
     },
