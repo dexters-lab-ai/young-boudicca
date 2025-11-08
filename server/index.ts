@@ -540,24 +540,58 @@ app.get('/health', async (req: ExpressRequest, res: ExpressResponse) => {
     database: {
       mongo: {
         status: 'checking...',
-        version: 'unknown',
-                   `Redis: ${healthCheck.redis.status}`);
+        version: 'unknown'
+      },
+      redis: {
+        status: 'checking...',
+        version: 'unknown'
+      }
+    },
+    services: {
+      solscan: {
+        status: process.env.SOLSCAN_API_KEY ? 'configured' : 'not_configured'
+      },
+      backblaze: {
+        status: backblazeService ? 'configured' : 'not_configured'
+      }
+    }
+  };
 
-        // Return 200 if DB is connected, even if Redis is down
-        res.status(200).json({
-            ...healthCheck,
-            status: isHealthy ? 'ok' : 'degraded',
-            message: isHealthy ? 'Service is healthy' : 'Service is running in degraded mode (Redis not available)'
-        });
+  try {
+    // Check MongoDB connection
+    if (mongoose.connection.readyState === 1) {
+      healthCheck.database.mongo.status = 'connected';
+      healthCheck.database.mongo.version = (await mongoose.connection.db.admin().serverStatus()).version;
+    } else {
+      healthCheck.database.mongo.status = 'disconnected';
+    }
+
+    // Check Redis connection
+    try {
+      await redis.ping();
+      healthCheck.database.redis.status = 'connected';
     } catch (error) {
-        console.error('Health check error:', error);
-        res.status(200).json({
-            status: 'degraded',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            error: 'Health check partially failed',
-            details: error.message
-        });
+      healthCheck.database.redis.status = 'error';
+      healthCheck.database.redis.error = error.message;
+    }
+
+    const isHealthy = healthCheck.database.mongo.status === 'connected';
+    
+    // Return 200 if DB is connected, even if Redis is down
+    res.status(200).json({
+      ...healthCheck,
+      status: isHealthy ? 'ok' : 'degraded',
+      message: isHealthy ? 'Service is healthy' : 'Service is running in degraded mode (Redis not available)'
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(200).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      error: 'Health check partially failed',
+      details: error.message
+    });
     }
 });
 

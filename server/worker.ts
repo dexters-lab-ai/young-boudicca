@@ -197,14 +197,21 @@ const gracefulShutdown = async (signal: string) => {
     }
     
     // Close Redis connection
-    if (pubClient) {
+    if (pubClient && pubClient.isReady) {
       console.log(`[${new Date().toISOString()}] [Worker] Closing Redis connection...`);
       try {
         await pubClient.quit();
         console.log(`[${new Date().toISOString()}] [Worker] Redis connection closed`);
       } catch (error) {
-        console.error(`[${new Date().toISOString()}] [Worker] Error closing Redis connection:`, error);
+        // Ignore errors if client is already closed
+        if (!error.message.includes('The client is closed')) {
+          console.error(`[${new Date().toISOString()}] [Worker] Error closing Redis connection:`, error);
+        } else {
+          console.log(`[${new Date().toISOString()}] [Worker] Redis connection already closed`);
+        }
       }
+    } else {
+      console.log(`[${new Date().toISOString()}] [Worker] Redis connection not available or already closed`);
     }
     
     // Close MongoDB connection
