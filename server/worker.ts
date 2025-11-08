@@ -145,9 +145,12 @@ const processJob = async (job: Job): Promise<void> => {
 };
 
 // Initialize and start the worker
-const startWorker = async () => {
+const startWorker = async (): Promise<void> => {
   try {
     // Close existing worker if any
+    if (worker) {
+      console.log(`[${new Date().toISOString()}] [Worker] Closing existing worker...`);
+      await worker.close();
     }
 
     console.log(`[${new Date().toISOString()}] [Worker] Connecting to MongoDB...`);
