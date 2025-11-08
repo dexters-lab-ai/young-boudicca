@@ -35,59 +35,55 @@ RUN npm run build:prod
 
 # ---- Build Stage ----
 # This stage builds the frontend assets. It inherits everything from the 'deps' stage.
-FROM deps AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY --from=deps /app/package*.json ./
-RUN npm install --legacy-peer-deps
-
-# Copy the rest of the application source code
+# Copy all source files
 COPY . .
 
-# Run the production build script
-RUN npm run build:prod
+# Copy node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 
+# Build the application
+RUN npm run build
 
 # ---- Production Stage ----
 # This is the final, lean image that will run the application.
-FROM node:22-alpine AS production
+FROM node:20-alpine AS production
 
 ENV NODE_ENV=production
 
-# Install build dependencies
-RUN apk add --no-cache --virtual .build-deps \
-    python3 \
-    make \
-    g++ \
-    pkgconfig \
-    udev \
-    eudev-dev \
-    libusb-dev \
-    && npm install -g node-gyp npm \
-    && npm install -g vite@5.0.0
-
 WORKDIR /app
 
-# Copy package files and install only PRODUCTION dependencies
-COPY --from=build /app/package*.json ./
+# Install runtime dependencies
+RUN apk add --no-cache udev eudev
 
-# Install production dependencies and ensure Vite is available
+# Copy package files
+COPY --from=deps /app/package*.json ./
+
+# Install production dependencies
 RUN npm install --omit=dev --legacy-peer-deps \
     && npm rebuild usb --update-binary \
-    && npm install -g vite@5.0.0 \
     && npm cache clean --force
 
-# Copy the built frontend assets from the 'build' stage
+# Copy built files from build stage
 COPY --from=build /app/dist ./dist
-
-# Copy the server, public folder, and other necessary config files
 COPY --from=build /app/server ./server
 COPY --from=build /app/public ./public
+
+# Copy config files
 COPY --from=build /app/ecosystem.config.cjs .
 COPY --from=build /app/tsconfig.json .
 COPY --from=build /app/tsconfig.node.json .
+COPY --from=build /app/vite.config.ts .
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Clean up
+RUN apk del .build-deps || true \
+    && rm -rf /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp
 
 # Clean up build dependencies
 RUN apk del .build-deps \
